@@ -1,26 +1,158 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+@theme {
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+
+  --color-primary: #7c5dfa;
+  --color-primary-hover: #9277ff;
+  --color-dark-bg: #1e1f26;
+  --color-dark-sidebar: #141625;
+  --color-accent-yellow: #facc15;
+
+  --animate-fade-in: fade-in 0.5s ease-out;
+  --animate-slide-up: slide-up 0.5s ease-out;
+  --animate-slide-in-left: slide-in-left 0.5s ease-out;
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @keyframes slide-up {
+    from {
+      transform: translateY(20px);
+      opacity: 0;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+  @keyframes slide-in-left {
+    from {
+      transform: translateX(-20px);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+:root {
+  --background: #ffffff;
+  --foreground: #09090b;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: #141625;
+    --foreground: #dfe3fa;
   }
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
 }
+
+/* Custom Utilities for Animations */
+.animate-in {
+  animation-fill-mode: both;
+}
+
+.fade-in {
+  animation: fade-in 0.5s ease-out;
+}
+
+.slide-in-from-left-4 {
+  animation: slide-in-left 0.5s ease-out;
+}
+
+.slide-in-from-bottom-4 {
+  animation: slide-up 0.5s ease-out;
+}
+
+.zoom-in-95 {
+  animation: zoom-in 0.3s ease-out;
+}
+
+@keyframes zoom-in {
+  from {
+    transform: scale(0.95);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* Spreadsheet specific styles */
+.spreadsheet-header {
+  @apply bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 font-medium text-xs text-center border-r border-b border-zinc-200 dark:border-zinc-700 uppercase;
+}
+/* e:\Projects\NextWave\excelIntegration\quantus\app\globals.css additions */
+.handsontable-wrapper {
+  /* Scope our overrides */
+}
+
+/* Handsontable Generic styles to match Excel/Quantus */
+.handsontable th {
+  background-color: #f4f4f5 !important;
+  color: #71717a !important;
+  font-weight: 600 !important;
+  font-size: 11px !important;
+  text-transform: uppercase;
+}
+
+.handsontable td {
+  font-size: 13px !important;
+  color: #27272a !important;
+  vertical-align: middle !important;
+  padding: 0 8px !important;
+}
+
+/* Editable cells */
+.handsontable td.ht-editable-cell {
+  background-color: rgba(59, 130, 246, 0.05) !important;
+  font-weight: 600;
+}
+
+/* Validation */
+.handsontable td.correct-cell {
+  background-color: #ecfdf5 !important;
+  color: #047857 !important;
+}
+.handsontable td.incorrect-cell {
+  background-color: #fff1f2 !important;
+  color: #be123c !important;
+}
+
+/* Section Headers */
+.handsontable td.ht-section-header {
+  background-color: rgba(124, 93, 250, 0.1) !important;
+  color: #312e81 !important;
+  font-weight: 600 !important;
+  text-align: center !important;
+  font-size: 13px !important;
+}
+.handsontable td.ht-section-row {
+  background-color: rgba(124, 93, 250, 0.1) !important;
+}
+
+/* HotTable selection border */
+.handsontable .wtBorder.current {
+  background-color: #7C5DFA !important;
+}
+.handsontable .wtBorder.area {
+  background-color: #7C5DFA !important;
+}
+
