@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Quantus Cop",
-  description: "Quantus - Financial Analysis Platform",
+  title: "Shankh V2",
+  description: "ShankhV2 - Financial Analysis Platform",
 };
 
 export default function RootLayout({

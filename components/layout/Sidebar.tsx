@@ -27,7 +27,7 @@ export const Sidebar = () => {
             <TrendingUp size={22} strokeWidth={3} />
           </div>
           <span className="text-xl font-bold tracking-tight text-zinc-900">
-            quantus
+            ShankhV2
           </span>
         </div>
       </div>
