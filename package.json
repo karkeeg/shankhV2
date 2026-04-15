@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@excalidraw/excalidraw": "^0.18.0",
     "@handsontable/react": "^16.2.0",
     "@xyflow/react": "^12.10.2",
     "canvas-confetti": "^1.9.4",
@@ -21,7 +22,6 @@
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "tailwind-merge": "^3.5.0",
-    "tldraw": "^4.5.8",
     "zustand": "^5.0.12"
   },
   "devDependencies": {

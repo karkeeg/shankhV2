@@ -54,6 +54,7 @@ export default async function LessonPage({ params }: PageProps) {
           explanation={lesson.explanation}
           definitions={lesson.definitions}
           instructions={lesson.instructions}
+          toolkitElements={lesson.exercise.type === "canvas" ? lesson.exercise.canvasDraggableElements : undefined}
         />
       }
       rightContent={<ExercisePanel exercise={lesson.exercise} />}

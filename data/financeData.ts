@@ -1,5 +1,17 @@
 export type ExerciseType = "excel" | "select" | "dropdown" | "canvas";
 
+export interface DragItem {
+  id: string;
+  label: string;
+  type: "shape" | "equation";
+  content: string;
+}
+
+export interface DragCategory {
+  category: string;
+  items: DragItem[];
+}
+
 export interface ExerciseConfig {
   type: ExerciseType;
   question: string;
@@ -45,6 +57,15 @@ export interface ExerciseConfig {
   }[];
   // canvas: For 'canvas' interactive maps
   canvasBackgroundText?: string;
+  canvasDraggableElements?: {
+    category: string;
+    items: {
+      id: string;
+      label: string;
+      type: "shape" | "equation";
+      content: string; // The text to display in the shape
+    }[];
+  }[];
 }
 
 export interface Lesson {
@@ -540,7 +561,31 @@ export const financeData: Lesson[] = [
     exercise: {
       type: "canvas",
       question: "Sketch the flowchart for calculating Net Income.",
-      canvasBackgroundText: "Use the pen and shape tools to draw your Income Statement flow."
+      canvasBackgroundText: "Use the pen and shape tools to draw your Income Statement flow.",
+      canvasDraggableElements: [
+        {
+          category: "Shapes",
+          items: [
+            { id: "rev", label: "Revenue", type: "shape", content: "Revenue" },
+            { id: "cogs", label: "COGS", type: "shape", content: "COGS" },
+            { id: "gp", label: "Gross Profit", type: "shape", content: "Gross Profit" },
+            { id: "opex", label: "Op. Expenses", type: "shape", content: "Operating Expenses" },
+            { id: "ebit", label: "EBIT", type: "shape", content: "EBIT" },
+            { id: "int", label: "Interest", type: "shape", content: "Interest" },
+            { id: "tax", label: "Taxes", type: "shape", content: "Taxes" },
+            { id: "ni", label: "Net Income", type: "shape", content: "Net Income" },
+          ]
+        },
+        {
+          category: "Equations",
+          items: [
+            { id: "eq1", label: "GP Calc", type: "equation", content: "Revenue - COGS = Gross Profit" },
+            { id: "eq2", label: "EBIT Calc", type: "equation", content: "Gross Profit - OpEx = EBIT" },
+            { id: "eq3", label: "EBT Calc", type: "equation", content: "EBIT - Interest = EBT" },
+            { id: "eq4", label: "NI Calc", type: "equation", content: "EBT - Taxes = Net Income" },
+          ]
+        }
+      ]
     }
   }
 ];
