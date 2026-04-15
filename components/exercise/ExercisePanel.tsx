@@ -267,7 +267,6 @@ export const ExercisePanel = ({ exercise }: ExercisePanelProps) => {
         {exercise.type === "canvas" && (
           <CanvasExercise
             canvasBackgroundText={exercise.canvasBackgroundText}
-            draggableElements={exercise.canvasDraggableElements}
           />
         )}
       </div>
