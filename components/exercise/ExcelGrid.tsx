@@ -2,7 +2,45 @@
 
 import React, { useState } from "react";
 import { cn } from "@/lib/utils";
-import { ChevronDown, Plus, Minus } from "lucide-react";
+import {
+  ChevronDown,
+  Plus,
+  Minus,
+  Search,
+  Undo2,
+  Redo2,
+  Printer,
+  PaintBucket,
+  Bold,
+  Italic,
+  Strikethrough,
+  Palette,
+  Link2,
+  MessageSquare,
+  Grid3X3,
+  AlignLeft,
+  AlignCenter,
+  IndentIncrease,
+  WrapText,
+  MoreVertical,
+  Menu,
+} from "lucide-react";
+
+/* ── Toolbar Helpers ────────────────────────────────────────────── */
+
+function ToolbarBtn({ icon }: { icon: React.ReactNode }) {
+  return (
+    <button className="p-1.5 rounded hover:bg-zinc-200/70 text-zinc-500 hover:text-zinc-700 transition-colors shrink-0">
+      {icon}
+    </button>
+  );
+}
+
+function ToolbarDivider() {
+  return <div className="w-px h-5 bg-zinc-200 mx-0.5 shrink-0" />;
+}
+
+/* ── ExcelGrid Component ────────────────────────────────────────── */
 
 interface ExcelGridProps {
   table: (string | number | null)[][];
@@ -22,6 +60,10 @@ interface ExcelGridProps {
   setUserInputs: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   isValidated: boolean;
   feedback: Record<string, boolean>;
+  /** Optional tab name to show in the bottom sheet bar */
+  sheetTabName?: string;
+  /** If true, shows the rich spreadsheet toolbar (for canvas exercises) */
+  showToolbar?: boolean;
 }
 
 export const ExcelGrid = ({
@@ -32,6 +74,8 @@ export const ExcelGrid = ({
   setUserInputs,
   isValidated,
   feedback,
+  sheetTabName,
+  showToolbar = false,
 }: ExcelGridProps) => {
   const [selectedCell, setSelectedCell] = useState<{
     row: number;
@@ -57,18 +101,97 @@ export const ExcelGrid = ({
     String.fromCharCode(65 + i),
   );
 
+  // Compute cell address label (e.g. "E5")
+  const cellAddress = selectedCell
+    ? `${String.fromCharCode(65 + selectedCell.col)}${selectedCell.row + 1}`
+    : "";
+
   return (
     <div className="flex flex-col h-full bg-white border border-zinc-200 rounded-lg shadow-xl overflow-hidden font-sans ring-1 ring-zinc-200">
-      {/* Formula Bar Section */}
-      <div className="flex items-center gap-1 p-1 bg-white border-b border-zinc-200">
-        <div className="w-10 h-7 flex items-center justify-center text-zinc-400 font-serif italic text-base border-r border-zinc-200">
-          fx
+      {/* Rich Toolbar (shown for canvas-style exercises) */}
+      {showToolbar && (
+        <div className="flex items-center gap-1 px-4 py-1.5 bg-[#f3f4f6] border-b border-zinc-300 shrink-0 overflow-x-auto h-12 shadow-sm">
+          {/* Utility icons */}
+          <ToolbarBtn icon={<Search size={16} />} />
+          <ToolbarBtn icon={<Undo2 size={16} />} />
+          <ToolbarBtn icon={<Redo2 size={16} />} />
+          <ToolbarBtn icon={<Printer size={16} />} />
+          <ToolbarBtn icon={<PaintBucket size={16} />} />
+
+          <ToolbarDivider />
+
+          {/* Zoom */}
+          <div className="flex items-center gap-1.5 px-2 py-1 rounded hover:bg-zinc-200/70 transition-colors cursor-pointer">
+            <span className="text-[11px] text-zinc-600 font-bold">100%</span>
+            <ChevronDown size={10} className="text-zinc-400" />
+          </div>
+
+          <ToolbarDivider />
+
+          {/* Font Selector */}
+          <button className="flex items-center gap-2 px-3 py-1 rounded border border-zinc-300 bg-white text-[11px] text-zinc-700 font-bold hover:bg-zinc-50 transition-all shadow-sm">
+            Default
+            <ChevronDown size={10} />
+          </button>
+
+          <ToolbarDivider />
+
+          {/* Font Size */}
+          <div className="flex items-center gap-1 px-1">
+            <button className="p-1 text-zinc-500 hover:text-zinc-800 transition-colors">
+              <Minus size={14} />
+            </button>
+            <div className="px-2 py-0.5 rounded border border-zinc-300 bg-white text-[11px] font-bold text-zinc-700 min-w-[28px] text-center shadow-sm">
+              10
+            </div>
+            <button className="p-1 text-zinc-500 hover:text-zinc-800 transition-colors">
+              <Plus size={14} />
+            </button>
+          </div>
+
+          <ToolbarDivider />
+
+          {/* Text formatting */}
+          <div className="flex items-center gap-0.5">
+            <ToolbarBtn icon={<Bold size={16} />} />
+            <ToolbarBtn icon={<Italic size={16} />} />
+            <ToolbarBtn icon={<Strikethrough size={16} />} />
+            <button className="flex items-center gap-0.5 p-1.5 rounded hover:bg-zinc-200/70 text-zinc-500 transition-colors">
+               <span className="text-xs font-bold underline decoration-2 decoration-zinc-400 underline-offset-2">A</span>
+               <ChevronDown size={8} />
+            </button>
+          </div>
+
+          <ToolbarDivider />
+
+          {/* Alignment & More */}
+          <div className="flex items-center gap-0.5 ml-auto">
+             <button className="p-1.5 rounded hover:bg-zinc-200/70 text-zinc-500 transition-colors">
+                <ChevronUp size={14} className="rotate-180" />
+             </button>
+          </div>
         </div>
+      )}
+
+      {/* Cell Reference + Formula Bar */}
+      <div className="flex items-center gap-0 bg-white border-b border-zinc-300 shrink-0 h-9">
+        {/* Cell address */}
+        <div className="flex items-center gap-2 px-4 py-1 border-r border-zinc-200 min-w-[70px]">
+          <span className="text-xs font-bold text-zinc-700 select-none tracking-tight">{cellAddress}</span>
+          <ChevronDown size={12} className="text-zinc-400" />
+        </div>
+
+        {/* Sigma / function indicator */}
+        <div className="px-4 py-1 border-r border-zinc-200 flex items-center text-zinc-800">
+          <span className="text-lg font-black select-none italic">Σ</span>
+        </div>
+
+        {/* Formula bar */}
         <input
           type="text"
           readOnly
           value={currentFormulaValue}
-          className="flex-1 px-3 py-1 bg-transparent border-none outline-none text-xs text-zinc-500 font-medium"
+          className="flex-1 px-4 py-1 bg-transparent border-none outline-none text-sm text-zinc-800 font-bold tracking-tight"
           placeholder=""
         />
       </div>
@@ -249,32 +372,19 @@ export const ExcelGrid = ({
       </div>
 
       {/* Spreadsheet Bottom Tabs Bar */}
-      <div className="flex items-center justify-between px-2 py-1 bg-zinc-100 border-t border-zinc-200 text-[10px] font-bold text-zinc-400">
-        <div className="flex items-center">
-          <div className="p-1 hover:bg-zinc-200 rounded cursor-pointer transition-colors mr-2">
-            <Plus size={10} />
+      <div className="flex items-center justify-between px-3 py-1 bg-[#d4d7db] border-t border-zinc-400/30 text-[10px] font-bold text-zinc-500 h-10 shadow-inner">
+        <div className="flex items-center h-full">
+          <div className="p-1.5 hover:bg-zinc-300 rounded-md cursor-pointer transition-colors mr-2">
+            <Plus size={14} className="stroke-[3px]" />
           </div>
-          <div className="flex items-center">
-            <span className="px-4 py-1.5 bg-white border-x border-t border-zinc-200 text-[#7C5DFA] font-black -mb-[5px] rounded-t-sm shadow-sm relative z-10">
-              Exercise1
-            </span>
-            <span className="px-4 py-1.5 hover:bg-zinc-200 transition-colors cursor-pointer">
-              Example1
-            </span>
-            <span className="px-4 py-1.5 hover:bg-zinc-200 transition-colors cursor-pointer">
-              Summary
-            </span>
+          <div className="p-1.5 hover:bg-zinc-300 rounded-md cursor-pointer transition-colors mr-4">
+            <Menu size={14} className="stroke-[3px]" />
           </div>
-        </div>
-
-        <div className="flex items-center gap-4 px-2">
-          <div className="flex items-center gap-1.5">
-            <Minus size={10} className="cursor-pointer hover:text-zinc-600" />
-            <div className="w-16 h-1 bg-zinc-200 rounded-full relative">
-              <div className="absolute top-1/2 left-[75%] -translate-y-1/2 w-2.5 h-2.5 bg-white border border-zinc-300 rounded-full shadow-sm" />
-            </div>
-            <Plus size={10} className="cursor-pointer hover:text-zinc-600" />
-            <span className="ml-1 tracking-tighter">125%</span>
+          <div className="flex items-center h-full pt-1">
+            <span className="flex items-center gap-2 px-5 h-full bg-[#dbeafe] border-x border-t border-zinc-400/40 text-blue-700 font-black rounded-t-lg shadow-sm relative z-10 text-[11px] tracking-tight">
+              {sheetTabName || "Income Statement"}
+              <ChevronDown size={10} className="text-blue-400" />
+            </span>
           </div>
         </div>
       </div>

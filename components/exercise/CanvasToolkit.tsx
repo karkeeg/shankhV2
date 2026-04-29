@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useRef } from "react";
-import { Box, Variable, Layers, GripVertical } from "lucide-react";
+import { Box, Variable, Layers, GripVertical, Square, Circle, Diamond, FunctionSquare } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DragCategory, DragItem } from "@/data/financeData";
 
@@ -20,8 +20,8 @@ export const CanvasToolkit = ({ draggableElements }: CanvasToolkitProps) => {
       dragGhostRef.current.innerHTML = `
         <div style="
           padding: 10px 20px;
-          background: ${item.type === 'shape' ? '#e0e7ff' : '#fef3c7'};
-          border: 2px solid ${item.type === 'shape' ? '#4f46e5' : '#d97706'};
+          background: ${item.type !== 'equation' ? '#e0e7ff' : '#fef3c7'};
+          border: 2px solid ${item.type !== 'equation' ? '#4f46e5' : '#d97706'};
           border-radius: 8px;
           color: #1f2937;
           font-weight: bold;
@@ -71,14 +71,19 @@ export const CanvasToolkit = ({ draggableElements }: CanvasToolkitProps) => {
                 >
                   <div className="flex items-center gap-3">
                     <div className={cn(
-                      "p-2 rounded-lg transition-colors",
-                      item.type === "shape" ? "bg-indigo-50 text-indigo-600" : "bg-amber-50 text-amber-600"
+                      "p-2 rounded-lg transition-colors flex items-center justify-center",
+                      item.type === "rectangle" ? "bg-indigo-50 text-indigo-600" :
+                      item.type === "ellipse" ? "bg-emerald-50 text-emerald-600" :
+                      item.type === "diamond" ? "bg-purple-50 text-purple-600" :
+                      "bg-amber-50 text-amber-600"
                     )}>
-                      {item.type === "shape" ? <Box size={16} /> : <Variable size={16} />}
+                      {item.type === "rectangle" && <Square size={16} />}
+                      {item.type === "ellipse" && <Circle size={16} />}
+                      {item.type === "diamond" && <Diamond size={16} />}
+                      {(item.type === "equation" || item.type === "shape") && <FunctionSquare size={16} />}
                     </div>
-                    <div className="flex flex-col">
-                      <span className="text-sm font-bold text-zinc-700 tracking-tight leading-none mb-1">{item.label}</span>
-                      <span className="text-[10px] text-zinc-400 font-medium truncate max-w-[150px]">{item.content}</span>
+                    <div className="flex flex-col flex-1">
+                      <span className="text-sm font-bold text-zinc-700 tracking-tight leading-none">{item.label}</span>
                     </div>
                   </div>
                   <GripVertical size={14} className="text-zinc-300 group-hover:text-zinc-500" />

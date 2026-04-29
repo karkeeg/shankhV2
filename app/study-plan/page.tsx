@@ -1,14 +1,39 @@
 "use client";
 
 import React, { useState } from "react";
-import Link from "next/link";
-import { Sidebar } from "@/components/layout/Sidebar";
+
 import { SplitLayout } from "@/components/layout/SplitLayout";
-import { LessonPanel } from "@/components/lesson/LessonPanel";
+import { StudyIntroPage } from "@/components/study-plan/StudyIntroPage";
 import { ExercisePanel } from "@/components/exercise/ExercisePanel";
-import { ExerciseConfig } from "@/data/financeData";
-import { Button } from "@/components/ui/Button";
-import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
+import { CanvasExerciseView } from "@/components/exercise/CanvasExerciseView";
+import { MainLayout } from "@/components/layout/MainLayout";
+import { ExerciseConfig, financeData } from "@/data/financeData";
+import { ChevronDown, ChevronLeft } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Logo } from "@/components/layout/Logo";
+
+
+const modelingToolkit = [
+  {
+    category: "Financial Blocks",
+    items: [
+      { id: "rev", label: "Revenue", type: "rectangle" as const, content: "Revenue" },
+      { id: "cogs", label: "COGS", type: "ellipse" as const, content: "COGS" },
+      { id: "gp", label: "Gross Profit", type: "diamond" as const, content: "Gross Profit" },
+      { id: "opex", label: "Op. Expenses", type: "rectangle" as const, content: "Operating Expenses" },
+      { id: "ebit", label: "EBIT", type: "ellipse" as const, content: "EBIT" },
+      { id: "ni", label: "Net Income", type: "rectangle" as const, content: "Net Income" },
+    ]
+  },
+  {
+    category: "Calculations",
+    items: [
+      { id: "eq1", label: "GP Calc", type: "equation" as const, content: "Revenue - COGS" },
+      { id: "eq2", label: "EBIT Calc", type: "equation" as const, content: "GP - OpEx" },
+      { id: "eq3", label: "NI Calc", type: "equation" as const, content: "EBIT - Interest - Tax" },
+    ]
+  }
+];
 
 // Full 3-Statement Financial Model
 const fullFinancialModelExercise: ExerciseConfig = {
@@ -548,59 +573,416 @@ const studyPlanExercise: ExerciseConfig = {
   ],
 };
 
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+type TabId = "sheets" | "mcq" | "canvas";
 type PhaseId = "easy" | "medium" | "hard";
 
-type Phase = {
-  id: PhaseId;
-  label: string;
-  description: string;
-};
+type LessonDifficulty = "Easy" | "Medium" | "Hard";
 
-interface StudyPlan {
+interface SubItemLesson {
   id: string;
   title: string;
-  description: string;
-  exercise: ExerciseConfig;
+  difficulty: LessonDifficulty;
 }
 
-const studyPlans: StudyPlan[] = [
-  {
-    id: "complete-3-statement-model",
-    title: "Complete 3-Statement Model",
-    description: "A comprehensive 3-statement financial model linking the Income Statement, Balance Sheet, and Cash Flow Statement using historical data and assumptions.",
-    exercise: fullFinancialModelExercise,
-  },
-  {
-    id: "financial-statements-modeling-advanced",
-    title: "Financial Statements Modeling Advanced",
-    description:
-      "Build an integrated 3-statement model using historical drivers from 2016–2018 and project 2019–2023.",
-    exercise: studyPlanExercise,
-  },
-  {
-    id: "apple-financial-modeling",
-    title: "Financial Statements Modeling - Apple",
-    description:
-      "Real-world modeling using Apple's actual P&L, Balance Sheet, and Cash Flow to forecast 2019–2021.",
-    exercise: appleFinancialExercise,
-  },
-];
+interface SubItem {
+  id: string;
+  title: string;
+  lessons?: SubItemLesson[];
+}
 
-const phases: Phase[] = [
+interface FountainModule {
+  title: string;
+  description: string;
+  subItems: SubItem[];
+}
+
+interface FountainCard {
+  id: string;
+  title: string;
+  subtitle: string;
+  module: FountainModule;
+  difficulty: string;
+  duration: string;
+  exercise: ExerciseConfig;
+  tab: TabId;
+  prerequisites?: string[];
+  numPractices?: number;
+  /** Sheet tab label for canvas exercises (shown in bottom bar) */
+  canvasSheetTab?: string;
+}
+
+interface FountainGroup {
+  id: string;
+  label: string;
+  cards: FountainCard[];
+}
+
+const canvasExercise: ExerciseConfig = {
+  ...fullFinancialModelExercise,
+  canvasDraggableElements: modelingToolkit,
+};
+
+const incomeStmtFlowchartExercise = financeData.find(l => l.id === "cf-canvas-1")?.exercise || canvasExercise;
+
+// ─── Fountain Data ────────────────────────────────────────────────────────────
+
+const fountainGroups: FountainGroup[] = [
   {
-    id: "easy",
-    label: "Easy",
-    description: "Simple practice and guided assumptions.",
-  },
-  {
-    id: "medium",
-    label: "Medium",
-    description: "Medium difficulty modeling workflow.",
-  },
-  {
-    id: "hard",
-    label: "Hard",
-    description: "Advanced integrated modeling scenario.",
+    id: "modeling-fountains",
+    label: "Modeling Fountains",
+    cards: [
+      {
+        id: "fs-fundamentals-sheets",
+        title: "Financial Statement Fundamentals",
+        subtitle: "Master individual financial statements",
+        module: {
+          title: "Individual Financial Statement Modeling",
+          description:
+            "Learn the core principles of financial analysis and how to evaluate business performance.",
+          subItems: [
+            {
+              id: "pl",
+              title: "P&L Forecast",
+              lessons: [
+                { id: "pl-easy", title: "Simple P&L Forecast", difficulty: "Easy" },
+                { id: "pl-medium", title: "P&L Forecast with Historical Growth Rates", difficulty: "Medium" },
+                { id: "pl-hard", title: "P&L Forecast – Apple", difficulty: "Hard" },
+              ],
+            },
+            {
+              id: "bs",
+              title: "Balance Sheet Forecast",
+              lessons: [
+                { id: "bs-easy", title: "Simple Balance Sheet Forecast", difficulty: "Easy" },
+                { id: "bs-medium", title: "Balance Sheet Forecast with Historical Growth Rates", difficulty: "Medium" },
+                { id: "bs-hard", title: "Balance Sheet Forecast – Apple", difficulty: "Hard" },
+              ],
+            },
+            {
+              id: "cf",
+              title: "Cash Flow Forecast",
+              lessons: [
+                { id: "cf-easy", title: "Simple Cash Flow Forecast", difficulty: "Easy" },
+                { id: "cf-medium", title: "Cash Flow Forecast with Historical Growth Rates", difficulty: "Medium" },
+                { id: "cf-hard", title: "Cash Flow Forecast – Apple", difficulty: "Hard" },
+              ],
+            },
+          ],
+        },
+        difficulty: "Beginners / Intermediate",
+        duration: "8 Hours",
+        numPractices: 9,
+        prerequisites: ["Financial Statements", "Financial Analysis"],
+        exercise: fullFinancialModelExercise,
+        tab: "sheets",
+      },
+      {
+        id: "integrated-model-sheets",
+        title: "Integrated Financial Model",
+        subtitle: "Connect all three financial statements",
+        module: {
+          title: "Individual Financial Statement Modeling",
+          description:
+            "Build a strong foundation in financial modeling by practicing individual financial statements.",
+          subItems: [
+            {
+              id: "pl",
+              title: "P&L Forecast",
+              lessons: [
+                { id: "ipl-easy", title: "Simple P&L Forecast", difficulty: "Easy" },
+                { id: "ipl-medium", title: "P&L Forecast with Historical Growth Rates", difficulty: "Medium" },
+                { id: "ipl-hard", title: "P&L Forecast – Apple", difficulty: "Hard" },
+              ],
+            },
+            {
+              id: "bs",
+              title: "Balance Sheet Forecast",
+              lessons: [
+                { id: "ibs-easy", title: "Simple Balance Sheet Forecast", difficulty: "Easy" },
+                { id: "ibs-medium", title: "Balance Sheet Forecast with Historical Growth Rates", difficulty: "Medium" },
+                { id: "ibs-hard", title: "Balance Sheet Forecast – Apple", difficulty: "Hard" },
+              ],
+            },
+            {
+              id: "cf",
+              title: "Cash Flow Forecast",
+              lessons: [
+                { id: "icf-easy", title: "Simple Cash Flow Forecast", difficulty: "Easy" },
+                { id: "icf-medium", title: "Cash Flow Forecast with Historical Growth Rates", difficulty: "Medium" },
+                { id: "icf-hard", title: "Cash Flow Forecast – Apple", difficulty: "Hard" },
+              ],
+            },
+          ],
+        },
+        difficulty: "Beginners / Intermediate",
+        duration: "10 Hours",
+        numPractices: 9,
+        prerequisites: ["P&L Modeling", "Balance Sheet Basics"],
+        exercise: studyPlanExercise,
+        tab: "sheets",
+      },
+      {
+        id: "apple-sheets",
+        title: "Apple 3-Statement Model",
+        subtitle: "Real-world modeling with Apple financials",
+        module: {
+          title: "Apple Financial Model",
+          description:
+            "Forecast Apple's Income Statement, Balance Sheet, and Cash Flow using historical data.",
+          subItems: [
+            {
+              id: "is",
+              title: "Income Statement",
+              lessons: [
+                { id: "ais-easy", title: "Simple Income Statement", difficulty: "Easy" },
+                { id: "ais-medium", title: "Income Statement with Growth Drivers", difficulty: "Medium" },
+                { id: "ais-hard", title: "Full Income Statement – Apple", difficulty: "Hard" },
+              ],
+            },
+            {
+              id: "bs",
+              title: "Balance Sheet",
+              lessons: [
+                { id: "abs-easy", title: "Simple Balance Sheet", difficulty: "Easy" },
+                { id: "abs-medium", title: "Balance Sheet with Working Capital", difficulty: "Medium" },
+                { id: "abs-hard", title: "Full Balance Sheet – Apple", difficulty: "Hard" },
+              ],
+            },
+            {
+              id: "cfs",
+              title: "Cash Flow Statement",
+              lessons: [
+                { id: "acfs-easy", title: "Simple Cash Flow Statement", difficulty: "Easy" },
+                { id: "acfs-medium", title: "Cash Flow with Adjustments", difficulty: "Medium" },
+                { id: "acfs-hard", title: "Full Cash Flow – Apple", difficulty: "Hard" },
+              ],
+            },
+          ],
+        },
+        difficulty: "Intermediate / Advanced",
+        duration: "12 Hours",
+        numPractices: 9,
+        prerequisites: ["Financial Statement Fundamentals"],
+        exercise: appleFinancialExercise,
+        tab: "sheets",
+      },
+      {
+        id: "complete-3stmt-sheets",
+        title: "Complete 3-Statement Model",
+        subtitle: "Integrate all three financial statements",
+        module: {
+          title: "3-Statement Integration",
+          description:
+            "Link the Income Statement, Balance Sheet, and Cash Flow Statement into one cohesive model.",
+          subItems: [
+            {
+              id: "drivers",
+              title: "Assumptions & Drivers",
+              lessons: [
+                { id: "drv-easy", title: "Basic Assumptions Setup", difficulty: "Easy" },
+                { id: "drv-hard", title: "Advanced Driver Modelling", difficulty: "Hard" },
+              ],
+            },
+            {
+              id: "is",
+              title: "Income Statement",
+              lessons: [
+                { id: "cis-medium", title: "Linked Income Statement", difficulty: "Medium" },
+                { id: "cis-hard", title: "Full IS Integration", difficulty: "Hard" },
+              ],
+            },
+            {
+              id: "bs-cf",
+              title: "Balance Sheet & Cash Flow",
+              lessons: [
+                { id: "cbscf-easy", title: "Simple BS & CFS Link", difficulty: "Easy" },
+                { id: "cbscf-medium", title: "Working Capital Integration", difficulty: "Medium" },
+                { id: "cbscf-hard", title: "Full 3-Statement Reconciliation", difficulty: "Hard" },
+              ],
+            },
+          ],
+        },
+        difficulty: "Advanced",
+        duration: "15 Hours",
+        numPractices: 7,
+        prerequisites: ["Individual FS Modeling", "Apple 3-Statement"],
+        exercise: fullFinancialModelExercise,
+        tab: "sheets",
+      },
+      // MCQ cards
+      {
+        id: "fs-classification-mcq",
+        title: "Financial Statement Classification",
+        subtitle: "Test your classification knowledge",
+        module: {
+          title: "Account Classification Quiz",
+          description:
+            "Classify accounts as assets, liabilities, or equity across multiple financial statement scenarios.",
+          subItems: [
+            {
+              id: "assets",
+              title: "Asset Classification",
+              lessons: [
+                { id: "mac-easy", title: "Current vs Non-Current Assets", difficulty: "Easy" },
+                { id: "mac-medium", title: "Intangible Asset Classification", difficulty: "Medium" },
+                { id: "mac-hard", title: "Complex Asset Scenarios", difficulty: "Hard" },
+              ],
+            },
+            {
+              id: "liab",
+              title: "Liability Classification",
+              lessons: [
+                { id: "mlc-easy", title: "Current vs Long-term Liabilities", difficulty: "Easy" },
+                { id: "mlc-medium", title: "Contingent Liabilities", difficulty: "Medium" },
+              ],
+            },
+            {
+              id: "equity",
+              title: "Equity Classification",
+              lessons: [
+                { id: "mec-easy", title: "Common vs Preferred Equity", difficulty: "Easy" },
+                { id: "mec-hard", title: "Retained Earnings Analysis", difficulty: "Hard" },
+              ],
+            },
+          ],
+        },
+        difficulty: "Beginners",
+        duration: "4 Hours",
+        numPractices: 7,
+        prerequisites: ["Accounting Basics"],
+        exercise: fullFinancialModelExercise,
+        tab: "mcq",
+      },
+      {
+        id: "cash-flow-mcq",
+        title: "Cash Flow Activity Quiz",
+        subtitle: "Identify operating, investing & financing flows",
+        module: {
+          title: "Cash Flow Classification",
+          description:
+            "Practice identifying cash flow activities and their impact on the statement.",
+          subItems: [
+            {
+              id: "operating",
+              title: "Operating Activities",
+              lessons: [
+                { id: "oa-easy", title: "Basic Operating Cash Flows", difficulty: "Easy" },
+                { id: "oa-medium", title: "Working Capital Adjustments", difficulty: "Medium" },
+              ],
+            },
+            {
+              id: "investing",
+              title: "Investing Activities",
+              lessons: [
+                { id: "ia-easy", title: "Capital Expenditure Flows", difficulty: "Easy" },
+                { id: "ia-hard", title: "M&A and Investment Flows", difficulty: "Hard" },
+              ],
+            },
+            {
+              id: "financing",
+              title: "Financing Activities",
+              lessons: [
+                { id: "fa-easy", title: "Debt & Equity Issuances", difficulty: "Easy" },
+                { id: "fa-medium", title: "Dividends & Buybacks", difficulty: "Medium" },
+              ],
+            },
+          ],
+        },
+        difficulty: "Beginners / Intermediate",
+        duration: "5 Hours",
+        numPractices: 6,
+        prerequisites: ["Financial Statements"],
+        exercise: fullFinancialModelExercise,
+        tab: "mcq",
+      },
+      // Canvas cards
+      {
+        id: "income-stmt-canvas",
+        title: "Income Statement Flowchart",
+        subtitle: "Map the revenue-to-net-income flow visually",
+        module: {
+          title: "Income Statement Canvas",
+          description:
+            "Draw the flow from Revenue down through expenses to Net Income using shapes and connectors.",
+          subItems: [
+            {
+              id: "rev",
+              title: "Revenue Block",
+              lessons: [
+                { id: "rvb-easy", title: "Simple Revenue Mapping", difficulty: "Easy" },
+                { id: "rvb-medium", title: "Revenue with Segments", difficulty: "Medium" },
+              ],
+            },
+            {
+              id: "opex",
+              title: "Operating Expenses Block",
+              lessons: [
+                { id: "opx-easy", title: "Fixed vs Variable OPEX", difficulty: "Easy" },
+                { id: "opx-hard", title: "OPEX Waterfall Diagram", difficulty: "Hard" },
+              ],
+            },
+            {
+              id: "ni",
+              title: "Net Income Block",
+              lessons: [
+                { id: "nib-easy", title: "Net Income Flow", difficulty: "Easy" },
+              ],
+            },
+          ],
+        },
+        difficulty: "Beginners",
+        duration: "3 Hours",
+        numPractices: 5,
+        prerequisites: ["Income Statement Basics"],
+        exercise: incomeStmtFlowchartExercise,
+        tab: "canvas",
+        canvasSheetTab: "Income Statement",
+      },
+      {
+        id: "3stmt-canvas",
+        title: "3-Statement Linkage Map",
+        subtitle: "Visualize how statements connect",
+        module: {
+          title: "Statement Linkage Canvas",
+          description:
+            "Build a visual map showing how the Income Statement, Balance Sheet, and Cash Flow link together.",
+          subItems: [
+            {
+              id: "is-link",
+              title: "IS → BS Link",
+              lessons: [
+                { id: "isbs-easy", title: "Net Income to Retained Earnings", difficulty: "Easy" },
+                { id: "isbs-medium", title: "Revenue to Receivables", difficulty: "Medium" },
+              ],
+            },
+            {
+              id: "bs-link",
+              title: "BS → CFS Link",
+              lessons: [
+                { id: "bscfs-easy", title: "Working Capital to Cash Flow", difficulty: "Easy" },
+                { id: "bscfs-hard", title: "Full Balance Sheet Reconciliation", difficulty: "Hard" },
+              ],
+            },
+            {
+              id: "cfs-link",
+              title: "CFS → IS Link",
+              lessons: [
+                { id: "cfsis-medium", title: "D&A and Non-Cash Items", difficulty: "Medium" },
+              ],
+            },
+          ],
+        },
+        difficulty: "Intermediate",
+        duration: "6 Hours",
+        numPractices: 5,
+        prerequisites: ["Income Statement Flowchart"],
+        exercise: canvasExercise,
+        tab: "canvas",
+        canvasSheetTab: "3-Statement Model",
+      },
+    ],
   },
 ];
 
@@ -637,304 +1019,441 @@ const phaseDetails = {
   },
 };
 
-type Stage = "plans" | "levels" | "exercise";
+// ─── Sub-item Row ─────────────────────────────────────────────────────────────
+
+function SubItemRow({
+  item,
+  onSelectLevel
+}: {
+  item: SubItem;
+  onSelectLevel: (phase: PhaseId) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="space-y-2">
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between px-4 py-3 border border-zinc-200 rounded-2xl text-sm font-bold text-zinc-800 bg-white hover:bg-zinc-50 hover:border-zinc-300 transition-all shadow-sm"
+      >
+        <span>{item.title}</span>
+        <ChevronDown
+          size={16}
+          className={cn(
+            "text-zinc-500 transition-transform duration-300 shrink-0",
+            open ? "rotate-180" : "rotate-0",
+          )}
+        />
+      </button>
+
+      {open && item.lessons && (
+        <div className="flex flex-col gap-1.5 px-1 pb-1 animate-in fade-in slide-in-from-top-2 duration-200">
+          {item.lessons.map((lesson) => (
+            <button
+              key={lesson.id}
+              onClick={() => onSelectLevel(lesson.difficulty.toLowerCase() as PhaseId)}
+              className="group flex items-center justify-between px-4 py-2.5 rounded-xl bg-white border border-zinc-100 hover:border-zinc-300 hover:bg-zinc-50 transition-all"
+            >
+              <div className="flex items-center gap-3">
+                <div className={cn(
+                  "w-2 h-2 rounded-full",
+                  lesson.difficulty === "Easy" ? "bg-emerald-400" :
+                    lesson.difficulty === "Medium" ? "bg-amber-400" : "bg-rose-400"
+                )} />
+                <span className="text-xs font-bold text-zinc-700">{lesson.title}</span>
+              </div>
+              <span className={cn(
+                "text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md",
+                lesson.difficulty === "Easy" ? "bg-emerald-50 text-emerald-600" :
+                  lesson.difficulty === "Medium" ? "bg-amber-50 text-amber-600" : "bg-rose-50 text-rose-600"
+              )}>
+                {lesson.difficulty}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Fountain Card ────────────────────────────────────────────────────────────
+
+function FountainCardComponent({
+  card,
+  onStart,
+  onSelectLevel,
+}: {
+  card: FountainCard;
+  onStart: (card: FountainCard) => void;
+  onSelectLevel: (card: FountainCard, phase: PhaseId) => void;
+}) {
+  const [expanded, setExpanded] = useState(true);
+
+  return (
+    <div className="bg-white rounded-3xl border border-zinc-200 shadow-lg flex flex-col overflow-hidden transition-all duration-300 hover:shadow-xl hover:border-zinc-300">
+      {/* Card Header */}
+      <div className="px-6 pt-6 pb-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex flex-col gap-1">
+            <h3 className="text-lg font-extrabold text-zinc-900 tracking-tight leading-tight">
+              {card.title}
+            </h3>
+            <p className="text-sm text-zinc-500 font-medium">{card.subtitle}</p>
+          </div>
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="shrink-0 flex items-center gap-1.5 bg-zinc-900 text-white text-[11px] uppercase tracking-wider font-bold px-4 py-2 rounded-full hover:bg-zinc-800 transition-all shadow-md active:scale-95"
+          >
+            {expanded ? "Collapse" : "Expand"}
+            <ChevronDown
+              size={14}
+              className={cn(
+                "transition-transform duration-300",
+                expanded ? "rotate-180" : "rotate-0",
+              )}
+            />
+          </button>
+        </div>
+
+        {/* Badges/Info Row */}
+        <div className="flex items-center gap-3 mt-4">
+          {card.numPractices && (
+            <div className="bg-blue-50 text-blue-600 text-[10px] font-bold px-2.5 py-1 rounded-md uppercase tracking-wider border border-blue-100">
+              {card.numPractices} Practices
+            </div>
+          )}
+          <div className="flex items-center gap-1.5 text-zinc-400">
+            <div className="w-1.5 h-1.5 rounded-full bg-zinc-300" />
+            <span className="text-[11px] font-bold uppercase tracking-wide">{card.difficulty}</span>
+          </div>
+          <div className="flex items-center gap-1.5 text-zinc-400">
+            <div className="w-1.5 h-1.5 rounded-full bg-zinc-300" />
+            <span className="text-[11px] font-bold uppercase tracking-wide">{card.duration}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Expandable inner dashed box */}
+      <div
+        className={cn(
+          "transition-all duration-300 overflow-hidden",
+          expanded ? "max-h-[500px] opacity-100" : "max-h-0 opacity-0"
+        )}
+      >
+        <div className="mx-6 mb-4">
+          <div className="bg-zinc-50/50 border-2 border-dashed border-zinc-200 rounded-2xl p-5 flex flex-col gap-4">
+            <div>
+              <h4 className="text-sm font-bold text-zinc-900 mb-1.5">
+                {card.module.title}
+              </h4>
+              <p className="text-xs text-zinc-500 leading-relaxed font-medium">
+                {card.module.description}
+              </p>
+            </div>
+            <div className="flex flex-col gap-2.5">
+              {card.module.subItems.map((item) => (
+                <SubItemRow
+                  key={item.id}
+                  item={item}
+                  onSelectLevel={(phase) => onSelectLevel(card, phase)}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Footer / Start Button */}
+      <div className="px-6 pb-6 mt-auto">
+        <button
+          onClick={() => onStart(card)}
+          className="w-full bg-zinc-900 text-white font-bold text-sm py-4 rounded-2xl hover:bg-zinc-800 active:scale-[0.98] transition-all shadow-lg shadow-zinc-200 flex items-center justify-center gap-2"
+        >
+          <span>Start Module</span>
+          <ChevronDown className="-rotate-90" size={16} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Tabs ─────────────────────────────────────────────────────────────────────
+
+const tabs: { id: TabId; label: string }[] = [
+  { id: "sheets", label: "Quantus Sheets" },
+  { id: "mcq", label: "Multiple Choice Questions" },
+  { id: "canvas", label: "Canvas" },
+];
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
+type ViewStep = "list" | "intro" | "exercise";
 
 export default function StudyPlanPage() {
-  const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
-  const [selectedPhase, setSelectedPhase] = useState<PhaseId | null>(null);
-  const [stage, setStage] = useState<Stage>("plans");
+  const [activeTab, setActiveTab] = useState<TabId>("sheets");
+  const [step, setStep] = useState<ViewStep>("list");
+  const [selectedCard, setSelectedCard] = useState<FountainCard | null>(null);
+  const [selectedPhase, setSelectedPhase] = useState<PhaseId>("easy");
+  const [previousStep, setPreviousStep] = useState<ViewStep>("list");
 
-  const currentPlan = selectedPlanId
-    ? studyPlans.find((p) => p.id === selectedPlanId)
-    : null;
-
-  const handleSelectPlan = (planId: string) => {
-    setSelectedPlanId(planId);
-    setStage("levels");
+  // ── handlers ──
+  const handleCardStart = (card: FountainCard) => {
+    setSelectedCard(card);
+    setPreviousStep("list");
+    setStep("intro");
   };
 
-  const handleSelectPhase = (phaseId: PhaseId) => {
-    setSelectedPhase(phaseId);
-    setStage("exercise");
+  const handleGoToExercise = (phase: PhaseId) => {
+    setSelectedPhase(phase);
+    setPreviousStep(step);
+    setStep("exercise");
   };
 
-  if (stage === "exercise" && selectedPhase) {
+  const handleDirectSelectLevel = (card: FountainCard, phase: PhaseId) => {
+    setSelectedCard(card);
+    setSelectedPhase(phase);
+    setPreviousStep("list");
+    setStep("exercise");
+  };
+
+  const handleBack = () => {
+    if (step === "exercise") {
+      setStep(previousStep);
+      if (previousStep === "list") {
+        setSelectedCard(null);
+      }
+    } else if (step === "intro") {
+      setStep("list");
+      setSelectedCard(null);
+    } else {
+      setStep("list");
+      setSelectedCard(null);
+    }
+  };
+
+  // ── Step 1: Intro ──
+  if (step === "intro" && selectedCard) {
+    return (
+      <MainLayout>
+        <StudyIntroPage
+          card={{
+            title: selectedCard.title,
+            subtitle: selectedCard.subtitle,
+            difficulty: selectedCard.difficulty,
+            duration: selectedCard.duration,
+            module: selectedCard.module,
+            prerequisites: selectedCard.prerequisites,
+            numPractices: selectedCard.numPractices,
+          }}
+          onBack={handleBack}
+          onNext={() => handleGoToExercise("easy")}
+          onSelectLevel={(diff) => handleGoToExercise(diff.toLowerCase() as PhaseId)}
+        />
+      </MainLayout>
+    );
+  }
+
+  // ── Step 3: Exercise ──
+  if (step === "exercise" && selectedCard) {
+    // Canvas tab → use the new canvas-specific layout
+    if (selectedCard.tab === "canvas") {
+      const phaseDifficulty: "Easy" | "Medium" | "Hard" =
+        selectedPhase === "easy" ? "Easy" : selectedPhase === "medium" ? "Medium" : "Hard";
+
+      return (
+        <MainLayout>
+          <CanvasExerciseView
+            lessonId={selectedCard.id}
+            exercise={selectedCard.exercise}
+            cardTitle={selectedCard.title}
+            difficulty={phaseDifficulty}
+            sheetTabName={selectedCard.canvasSheetTab || "Income Statement"}
+            instructionContent={
+              <>
+                <p>
+                  Using the historical Profit & Loss statements from{" "}
+                  <strong>2014 to 2016</strong> and the{" "}
+                  <strong>growth rate assumptions</strong> provided in the
+                  Assumptions section, complete all{" "}
+                  <strong>yellow-highlighted cells</strong> in the template.
+                </p>
+                <p>
+                  1. Forecast <strong>Revenue, Cost of Goods Sold (COGS), Operating Expenses, and Taxes</strong>{" "}
+                  for the years <strong>2017 to 2021</strong>.
+                </p>
+                <p>
+                  2. Calculate the resulting <strong>Gross Profit, EBITDA, EBIT, EBT, and Net Income</strong>{" "}
+                  for <strong>2017–2021</strong>.
+                </p>
+              </>
+            }
+            contextContent={
+              <div className="space-y-3">
+                <p>This exercise uses a simplified P&L template. The historical data (2014–2016) is provided for reference.</p>
+                <p>Growth assumptions are pre-filled in the Assumptions section. Use these to project future values.</p>
+              </div>
+            }
+            onClose={handleBack}
+          />
+        </MainLayout>
+      );
+    }
+
+    // Default: Sheets/MCQ → use the existing SplitLayout
     return (
       <SplitLayout
-        header={
-          <header className="h-10 flex items-center justify-between px-6 bg-zinc-900 border-b border-zinc-800 shrink-0">
-            <div className="flex items-center gap-4">
-              <Link
-                href="/"
-                className="flex items-center gap-1 text-zinc-400 hover:text-white transition-colors text-sm font-medium pr-4 border-r border-zinc-800"
-              >
-                <ChevronLeft size={16} />
-                Back to Dashboard
-              </Link>
-              <div className="flex items-center gap-2">
-                <span className="text-zinc-500 text-xs font-bold uppercase tracking-widest">
-                  {currentPlan?.title}
-                </span>
-                <span className="text-zinc-600 text-xs font-bold">/</span>
-                <span className="text-zinc-100 text-sm font-bold tracking-tight">
-                  {phaseDetails[selectedPhase].title}
-                </span>
+        leftContent={
+          <div className="h-full flex flex-col">
+            {/* Top Logo & Branding */}
+            <div className="px-6 flex flex-col">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center overflow-hidden shrink-0">
+                  <img src="/logo.svg" alt="Shankh Logo" className="w-full h-full object-contain" />
+                </div>
+                <span className="text-xl font-bold text-white tracking-tight">Shankh</span>
+              </div>
+
+              <div className="h-px bg-white/10 w-full" />
+            </div>
+
+            {/* Sidebar Tabs */}
+            <div className="px-4 pt-4">
+              <div className="bg-white/5 rounded-full p-1 flex gap-1">
+                <button className="flex-1 py-1.5 rounded-full bg-white text-zinc-900 text-xs font-bold shadow-sm">
+                  Instructions
+                </button>
+                <button className="flex-1 py-1.5 rounded-full text-white/60 hover:text-white text-xs font-bold transition-colors">
+                  Context
+                </button>
               </div>
             </div>
-          </header>
+
+            {/* Instruction Card */}
+            <div className="px-4 py-4 flex-1 overflow-y-auto">
+              <div className="bg-white rounded-2xl p-6 shadow-xl relative overflow-hidden group">
+                {/* Difficulty Badge */}
+                <span className="inline-block px-2.5 py-1 rounded-md bg-emerald-500 text-[10px] font-black text-white uppercase tracking-wider mb-4">
+                  {selectedCard.difficulty.split(' ')[0]}
+                </span>
+
+                <h2 className="text-xl font-bold text-zinc-900 mb-3 leading-tight">
+                  {phaseDetails[selectedPhase].title}
+                </h2>
+
+                <p className="text-sm text-zinc-500 leading-relaxed mb-6">
+                  {phaseDetails[selectedPhase].description}
+                </p>
+
+                <div className="space-y-4">
+                  <h3 className="text-[11px] font-black text-zinc-400 uppercase tracking-widest">Exercise Task</h3>
+                  <ul className="space-y-3">
+                    {phaseDetails[selectedPhase].points.map((pt, i) => (
+                      <li key={i} className="flex items-start gap-3 text-sm text-zinc-700 font-medium">
+                        <span className="w-1.5 h-1.5 rounded-full bg-zinc-900 mt-1.5 shrink-0" />
+                        {pt}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                {/* Subtle Hint Box */}
+                <div className="mt-8 p-4 rounded-xl bg-amber-50 border border-amber-100">
+                  <p className="text-[11px] text-amber-800 font-bold leading-relaxed">
+                    Freely draw on the canvas using the pen tool, squares and text to map out how Revenue drops down through Expenses to become Net Income.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Profile Card at Bottom */}
+            <div className="p-4 mt-auto">
+              <div className="bg-[#05121A] rounded-2xl p-4 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-zinc-700 overflow-hidden border-2 border-white/10 flex items-center justify-center">
+                  <span className="text-white text-xs font-bold">BK</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-white truncate">Bibek karki</p>
+                  <p className="text-[10px] text-zinc-500 font-medium uppercase tracking-wider">Free Plan</p>
+                </div>
+                <div className="flex items-center gap-2 text-zinc-500">
+                  <div className="flex items-center gap-0.5">
+                    <span className="text-[10px]">👍</span>
+                    <span className="text-[10px] font-bold">4</span>
+                  </div>
+                  <div className="flex items-center gap-0.5">
+                    <span className="text-[10px]">👎</span>
+                    <span className="text-[10px] font-bold">2</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         }
-        leftContent={
-          <LessonPanel
-            title={phaseDetails[selectedPhase].title}
-            explanation={phaseDetails[selectedPhase].description}
-            definitions={[
-              {
-                term: "Income Statement Drivers",
-                definition:
-                  "Complete the highlighted drivers and forecast revenue, margins, and costs.",
-              },
-              {
-                term: "Balance Sheet Drivers",
-                definition:
-                  "Fill the working capital and debt assumptions to connect the model.",
-              },
-              {
-                term: "Cash Flow Drivers",
-                definition:
-                  "Complete the cash flow forecast and check the ending cash balance.",
-              },
-            ]}
-            instructions="Complete the highlighted Excel model on the right by entering the required projection values and verifying the integrated statement logic."
-          />
-        }
-        rightContent={<ExercisePanel exercise={currentPlan!.exercise} />}
-        leftClassName="bg-white"
-        rightClassName="bg-[#F8F8FB]"
+        rightContent={<ExercisePanel lessonId={selectedCard.id} exercise={selectedCard.exercise} />}
       />
     );
   }
 
+  // Study Plan list view
   return (
-    <div className="flex h-screen bg-white overflow-hidden">
-      <Sidebar />
-      <main className="flex-1 flex flex-col overflow-y-auto">
-        <header
-          className={
-            stage === "exercise"
-              ? "h-10 flex items-center justify-between px-6 bg-zinc-900 border-b border-zinc-800 shrink-0"
-              : "bg-white border-b border-zinc-200 px-6 py-4 relative shrink-0"
-          }
-        >
-          <div className="max-w-6xl mx-auto flex items-center justify-between w-full">
-            <div className="flex items-center gap-4">
-              <Link
-                href="/"
-                className={
-                  stage === "exercise"
-                    ? "inline-flex items-center gap-2 text-sm font-semibold text-zinc-300 hover:text-white transition-colors"
-                    : "inline-flex items-center gap-2 text-sm font-semibold text-zinc-600 hover:text-zinc-900 transition-colors"
-                }
-              >
-                <ChevronLeft size={16} />
-                Back to Dashboard
-              </Link>
-              {stage === "exercise" && selectedPhase ? (
-                <div className="hidden md:flex items-center gap-2 text-sm text-zinc-300">
-                  <span className="uppercase tracking-[0.3em] text-[10px] text-zinc-500">
-                    {currentPlan?.title}
-                  </span>
-                  <span className="text-zinc-600">/</span>
-                  <span className="font-semibold text-white">
-                    {phaseDetails[selectedPhase].title}
-                  </span>
-                </div>
-              ) : null}
-            </div>
-            {stage !== "exercise" ? (
-              <div className="inline-flex items-center gap-2 rounded-full bg-zinc-100 px-3 py-1 text-xs uppercase tracking-[0.3em] text-zinc-500">
-                <CalendarDays size={14} />
-                Study Plan
-              </div>
-            ) : null}
-          </div>
-        </header>
+    <MainLayout>
+      {/* Page title */}
+      <div className="px-8 pt-8 pb-4">
+        <h1 className="text-3xl font-bold text-zinc-900 tracking-tight">
+          Study Plan
+        </h1>
+        <p className="text-sm text-zinc-500 mt-1">
+          Choose a path to start building your modeling skills.
+        </p>
+      </div>
 
-        <div className="max-w-6xl w-full mx-auto px-6 py-8 pb-20 space-y-6">
-          {stage === "plans" && (
-            <div className="space-y-6">
-              <div className="rounded-3xl border border-zinc-200 bg-white p-8 shadow-sm">
-                <div className="space-y-4">
-                  <div className="inline-flex items-center gap-2 rounded-full bg-zinc-100 px-3 py-1 text-xs uppercase tracking-[0.2em] text-zinc-700">
-                    <CalendarDays size={16} />
-                    Study Plans
-                  </div>
-                  <div>
-                    <h1 className="text-3xl font-bold text-zinc-900">
-                      Choose a Study Plan
-                    </h1>
-                    <p className="mt-3 max-w-2xl text-sm leading-7 text-zinc-600">
-                      Select from our curated financial modeling exercises to
-                      build your skills.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid gap-6 md:grid-cols-2">
-                {studyPlans.map((plan) => (
-                  <button
-                    key={plan.id}
-                    onClick={() => handleSelectPlan(plan.id)}
-                    className="rounded-3xl border border-zinc-200 bg-white p-8 shadow-sm transition-all hover:shadow-md hover:border-zinc-300 text-left"
-                  >
-                    <div className="space-y-4">
-                      <h2 className="text-xl font-bold text-zinc-900">
-                        {plan.title}
-                      </h2>
-                      <p className="text-sm leading-6 text-zinc-600">
-                        {plan.description}
-                      </p>
-                      <div className="flex items-center justify-end pt-4">
-                        <ChevronRight
-                          size={20}
-                          className="text-zinc-400 group-hover:text-zinc-600"
-                        />
-                      </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {stage === "levels" && currentPlan && selectedPhase === null && (
-            <div className="space-y-6">
-              <div className="rounded-3xl border border-zinc-200 bg-white p-8 shadow-sm">
-                <div className="space-y-4">
-                  <h1 className="text-3xl font-bold text-zinc-900">
-                    Select your level
-                  </h1>
-                  <p className="text-sm leading-7 text-zinc-600">
-                    Choose Easy, Medium, or Hard to continue into the study
-                    plan.
-                  </p>
-                </div>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-3">
-                {phases.map((phase) => (
-                  <button
-                    key={phase.id}
-                    onClick={() => handleSelectPhase(phase.id)}
-                    className="group rounded-3xl border border-zinc-200 bg-white p-6 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-                  >
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-zinc-100 text-zinc-700 font-bold">
-                        {phase.id === "easy"
-                          ? "1"
-                          : phase.id === "medium"
-                            ? "2"
-                            : "3"}
-                      </div>
-                      <span
-                        className={
-                          "rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] " +
-                          (phase.id === "easy"
-                            ? "bg-emerald-100 text-emerald-700"
-                            : phase.id === "medium"
-                              ? "bg-amber-100 text-amber-700"
-                              : "bg-rose-100 text-rose-700")
-                        }
-                      >
-                        {phase.label}
-                      </span>
-                    </div>
-                    <h2 className="mt-5 text-xl font-semibold text-zinc-900">
-                      {phase.label} practice
-                    </h2>
-                    <p className="mt-3 text-sm leading-7 text-zinc-600">
-                      {phase.description}
-                    </p>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {stage === "exercise" &&
-            selectedPhase &&
-            currentPlan &&
-            selectedPhase !== null && (
-              <div className="space-y-6">
-                <div className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">
-                      {currentPlan.title}
-                    </p>
-                    <h1 className="mt-2 text-3xl font-bold text-zinc-900">
-                      {phaseDetails[selectedPhase].title}
-                    </h1>
-                    <p className="mt-2 max-w-2xl text-sm leading-7 text-zinc-600">
-                      {phaseDetails[selectedPhase].description}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap gap-3">
-                    <Button
-                      variant="outline"
-                      onClick={() => setStage("levels")}
-                    >
-                      Back to Levels
-                    </Button>
-                    <Button variant="primary" onClick={() => setStage("plans")}>
-                      Exit
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="grid gap-6 lg:grid-cols-[360px_1fr]">
-                  <div className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
-                    <div className="flex items-center justify-between gap-4">
-                      <div>
-                        <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">
-                          Phase Guidance
-                        </p>
-                        <h2 className="mt-2 text-xl font-semibold text-zinc-900">
-                          {phaseDetails[selectedPhase].title}
-                        </h2>
-                      </div>
-                      <span
-                        className={
-                          "rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] " +
-                          (selectedPhase === "easy"
-                            ? "bg-emerald-100 text-emerald-700"
-                            : selectedPhase === "medium"
-                              ? "bg-amber-100 text-amber-700"
-                              : "bg-rose-100 text-rose-700")
-                        }
-                      >
-                        {selectedPhase}
-                      </span>
-                    </div>
-                    <ul className="mt-5 space-y-3 text-sm leading-7 text-zinc-600">
-                      {phaseDetails[selectedPhase].points.map(
-                        (point: string) => (
-                          <li key={point} className="flex gap-3">
-                            <span className="mt-1 h-2.5 w-2.5 rounded-full bg-zinc-900" />
-                            <span>{point}</span>
-                          </li>
-                        ),
-                      )}
-                    </ul>
-                  </div>
-
-                  <div className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
-                    <ExercisePanel exercise={currentPlan.exercise} />
-                  </div>
-                </div>
-              </div>
-            )}
+      {/* Tab Bar */}
+      <div className="px-8 pb-6">
+        <div className="inline-flex items-center bg-white rounded-full p-1.5 gap-0.5 shadow-sm border border-zinc-200">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={cn(
+                "px-5 py-2 rounded-full text-sm font-semibold transition-all duration-200",
+                activeTab === tab.id
+                  ? "bg-zinc-900 text-white shadow-sm"
+                  : "text-zinc-500 hover:text-zinc-800",
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
-      </main>
-    </div>
+      </div>
+
+      {/* Fountain Groups */}
+      <div className="px-8 pb-12 space-y-8">
+        {fountainGroups.map((group) => {
+          const visibleCards = group.cards.filter(
+            (c) => c.tab === activeTab,
+          );
+          if (visibleCards.length === 0) return null;
+          return (
+            <div key={group.id}>
+              <h2 className="text-xl font-bold text-zinc-900 mb-4">
+                {group.label}
+              </h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {visibleCards.map((card) => (
+                  <FountainCardComponent
+                    key={card.id}
+                    card={card}
+                    onStart={handleCardStart}
+                    onSelectLevel={handleDirectSelectLevel}
+                  />
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </MainLayout>
   );
 }
+

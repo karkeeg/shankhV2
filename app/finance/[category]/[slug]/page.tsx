@@ -13,6 +13,8 @@ interface PageProps {
   }>;
 }
 
+import { MainLayout } from '@/components/layout/MainLayout';
+
 export default async function LessonPage({ params }: PageProps) {
   const { category, slug } = await params;
   
@@ -57,7 +59,8 @@ export default async function LessonPage({ params }: PageProps) {
           toolkitElements={lesson.exercise.type === "canvas" ? lesson.exercise.canvasDraggableElements : undefined}
         />
       }
-      rightContent={<ExercisePanel exercise={lesson.exercise} />}
+      rightContent={<ExercisePanel lessonId={lesson.id} exercise={lesson.exercise} />}
     />
   );
 }
+

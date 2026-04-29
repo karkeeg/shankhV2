@@ -1,5 +1,5 @@
 import React from 'react';
-import { Megaphone, CheckCircle2 } from 'lucide-react';
+import { Target, CheckCircle2 } from 'lucide-react';
 import { DragCategory } from '@/data/financeData';
 import { CanvasToolkit } from '@/components/exercise/CanvasToolkit';
 
@@ -19,55 +19,66 @@ export const LessonPanel = ({
   toolkitElements,
 }: LessonPanelProps) => {
   return (
-    <div className="flex flex-col h-full animate-in fade-in slide-in-from-left-4 duration-500">
-      <div className="flex flex-col gap-6 overflow-y-auto pr-4 custom-scrollbar flex-1">
-        {/* Title with Megaphone Icon */}
-        <div className="flex items-start gap-4 group">
-          <div className="w-10 h-10 bg-zinc-900 flex items-center justify-center rounded-full shadow-xl transform group-hover:rotate-6 transition-transform shrink-0">
-             <Megaphone size={20} className="text-zinc-100 fill-zinc-100" />
+    <div className="flex flex-col h-full animate-in fade-in slide-in-from-left-4 duration-500 bg-white">
+      <div className="flex flex-col gap-8 overflow-y-auto pr-2 custom-scrollbar flex-1 pb-10">
+        {/* Title Section */}
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+             <div className="w-8 h-8 bg-zinc-100 text-zinc-500 flex items-center justify-center rounded-lg">
+                <Target size={18} />
+             </div>
+             <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Curriculum Module</span>
           </div>
-          <h1 className="text-2xl font-bold text-zinc-900 leading-tight">
+          <h1 className="text-2xl font-bold text-zinc-900 leading-tight tracking-tight">
             {title}
           </h1>
         </div>
 
-        {/* Explanation with Yellow Accents */}
-        <div className="space-y-2">
-          <p className="text-zinc-700 leading-relaxed text-[17px] font-medium border-l-1 border-[#7C5DFA] pl-4 py-1">
+        {/* Primary Explanation */}
+        <div className="space-y-4">
+          <p className="text-zinc-600 leading-relaxed text-[16px] font-medium border-l-2 border-zinc-200 pl-4 py-1">
             {explanation}
           </p>
         </div>
 
-        {/* Bullet Points / Definitions */}
-        <div className="space-y-4">
-           {definitions.map((def, idx) => (
-             <div key={idx} className="flex gap-3">
-                <div className="mt-2.5 w-1.5 h-1.5 rounded-full bg-zinc-400 shrink-0" />
-                <div className="text-[16px] leading-relaxed text-zinc-600">
-                   <span className="font-black text-zinc-900 border-b-2 border-yellow-300">
-                      {def.term}
-                   </span>: {def.definition}
+        {/* Definitions Section */}
+        <div className="space-y-6">
+           <h3 className="font-bold text-zinc-400 text-[10px] uppercase tracking-wider">Key Terminology</h3>
+           <div className="space-y-5">
+              {definitions.map((def, idx) => (
+                <div key={idx} className="group">
+                   <div className="flex flex-col gap-1.5 transition-all duration-300 group-hover:translate-x-1">
+                      <span className="font-bold text-zinc-900 text-sm tracking-tight border-b border-zinc-100 self-start">
+                         {def.term}
+                      </span>
+                      <span className="text-sm leading-relaxed text-zinc-500">
+                         {def.definition}
+                      </span>
+                   </div>
                 </div>
-             </div>
-           ))}
+              ))}
+           </div>
         </div>
 
-        {/* Instructions / Tasks Section */}
-        <div className="mt-2 pt-2 border-t border-zinc-200">
-           <div className="flex items-center gap-2 mb-4">
-              <CheckCircle2 size={18} className="text-[#7C5DFA]" />
-              <h3 className="font-black text-zinc-900 text-sm uppercase tracking-widest">Exercise Task</h3>
+        {/* Task Objective */}
+        <div className="space-y-4 pt-4">
+           <div className="flex items-center gap-2">
+              <CheckCircle2 size={16} className="text-zinc-400" />
+              <h3 className="font-bold text-zinc-900 text-[10px] uppercase tracking-wider">Instructions</h3>
            </div>
-           <div className="bg-yellow-50 border border-yellow-200 p-3 rounded-2xl text-[16px] text-yellow-900  font-medium italic">
+           <div className="bg-zinc-50 border border-zinc-200 p-6 rounded-xl text-[14px] text-zinc-700 font-medium leading-relaxed">
               {instructions}
            </div>
         </div>
 
-        {/* Integrated Toolkit */}
+        {/* Modeling Toolkit (Canvas specific) */}
         {toolkitElements && (
-          <CanvasToolkit draggableElements={toolkitElements} />
+          <div className="pt-8">
+            <CanvasToolkit draggableElements={toolkitElements} />
+          </div>
         )}
       </div>
     </div>
   );
 };
+

@@ -47,6 +47,15 @@
 :root {
   --background: #ffffff;
   --foreground: #09090b;
+
+  /* Sidebar dark navy theme */
+  --sidebar-bg: #0F1F2C;
+  --sidebar-card: #05121A;
+  --sidebar-text: #FDFDFD;
+  --sidebar-muted: #99A7AA;
+  --sidebar-label: #CCD0CF;
+  --sidebar-divider: rgba(204, 208, 207, 0.24);
+  --sidebar-glow: rgba(204, 100, 6, 0.3);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -61,6 +70,15 @@ body {
   color: var(--foreground);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+}
+
+/* Hide scrollbars globally */
+*::-webkit-scrollbar {
+  display: none;
+}
+* {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
 /* Custom Utilities for Animations */

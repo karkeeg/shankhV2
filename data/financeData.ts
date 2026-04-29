@@ -3,7 +3,7 @@ export type ExerciseType = "excel" | "select" | "dropdown" | "canvas";
 export interface DragItem {
   id: string;
   label: string;
-  type: "shape" | "equation";
+  type: "shape" | "rectangle" | "ellipse" | "diamond" | "equation";
   content: string;
 }
 
@@ -62,7 +62,7 @@ export interface ExerciseConfig {
     items: {
       id: string;
       label: string;
-      type: "shape" | "equation";
+      type: "shape" | "rectangle" | "ellipse" | "diamond" | "equation";
       content: string; // The text to display in the shape
     }[];
   }[];
@@ -566,14 +566,14 @@ export const financeData: Lesson[] = [
         {
           category: "Shapes",
           items: [
-            { id: "rev", label: "Revenue", type: "shape", content: "Revenue" },
-            { id: "cogs", label: "COGS", type: "shape", content: "COGS" },
-            { id: "gp", label: "Gross Profit", type: "shape", content: "Gross Profit" },
-            { id: "opex", label: "Op. Expenses", type: "shape", content: "Operating Expenses" },
-            { id: "ebit", label: "EBIT", type: "shape", content: "EBIT" },
-            { id: "int", label: "Interest", type: "shape", content: "Interest" },
-            { id: "tax", label: "Taxes", type: "shape", content: "Taxes" },
-            { id: "ni", label: "Net Income", type: "shape", content: "Net Income" },
+            { id: "rev", label: "Revenue", type: "rectangle", content: "Revenue" },
+            { id: "cogs", label: "COGS", type: "ellipse", content: "COGS" },
+            { id: "gp", label: "Gross Profit", type: "diamond", content: "Gross Profit" },
+            { id: "opex", label: "Op. Expenses", type: "rectangle", content: "Operating Expenses" },
+            { id: "ebit", label: "EBIT", type: "ellipse", content: "EBIT" },
+            { id: "int", label: "Interest", type: "diamond", content: "Interest" },
+            { id: "tax", label: "Taxes", type: "diamond", content: "Taxes" },
+            { id: "ni", label: "Net Income", type: "rectangle", content: "Net Income" },
           ]
         },
         {

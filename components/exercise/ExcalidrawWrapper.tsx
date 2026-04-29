@@ -45,7 +45,6 @@ const ExcalidrawWrapper = ({
             excalidrawRef.current = api;
           }
         }}
-        // Provide defaults to prevent "undefined length" errors internally
         initialData={initialData || { elements: [], appState: { theme: 'light' } }}
         onChange={onChange}
         theme="light"

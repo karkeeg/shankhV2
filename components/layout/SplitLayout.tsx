@@ -23,7 +23,7 @@ export const SplitLayout = ({
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden bg-zinc-50 relative">
+    <div className="flex flex-col h-screen overflow-hidden bg-[var(--sidebar-bg)] relative">
       {/* Header with Animation */}
       <AnimatePresence>
         {!isCollapsed && header && (
@@ -32,16 +32,16 @@ export const SplitLayout = ({
             animate={{ height: 40, opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.3, ease: 'easeInOut' }}
-            className="overflow-hidden bg-zinc-900 shrink-0 relative"
+            className="overflow-hidden bg-[var(--sidebar-bg)] border-b border-white/10 shrink-0 relative"
           >
             {header}
             {/* Collapse Button in Header */}
             <button
               onClick={() => setIsCollapsed(true)}
-              className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-800/50 hover:bg-zinc-800 text-zinc-400 hover:text-white transition-all z-20 border border-zinc-700/50"
+              className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white transition-all z-20 border border-white/10"
               title="Focus Mode (Collapse)"
             >
-              <span className="text-[10px] font-black uppercase tracking-widest hidden sm:inline">Focus Mode</span>
+              <span className="text-[10px] font-bold uppercase tracking-widest hidden sm:inline">Focus Mode</span>
               <Maximize2 size={14} />
             </button>
           </motion.div>
@@ -56,12 +56,10 @@ export const SplitLayout = ({
               initial={{ scale: 0, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0, opacity: 0 }}
-              // whileHover={{ scale: 1.1 }}
               onClick={() => setIsCollapsed(false)}
-              className="absolute right-6 top-6 z-50 p-3 bg-zinc-900 text-white rounded-2xl shadow-2xl border border-zinc-700 hover:bg-zinc-800 transition-colors flex items-center gap-2 group"
+              className="absolute right-6 top-6 z-50 p-3 bg-white text-zinc-900 rounded-xl shadow-lg border border-zinc-200 hover:bg-zinc-50 transition-colors flex items-center gap-2 group"
             >
               <Minimize2 size={18} />
-              {/* <span className="text-xs font-bold tracking-tight pr-2 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap hidden md:inline">Exit Focus Mode</span> */}
             </motion.button>
           )}
         </AnimatePresence>
@@ -75,7 +73,7 @@ export const SplitLayout = ({
               exit={{ width: 0, opacity: 0 }}
               transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
               className={cn(
-                "h-full bg-white text-zinc-900 overflow-y-auto border-r border-zinc-200 shadow-sm z-10 hidden md:block",
+                "h-full bg-[var(--sidebar-bg)] text-[var(--sidebar-text)] overflow-y-auto z-10 hidden md:block",
                 leftClassName
               )}
             >
@@ -88,7 +86,7 @@ export const SplitLayout = ({
 
         {/* Mobile Left Panel (Simple toggle, no animation for simplicity in mobile view for now) */}
         {!isCollapsed && (
-          <aside className="h-[40vh] bg-white border-b border-zinc-200 md:hidden overflow-y-auto p-4">
+          <aside className="h-[40vh] bg-[var(--sidebar-bg)] text-[var(--sidebar-text)] border-b border-white/10 md:hidden overflow-y-auto p-4">
              {leftContent}
           </aside>
         )}
@@ -96,12 +94,17 @@ export const SplitLayout = ({
         {/* Right Panel: Pure White Exercise Area */}
         <main
           className={cn(
-            "flex-1 h-full bg-[#F8F8FB] overflow-y-auto transition-all duration-300",
+            "flex-1 h-full overflow-hidden transition-all duration-300 p-3",
             rightClassName
           )}
         >
-          <div className="max-w-6xl mx-auto h-full flex flex-col p-2 md:p-4">
-            {rightContent}
+          <div 
+            className="h-full w-full bg-white rounded-2xl shadow-2xl overflow-y-auto flex flex-col"
+            style={{ boxShadow: '0px 4px 4px 0px #0000003D inset' }}
+          >
+            <div className="max-w-6xl mx-auto w-full h-full flex flex-col">
+              {rightContent}
+            </div>
           </div>
         </main>
       </div>
