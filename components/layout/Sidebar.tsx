@@ -3,147 +3,145 @@
 import React from "react";
 import Link from "next/link";
 import {
-  Calendar,
-  TrendingUp,
   LayoutGrid,
-  ChevronRight,
-  User,
+  BookOpen,
+  Target,
+  BarChart2,
+  Tag,
+  Bookmark,
+  TrendingUp,
+  Search,
+  PieChart,
+  LogOut,
+  ChevronDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { usePathname } from "next/navigation";
-import { Logo } from "./Logo";
+import { usePathname, useRouter } from "next/navigation";
+import Image from "next/image";
+import { useAuthStore } from "@/lib/auth-store";
 
-const StudyPlanIcon = ({ className, style, size }: { className?: string; style?: React.CSSProperties; size?: number }) => (
-  <svg width={size || 18} height={size || 18} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className={className} style={style}>
-    <path fillRule="evenodd" clipRule="evenodd" d="M9.1123 3.04133C9.84332 2.91864 10.532 3.08435 11.2666 3.39972C11.9858 3.70848 12.8348 4.19932 13.8906 4.8089L15.7637 5.89094H12.7637C11.8728 5.37811 11.2192 5.01139 10.6748 4.77765C10.0722 4.51897 9.69322 4.46424 9.36133 4.51984C9.21993 4.54357 9.08061 4.58102 8.94629 4.63117C8.631 4.74892 8.3301 4.98569 7.9375 5.51105C7.85078 5.62713 7.76256 5.75348 7.6709 5.89094H7C6.59038 5.89095 6.19267 5.94187 5.81348 6.03937C6.14515 5.48072 6.44385 5.00377 6.73535 4.61359C7.21386 3.97318 7.72749 3.48516 8.42188 3.2259C8.64557 3.14239 8.87684 3.08088 9.1123 3.04133Z" fill="currentColor" />
-    <path d="M17 5.89087C19.5395 5.89087 21.6142 7.88371 21.7441 10.3909H21.75V16.8909H21.7441C21.6142 19.398 19.5395 21.3909 17 21.3909H7C4.37665 21.3909 2.25 19.2642 2.25 16.6409V10.6409C2.25 8.01752 4.37665 5.89087 7 5.89087H17ZM7 7.39087C5.20507 7.39087 3.75 8.84594 3.75 10.6409V16.6409C3.75 18.4358 5.20507 19.8909 7 19.8909H17C18.7108 19.8909 20.1116 18.5689 20.2393 16.8909H16.5205C14.7256 16.8909 13.2705 15.4358 13.2705 13.6409C13.2705 11.8459 14.7256 10.3909 16.5205 10.3909H20.2393C20.1116 8.7128 18.7108 7.39087 17 7.39087H7ZM16.5205 11.8909C15.554 11.8909 14.7705 12.6744 14.7705 13.6409C14.7705 14.6074 15.554 15.3909 16.5205 15.3909H20.25V11.8909H16.5205Z" fill="currentColor" />
-    <circle cx="16.502" cy="13.6407" r="0.75" fill="currentColor" />
-  </svg>
-);
+import logo from "@/public/logo.svg";
 
 export const Sidebar = () => {
   const pathname = usePathname();
+  const router = useRouter();
+  const logout = useAuthStore((state) => state.logout);
+  const user = useAuthStore((state) => state.user);
 
-  const navItems = [
-    { name: "Dashboard", icon: LayoutGrid, href: "/" },
-    { name: "Learning", icon: Calendar, href: "/learning" },
-    { name: "Study Plan", icon: StudyPlanIcon, href: "/study-plan" },
-    { name: "Contact", icon: Calendar, href: "/contact" },
+  const handleLogout = () => {
+    logout();
+    router.push("/login");
+  };
+
+  const menuGroups = [
+    {
+      items: [{ name: "Dashboard", icon: LayoutGrid, href: "/" }],
+    },
+    {
+      label: "Learning",
+      icon: BookOpen,
+      items: [
+        { name: "Finance", href: "/learning/finance" },
+        { name: "Strategy", href: "/learning/strategy" },
+        { name: "Operations", href: "/learning/operations" },
+      ],
+    },
+    {
+      label: "Skill building",
+      icon: Target,
+      items: [
+        { name: "Case Simulations", href: "/skill-building/case-simulations" },
+        { name: "Framework Drills", href: "/skill-building/framework-drills" },
+        { name: "Quant Lab", href: "/skill-building/quant-lab" },
+        { name: "MCQs", href: "/skill-building/mcqs" },
+      ],
+    },
+    {
+      label: "Performance",
+      icon: BarChart2,
+      items: [
+        { name: "Review Center", href: "/performance/review-center" },
+        { name: "Analytics", href: "/performance/analytics" },
+        { name: "Bookmarks", href: "/performance/bookmarks" },
+      ],
+    },
+    {
+      items: [{ name: "Pricing", icon: Tag, href: "/pricing" }],
+    },
   ];
 
   return (
-    <aside className="w-64 flex flex-col h-screen shrink-0 sticky top-0 z-50"
-      style={{ backgroundColor: "var(--sidebar-bg)" }}
-    >
-      {/* Logo */}
-      <div className="px-8 pt-8 pb-6">
-        <div className="flex items-center gap-3 cursor-pointer">
-
-          <div
-            className="w-10 h-10 rounded-xl flex items-center justify-center overflow-hidden"
-          >
-            <img src="/logo.svg" alt="Shankh Logo" className="w-full h-full object-contain" />
-          </div>
-          <span
-            className="text-lg font-bold tracking-tight leading-none"
-            style={{ color: "var(--sidebar-text)" }}
-          >
-            Shankh
-          </span>
-        </div>
+    <aside className="w-64 flex flex-col h-screen shrink-0 sticky top-0 z-50 bg-[var(--sidebar-bg)]">
+      {/* Brand Header */}
+      <div className="px-6 py-8 flex items-center gap-2">
+        <Image src={logo} alt="Shankh Logo" width={28} height={28} />
+        <span className="text-xl font-bold text-[#1a1a1a]">Shankh</span>
       </div>
 
-      {/* Divider */}
-      <div className="mx-6 h-px" style={{ backgroundColor: "var(--sidebar-divider)" }} />
-
-      {/* Section Label */}
-      <div className="px-8 pt-5 pb-3">
-        <span
-          className="text-[11px] font-semibold uppercase tracking-wider"
-          style={{ color: "var(--sidebar-label)" }}
-        >
-          Main
-        </span>
+      {/* Nav Content */}
+      <div className="flex-1 px-3 space-y-4 overflow-y-auto">
+        {menuGroups.map((group, groupIdx) => (
+          <div key={groupIdx} className="space-y-1">
+            {group.label && (
+              <div className="flex items-center gap-3 px-4 py-2 mb-1">
+                <group.icon size={18} className="text-zinc-400" />
+                <span className="text-xs font-bold text-zinc-500 uppercase tracking-tight">
+                  {group.label}
+                </span>
+              </div>
+            )}
+            <div className={cn("space-y-0.5", group.label && "pl-4 ml-4 border-l border-zinc-100")}>
+              {group.items.map((item) => {
+                const isActive = pathname === item.href;
+                return (
+                  <Link
+                    key={item.name}
+                    href={item.href}
+                    className={cn(
+                      "flex items-center gap-3 px-4 py-2 rounded-xl text-sm font-medium transition-all group",
+                      isActive
+                        ? "bg-[var(--sidebar-card)] text-[var(--sidebar-active-text)]"
+                        : "text-zinc-600 hover:text-[#1a1a1a] hover:bg-zinc-50"
+                    )}
+                  >
+                    {item.icon && (
+                      <item.icon
+                        size={18}
+                        className={isActive ? "text-[var(--sidebar-active-text)]" : "text-zinc-400 group-hover:text-zinc-600"}
+                      />
+                    )}
+                    <span>{item.name}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </div>
 
-      {/* Nav Links */}
-      <nav className="flex-1 px-4 space-y-1">
-        {navItems.map((item) => {
-          const isActive = pathname === item.href;
-          return (
-            <Link
-              key={item.name}
-              href={item.href}
-              className={cn(
-                "flex items-center gap-3 px-4 py-3.5 rounded-xl font-semibold transition-all duration-200 text-sm relative group",
-              )}
-              style={{
-                backgroundColor: isActive ? "var(--sidebar-card)" : "transparent",
-                color: isActive ? "var(--sidebar-text)" : "var(--sidebar-muted)",
-              }}
-            >
-              <item.icon
-                size={18}
-                className="transition-colors"
-                style={{
-                  color: isActive ? "var(--sidebar-text)" : "var(--sidebar-muted)",
-                }}
-              />
-              <span>{item.name}</span>
-            </Link>
-          );
-        })}
-      </nav>
-
-      {/* Divider */}
-      <div className="mx-6 h-px" style={{ backgroundColor: "var(--sidebar-divider)" }} />
-
-      {/* Profile Card */}
-      <div className="p-4 mt-auto">
-        <div
-          className="p-5 rounded-[22px] flex flex-col items-center gap-4"
-          style={{ backgroundColor: "var(--sidebar-card)" }}
-        >
-          {/* Avatar */}
-          <div
-            className="w-12 h-12 rounded-full flex items-center justify-center overflow-hidden"
-            style={{
-              backgroundColor: "var(--sidebar-text)",
-            }}
-          >
-            <User size={24} style={{ color: "var(--sidebar-card)" }} />
+      {/* Profile Footer */}
+      <div className="p-4 border-t border-zinc-100">
+        <div className="flex items-center gap-3 p-2 rounded-2xl bg-zinc-50">
+          <div className="w-10 h-10 rounded-full bg-zinc-200 overflow-hidden flex-shrink-0">
+            {/* Placeholder for avatar */}
+            <div className="w-full h-full flex items-center justify-center bg-zinc-300 text-zinc-500 font-bold">
+              {user?.name?.charAt(0) || "U"}
+            </div>
           </div>
-
-          {/* Name & Plan */}
-          <div className="text-center space-y-0.5">
-            <p
-              className="text-sm font-bold"
-              style={{ color: "var(--sidebar-text)" }}
-            >
-              Bibek karki
-            </p>
-            <p
-              className="text-xs"
-              style={{ color: "var(--sidebar-text)", opacity: 0.7 }}
-            >
-              Free Plan
-            </p>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold text-zinc-900 truncate">{user?.name || "Andrew Smith"}</p>
+            <p className="text-[10px] text-zinc-500 font-medium">Free Plan</p>
           </div>
-
-          {/* CTA Button */}
-          <button
-            className="w-full py-3 rounded-xl text-xs font-bold tracking-wide flex items-center justify-center gap-2 transition-all duration-200 hover:opacity-90 active:scale-[0.98]"
-            style={{
-              backgroundColor: "var(--sidebar-text)",
-              color: "var(--sidebar-card)",
-              boxShadow: "0 4px 24px var(--sidebar-glow)",
-            }}
-          >
-            Your Profile
-            <ChevronRight size={14} />
-          </button>
         </div>
+        <button
+          onClick={handleLogout}
+          className="w-full flex items-center gap-2 px-3 py-2 mt-2 text-xs font-bold text-zinc-400 hover:text-red-500 transition-colors"
+        >
+          <LogOut size={14} />
+          <span>Logout</span>
+        </button>
       </div>
     </aside>
   );
 };
+

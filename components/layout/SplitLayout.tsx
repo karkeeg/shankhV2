@@ -3,7 +3,7 @@
 import React, { ReactNode, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Maximize2, Minimize2, ChevronRight } from 'lucide-react';
+import { Maximize2, Minimize2 } from 'lucide-react';
 
 interface SplitLayoutProps {
   header?: ReactNode;
@@ -11,6 +11,8 @@ interface SplitLayoutProps {
   rightContent: ReactNode;
   leftClassName?: string;
   rightClassName?: string;
+  rightSidebarContent?: ReactNode;
+  rightSidebarClassName?: string;
 }
 
 export const SplitLayout = ({
@@ -19,11 +21,13 @@ export const SplitLayout = ({
   rightContent,
   leftClassName,
   rightClassName,
+  rightSidebarContent,
+  rightSidebarClassName,
 }: SplitLayoutProps) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden bg-[var(--sidebar-bg)] relative">
+    <div className="flex flex-col h-full overflow-hidden bg-[var(--sidebar-bg)] relative">
       {/* Header with Animation */}
       <AnimatePresence>
         {!isCollapsed && header && (
@@ -77,7 +81,7 @@ export const SplitLayout = ({
                 leftClassName
               )}
             >
-              <div className="p-4 md:p-6 max-w-xl mx-auto">
+              <div className="p-4 md:p-6 w-full mx-auto">
                 {leftContent}
               </div>
             </motion.aside>
@@ -91,22 +95,42 @@ export const SplitLayout = ({
           </aside>
         )}
 
-        {/* Right Panel: Pure White Exercise Area */}
+        {/* Right Panel: Exercise Area */}
         <main
           className={cn(
-            "flex-1 h-full overflow-hidden transition-all duration-300 p-3",
+            "flex-1 h-full overflow-hidden transition-all duration-300",
             rightClassName
           )}
         >
           <div 
-            className="h-full w-full bg-white rounded-2xl shadow-2xl overflow-y-auto flex flex-col"
-            style={{ boxShadow: '0px 4px 4px 0px #0000003D inset' }}
+            className="h-full w-full bg-[#E5E7EB] rounded-2xl shadow-[inset_0_2px_10px_rgba(0,0,0,0.1)] overflow-y-auto flex flex-col"
           >
-            <div className="max-w-6xl mx-auto w-full h-full flex flex-col">
+            <div className="max-w-6xl mx-auto w-full h-full flex flex-col p-6">
               {rightContent}
             </div>
           </div>
         </main>
+
+
+        {/* Right Sidebar: Optional Third Column */}
+        <AnimatePresence initial={false}>
+          {!isCollapsed && rightSidebarContent && (
+            <motion.aside
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: '22%', minWidth: 300, opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
+              transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
+              className={cn(
+                "h-full bg-[var(--sidebar-bg)] text-[var(--sidebar-text)] overflow-y-auto z-10 hidden lg:block border-l border-white/10",
+                rightSidebarClassName
+              )}
+            >
+              <div className="p-4 md:p-6 w-full h-full flex flex-col">
+                {rightSidebarContent}
+              </div>
+            </motion.aside>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );

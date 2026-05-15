@@ -16,6 +16,21 @@ export interface ExerciseConfig {
   type: ExerciseType;
   question: string;
   table?: (string | number | null)[][];
+  // tasks: For multi-step exercises (from backend)
+  tasks?: {
+    task: string;
+    answer: string | number;
+    inputs?: string;
+    formula?: string;
+    difficulty?: string;
+  }[];
+  coach?: {
+    hint?: string;
+    correct?: string;
+    warning?: string;
+    incorrect?: string;
+  };
+  caseContext?: string;
   // tables: For 'excel' with multiple tables (tabs)
   tables?: {
     name: string;
@@ -26,6 +41,7 @@ export interface ExerciseConfig {
       correctValue: string | number;
       type?: "number" | "text";
       placeholder?: string;
+      formula?: string; // Formula hint on hover
     }[];
     dropdowns?: {
       row: number;
@@ -41,6 +57,7 @@ export interface ExerciseConfig {
     correctValue: string | number;
     type?: "number" | "text";
     placeholder?: string;
+    formula?: string; // Formula hint on hover
   }[];
   // options: For 'select', specifies the choices
   options?: {
@@ -67,6 +84,7 @@ export interface ExerciseConfig {
     }[];
   }[];
 }
+
 
 export interface Lesson {
   id: string;

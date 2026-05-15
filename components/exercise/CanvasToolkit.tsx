@@ -1,9 +1,10 @@
 "use client";
 
 import React, { useRef } from "react";
-import { Box, Variable, Layers, GripVertical, Square, Circle, Diamond, FunctionSquare } from "lucide-react";
+import { Layers, GripVertical, Square, Circle, Diamond, FunctionSquare } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { DragCategory, DragItem } from "@/data/financeData";
+import { DragCategory, DragItem } from "@/types/exercise";
+
 
 interface CanvasToolkitProps {
   draggableElements?: DragCategory[];

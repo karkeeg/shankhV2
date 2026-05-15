@@ -6,7 +6,6 @@ import { RotateCcw, ChevronLeft, ChevronRight, Lightbulb, X } from "lucide-react
 
 interface CanvasTopBarProps {
   questionNumber: number;
-  totalQuestions?: number;
   showHint: boolean;
   onHint: () => void;
   onReset: () => void;
@@ -20,7 +19,6 @@ interface CanvasTopBarProps {
 
 export const CanvasTopBar = ({
   questionNumber,
-  totalQuestions,
   showHint,
   onHint,
   onReset,

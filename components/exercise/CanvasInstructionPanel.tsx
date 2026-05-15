@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { cn } from "@/lib/utils";
-import { ThumbsUp, ThumbsDown, User, Sparkles, TrendingUp } from "lucide-react";
+import { ThumbsUp, ThumbsDown, User } from "lucide-react";
 
 interface CanvasInstructionPanelProps {
   difficulty: "Easy" | "Medium" | "Hard";

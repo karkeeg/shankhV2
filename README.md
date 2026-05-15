@@ -1,36 +1,211 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Interactive Financial Practice Platform
 
-## Getting Started
+Production-oriented fullstack platform for interactive accounting and finance practice.
 
-First, run the development server:
+## Overview
+
+This repository contains:
+
+- Frontend: Next.js App Router + TypeScript + Tailwind CSS
+- Backend: Express + Prisma + TypeScript
+- Database: PostgreSQL
+- Activity engine: Spreadsheet and Canvas validation with backend-side grading
+
+The current implementation keeps UI design parity while moving scoring and validation authority to backend APIs.
+
+## Repository Structure
+
+- `app/` - Next.js routes and pages
+- `components/` - UI and exercise components
+- `data/` - legacy local content structures (fallback path)
+- `lib/` - shared client helpers/store
+- `backend/src/` - Express API modules
+- `backend/prisma/` - Prisma schema and seed
+- `tests/visual/` - Playwright visual parity tests
+- `.github/workflows/` - CI pipelines
+
+## Prerequisites
+
+- Node.js 20+
+- npm 10+
+- PostgreSQL 14+
+
+## Environment Setup
+
+### Frontend env
+
+Copy root env template:
+
+```bash
+copy .env.example .env.local
+```
+
+Variables in `.env.local`:
+
+- `NEXT_PUBLIC_BACKEND_URL` - backend API base URL (default `http://localhost:4000`)
+- `NEXT_PUBLIC_USE_BACKEND_STUDY_PLAN` - use backend study plan tree (`true`/`false`)
+- `NEXT_PUBLIC_BACKEND_ACTIVITY_ID` - optional explicit activity ID for grading route override
+- `PLAYWRIGHT_BASE_URL` - base URL for visual parity tests (default `http://localhost:3000`)
+
+### Backend env
+
+Copy backend env template:
+
+```bash
+copy backend\\.env.example backend\\.env
+```
+
+Required variables in `backend/.env`:
+
+- `DATABASE_URL`
+- `PORT`
+
+Optional placeholders (not required for current MVP runtime):
+
+- `REDIS_URL`
+- `AUTH_JWT_SECRET`
+
+## Install Dependencies
+
+Frontend:
+
+```bash
+npm install
+```
+
+Backend:
+
+```bash
+cd backend
+npm install
+cd ..
+```
+
+## Database Setup
+
+From `backend/`:
+
+```bash
+npm run prisma:generate
+npm run prisma:migrate
+npm run prisma:seed
+```
+
+## Run the Stack
+
+Terminal 1 (backend):
+
+```bash
+cd backend
+npm run dev
+```
+
+Terminal 2 (frontend):
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+App URLs:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- Frontend: `http://localhost:3000`
+- Backend: `http://localhost:4000`
+- Backend health: `http://localhost:4000/health`
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Backend API Contracts
 
-## Learn More
+Base prefix: `/api/v1`
 
-To learn more about Next.js, take a look at the following resources:
+Study plan:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- `GET /study-plans`
+- `GET /study-plans/:planId/tree`
+- `GET /activities/:activityId`
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Attempts:
 
-## Deploy on Vercel
+- `POST /attempts`
+- `POST /attempts/:attemptId/submit`
+- `GET /attempts/:attemptId`
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Response envelope:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `data`
+- `errors` (on failure)
+- validation payload contains `validationSummary` and `fieldFeedback`
+
+## Validation and Scoring Flow
+
+Spreadsheet/canvas grading flow:
+
+1. Frontend creates attempt (`POST /attempts`)
+2. Frontend submits answer payload (`POST /attempts/:attemptId/submit`)
+3. Backend validates with activity version rules
+4. Backend stores `AttemptAnswer` + `AttemptResult`
+5. Frontend renders feedback and score
+
+Fallback behavior:
+
+- If backend is not reachable or disabled by env flags, UI falls back to local validation for continuity.
+
+## Feature Flags
+
+- `NEXT_PUBLIC_USE_BACKEND_STUDY_PLAN=true` enables backend study plan tree on study plan page.
+- Without this flag, study plan uses local in-file content.
+
+## Quality and Test Commands
+
+Frontend:
+
+```bash
+npm run lint
+npm run typecheck
+npm run build
+```
+
+Backend:
+
+```bash
+cd backend
+npm run build
+npm run test
+```
+
+Visual parity:
+
+```bash
+npm run ui:parity:update
+npm run ui:parity
+```
+
+## Troubleshooting
+
+Database connection error:
+
+- Verify PostgreSQL is running
+- Verify `backend/.env` `DATABASE_URL`
+- Re-run `npm run prisma:migrate` in `backend/`
+
+Backend not used by frontend:
+
+- Check `NEXT_PUBLIC_BACKEND_URL` in `.env.local`
+- Confirm backend is running on that URL
+- For study plan API mode, set `NEXT_PUBLIC_USE_BACKEND_STUDY_PLAN=true`
+
+Attempt creation fails:
+
+- Ensure seed has run (`npm run prisma:seed` in `backend/`)
+- If using explicit override, confirm `NEXT_PUBLIC_BACKEND_ACTIVITY_ID` exists in DB
+
+Visual test failures:
+
+- Regenerate approved snapshots with `npm run ui:parity:update`
+- Re-run `npm run ui:parity`
+
+## CI
+
+CI is configured in `.github/workflows/ci.yml`:
+
+- Frontend lint/typecheck/build
+- Backend build/test
+- Visual parity checks on pull requests

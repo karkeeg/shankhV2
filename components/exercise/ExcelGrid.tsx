@@ -14,16 +14,8 @@ import {
   Bold,
   Italic,
   Strikethrough,
-  Palette,
-  Link2,
-  MessageSquare,
-  Grid3X3,
-  AlignLeft,
-  AlignCenter,
-  IndentIncrease,
-  WrapText,
-  MoreVertical,
   Menu,
+  ChevronUp,
 } from "lucide-react";
 
 /* ── Toolbar Helpers ────────────────────────────────────────────── */
@@ -49,6 +41,7 @@ interface ExcelGridProps {
     col: number;
     correctValue: string | number;
     placeholder?: string;
+    formula?: string;
   }[];
   dropdowns?: {
     row: number;
@@ -60,7 +53,13 @@ interface ExcelGridProps {
   setUserInputs: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   isValidated: boolean;
   feedback: Record<string, boolean>;
-  /** Optional tab name to show in the bottom sheet bar */
+  /** Optional tab index for multi-tab support */
+  activeTabIndex?: number;
+  /** Optional list of tab names */
+  tabNames?: string[];
+  /** Callback when a tab is clicked */
+  onTabChange?: (index: number) => void;
+  /** Optional tab name to show in the bottom sheet bar (legacy) */
   sheetTabName?: string;
   /** If true, shows the rich spreadsheet toolbar (for canvas exercises) */
   showToolbar?: boolean;
@@ -74,6 +73,9 @@ export const ExcelGrid = ({
   setUserInputs,
   isValidated,
   feedback,
+  activeTabIndex = 0,
+  tabNames = [],
+  onTabChange,
   sheetTabName,
   showToolbar = false,
 }: ExcelGridProps) => {
@@ -84,16 +86,21 @@ export const ExcelGrid = ({
 
   const handleInputChange = (row: number, col: number, value: string) => {
     if (isValidated) return;
+    const key = tabNames.length > 0 ? `${activeTabIndex}-${row}-${col}` : `${row}-${col}`;
     setUserInputs((prev) => ({
       ...prev,
-      [`${row}-${col}`]: value,
+      [key]: value,
     }));
   };
 
+  const getCellKey = (row: number, col: number) => {
+    return tabNames.length > 0 ? `${activeTabIndex}-${row}-${col}` : `${row}-${col}`;
+  };
+
   const currentFormulaValue = selectedCell
-    ? userInputs[`${selectedCell.row}-${selectedCell.col}`] ||
-      table[selectedCell.row]?.[selectedCell.col]?.toString() ||
-      ""
+    ? userInputs[getCellKey(selectedCell.row, selectedCell.col)] ||
+    table[selectedCell.row]?.[selectedCell.col]?.toString() ||
+    ""
     : "";
 
   // Generate Column Headers (A, B, C...)
@@ -157,8 +164,8 @@ export const ExcelGrid = ({
             <ToolbarBtn icon={<Italic size={16} />} />
             <ToolbarBtn icon={<Strikethrough size={16} />} />
             <button className="flex items-center gap-0.5 p-1.5 rounded hover:bg-zinc-200/70 text-zinc-500 transition-colors">
-               <span className="text-xs font-bold underline decoration-2 decoration-zinc-400 underline-offset-2">A</span>
-               <ChevronDown size={8} />
+              <span className="text-xs font-bold underline decoration-2 decoration-zinc-400 underline-offset-2">A</span>
+              <ChevronDown size={8} />
             </button>
           </div>
 
@@ -166,9 +173,9 @@ export const ExcelGrid = ({
 
           {/* Alignment & More */}
           <div className="flex items-center gap-0.5 ml-auto">
-             <button className="p-1.5 rounded hover:bg-zinc-200/70 text-zinc-500 transition-colors">
-                <ChevronUp size={14} className="rotate-180" />
-             </button>
+            <button className="p-1.5 rounded hover:bg-zinc-200/70 text-zinc-500 transition-colors">
+              <ChevronUp size={14} className="rotate-180" />
+            </button>
           </div>
         </div>
       )}
@@ -221,8 +228,9 @@ export const ExcelGrid = ({
                   row[0],
                 );
               const isSubHeaderRow =
-                typeof row[0] === "string" &&
-                /(Historical|Projected)/i.test(row[0]);
+                row.some(cell =>
+                  typeof cell === "string" && /(Historical|Projected)/i.test(cell)
+                );
 
               if (isSectionRow) {
                 return (
@@ -231,15 +239,23 @@ export const ExcelGrid = ({
                     <td className="w-10 h-8 bg-zinc-100 border border-zinc-200 text-zinc-400 text-center text-[10px] font-bold sticky left-0 z-10">
                       {rowIndex + 1}
                     </td>
-                    <td
-                      colSpan={colHeaders.length}
-                      className="h-8 border border-zinc-100 bg-[#7C5DFA]/10 text-[#312e81] font-semibold text-center text-[13px]"
-                    >
-                      {row[0]}
-                    </td>
+                    {row.map((cell, colIndex) => (
+                      <td
+                        key={colIndex}
+                        className={cn(
+                          "h-8 border border-zinc-100 bg-[#7C5DFA]/15 px-2 py-1 text-[13px]",
+                          colIndex === 0
+                            ? "text-[#312e81] font-bold"
+                            : "text-[#312e81] font-semibold text-center"
+                        )}
+                      >
+                        {cell}
+                      </td>
+                    ))}
                   </tr>
                 );
               }
+
 
               return (
                 <tr key={rowIndex}>
@@ -258,7 +274,7 @@ export const ExcelGrid = ({
                     const isSelected =
                       selectedCell?.row === rowIndex &&
                       selectedCell?.col === colIndex;
-                    const key = `${rowIndex}-${colIndex}`;
+                    const key = getCellKey(rowIndex, colIndex);
 
                     const rowStyle = isSubHeaderRow
                       ? "bg-zinc-100 text-zinc-500 font-semibold"
@@ -274,35 +290,44 @@ export const ExcelGrid = ({
                           "h-8 border border-zinc-100 bg-white relative p-0 transition-all",
                           rowStyle,
                           isSelected &&
-                            "outline outline-2 outline-[#7C5DFA] z-[5] shadow-inner",
+                          "outline outline-2 outline-[#7C5DFA] z-[5] shadow-inner",
                           (inputConfig || dropdownConfig) &&
-                            !isValidated &&
-                            "bg-blue-50/20",
+                          !isValidated &&
+                          "bg-blue-50/20",
                           isValidated &&
-                            feedback[key] &&
-                            "bg-emerald-50 text-emerald-700",
+                          feedback[key] &&
+                          "bg-emerald-50 text-emerald-700",
                           isValidated &&
-                            feedback[key] === false &&
-                            "bg-rose-50 text-rose-700",
+                          feedback[key] === false &&
+                          "bg-rose-50 text-rose-700",
                         )}
+                        title={inputConfig?.formula ? `Formula: ${inputConfig.formula}` : undefined}
                       >
                         {inputConfig ? (
-                          <input
-                            type="text"
-                            placeholder={inputConfig.placeholder || ""}
-                            className="w-full h-full px-2 py-1 bg-transparent border-none outline-none text-[13px] text-zinc-800 font-semibold text-center"
-                            value={userInputs[key] || ""}
-                            onChange={(e) =>
-                              handleInputChange(
-                                rowIndex,
-                                colIndex,
-                                e.target.value,
-                              )
-                            }
-                            disabled={isValidated && feedback[key]}
-                            autoFocus={isSelected}
-                          />
+                          <div className="w-full h-full relative group/input">
+                            <input
+                              type="text"
+                              placeholder={inputConfig.placeholder || ""}
+                              className="w-full h-full px-2 py-1 bg-transparent border-none outline-none text-[13px] text-zinc-800 font-semibold text-center"
+                              value={userInputs[key] || ""}
+                              onChange={(e) =>
+                                handleInputChange(
+                                  rowIndex,
+                                  colIndex,
+                                  e.target.value,
+                                )
+                              }
+                              disabled={isValidated && feedback[key]}
+                              autoFocus={isSelected}
+                            />
+                            {inputConfig.formula && (
+                              <div className="absolute top-0 right-0 p-0.5 opacity-0 group-hover/input:opacity-100 transition-opacity">
+                                <span className="text-[8px] font-black text-blue-500 bg-blue-50 px-1 rounded border border-blue-100">fx</span>
+                              </div>
+                            )}
+                          </div>
                         ) : dropdownConfig ? (
+
                           <div className="w-full h-full relative group">
                             <select
                               className="w-full h-full px-2 py-1 bg-transparent border-none outline-none text-[13px] text-zinc-800 font-semibold appearance-none cursor-pointer text-center"
@@ -380,14 +405,33 @@ export const ExcelGrid = ({
           <div className="p-1.5 hover:bg-zinc-300 rounded-md cursor-pointer transition-colors mr-4">
             <Menu size={14} className="stroke-[3px]" />
           </div>
-          <div className="flex items-center h-full pt-1">
-            <span className="flex items-center gap-2 px-5 h-full bg-[#dbeafe] border-x border-t border-zinc-400/40 text-blue-700 font-black rounded-t-lg shadow-sm relative z-10 text-[11px] tracking-tight">
-              {sheetTabName || "Income Statement"}
-              <ChevronDown size={10} className="text-blue-400" />
-            </span>
+          <div className="flex items-center h-full pt-1 overflow-x-auto max-w-[80vw] no-scrollbar">
+            {tabNames.length > 0 ? (
+              tabNames.map((name, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => onTabChange?.(idx)}
+                  className={cn(
+                    "flex items-center gap-2 px-5 h-full border-x border-t border-zinc-400/40 font-black rounded-t-lg shadow-sm relative z-10 text-[11px] tracking-tight transition-all shrink-0",
+                    activeTabIndex === idx
+                      ? "bg-[#dbeafe] text-blue-700"
+                      : "bg-zinc-200 text-zinc-500 hover:bg-zinc-100"
+                  )}
+                >
+                  {name}
+                  {activeTabIndex === idx && <ChevronDown size={10} className="text-blue-400" />}
+                </button>
+              ))
+            ) : (
+              <span className="flex items-center gap-2 px-5 h-full bg-[#dbeafe] border-x border-t border-zinc-400/40 text-blue-700 font-black rounded-t-lg shadow-sm relative z-10 text-[11px] tracking-tight shrink-0">
+                {sheetTabName || "Income Statement"}
+                <ChevronDown size={10} className="text-blue-400" />
+              </span>
+            )}
           </div>
         </div>
       </div>
     </div>
   );
 };
+

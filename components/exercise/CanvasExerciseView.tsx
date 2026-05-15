@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { ExerciseConfig } from "@/data/financeData";
+import { ExerciseConfig } from "@/types/exercise";
+
 import { ExcelGrid } from "./ExcelGrid";
 import { CanvasInstructionPanel } from "./CanvasInstructionPanel";
 import { CanvasTopBar } from "./CanvasTopBar";

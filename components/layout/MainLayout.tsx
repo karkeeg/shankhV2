@@ -6,27 +6,39 @@ import { cn } from "@/lib/utils";
 
 interface MainLayoutProps {
   children: React.ReactNode;
+  sidebar?: React.ReactNode;
+  rightSidebar?: React.ReactNode;
   showSidebar?: boolean;
 }
 
-export const MainLayout = ({ children, showSidebar = true }: MainLayoutProps) => {
+export const MainLayout = ({ 
+  children, 
+  sidebar,
+  rightSidebar,
+  showSidebar = true 
+}: MainLayoutProps) => {
   return (
-    <div className="flex h-screen overflow-hidden font-sans" style={{ backgroundColor: '#0F1F2C' }}>
-      {showSidebar && <Sidebar />}
+    <div className="flex h-screen overflow-hidden font-sans bg-[var(--sidebar-bg)]">
+      {showSidebar && (sidebar || <Sidebar />)}
 
-      {/* Dark background wrapper with padding */}
-      <div className={cn("flex-1 overflow-hidden", showSidebar ? "p-3" : "p-0")}>
-        {/* White floating card */}
+      {/* Content wrapper with consistent padding and radii */}
+      <div className={cn("flex-1 flex overflow-hidden", showSidebar ? "p-3 pr-0" : "p-0")}>
         <main 
           className={cn(
-            "h-full overflow-y-auto bg-white shadow-2xl",
-            showSidebar ? "rounded-2xl" : "rounded-none"
+            "flex-1 overflow-y-auto bg-[var(--background)]",
+            showSidebar ? "rounded-3xl border border-black/5" : "rounded-none"
           )}
-          style={{ boxShadow: '0px 4px 4px 0px #0000003D inset' }}
         >
           {children}
         </main>
+        
+        {rightSidebar && (
+          <div className="h-full">
+            {rightSidebar}
+          </div>
+        )}
       </div>
     </div>
   );
 };
+

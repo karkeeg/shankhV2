@@ -1,10 +1,10 @@
-import { financeData } from '@/data/financeData';
 import { notFound } from 'next/navigation';
+import { cookies } from 'next/headers';
 import { SplitLayout } from '@/components/layout/SplitLayout';
-import { LessonPanel } from '@/components/lesson/LessonPanel';
+import { WorkspaceSidebar } from '@/components/exercise/WorkspaceSidebar';
+import { AICoachPanel } from '@/components/exercise/AICoachPanel';
 import { ExercisePanel } from '@/components/exercise/ExercisePanel';
-import Link from 'next/link';
-import { ChevronLeft } from 'lucide-react';
+import { mapContentToExercise } from '@/lib/backend-content';
 
 interface PageProps {
   params: Promise<{
@@ -13,53 +13,66 @@ interface PageProps {
   }>;
 }
 
-import { MainLayout } from '@/components/layout/MainLayout';
-
 export default async function LessonPage({ params }: PageProps) {
   const { category, slug } = await params;
-  
-  const lesson = financeData.find(
-    (l) => l.category === category && l.slug === slug
-  );
+  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
+  if (!backendUrl) notFound();
 
-  if (!lesson) {
+  const cookieStore = await cookies();
+  const token = cookieStore.get('shankh-token')?.value;
+
+  const activityRes = await fetch(`${backendUrl}/api/v1/activities/by-slug/${slug}`, {
+    cache: "no-store",
+    headers: {
+      'Authorization': token ? `Bearer ${token}` : ""
+    }
+  });
+  if (!activityRes.ok) notFound();
+
+  const activityJson = await activityRes.json();
+  const activity = activityJson?.data as {
+    id: string;
+    slug: string;
+    title: string;
+    type: "spreadsheet" | "canvas" | "basic_input";
+    instructions: string | null;
+    content: Record<string, unknown>;
+    validationRules?: Record<string, unknown>;
+    taxonomy?: { topicTitle?: string; moduleTitle?: string };
+  } | undefined;
+
+  if (!activity) {
     notFound();
   }
+  const lessonExercise = mapContentToExercise(activity);
+  const explanation = (activity.content?.explanation as string | undefined) ?? `Practice path: ${activity.taxonomy?.moduleTitle ?? category}`;
+  const instructions = activity.instructions ?? "Complete the activity and submit your answer.";
 
   return (
     <SplitLayout
-      header={
-        <header className="h-10 flex items-center justify-between px-6 bg-zinc-900 border-b border-zinc-800 shrink-0">
-          <div className="flex items-center gap-4">
-            <Link
-              href="/"
-              className="flex items-center gap-1 text-zinc-400 hover:text-white transition-colors text-sm font-medium pr-4 border-r border-zinc-800"
-            >
-              <ChevronLeft size={16} />
-              Back to Dashboard
-            </Link>
-            <div className="flex items-center gap-2">
-              <span className="text-zinc-500 text-xs font-bold uppercase tracking-widest">
-                {lesson.categoryDisplay}
-              </span>
-              <span className="text-zinc-600 text-xs font-bold">/</span>
-              <span className="text-zinc-100 text-sm font-bold tracking-tight">
-                {lesson.title}
-              </span>
-            </div>
-          </div>
-        </header>
-      }
+      header={null} // Design doesn't show the dark generic header, WorkspaceSidebar has its own header
+      leftClassName="p-0 border-r border-white/10" // Remove padding to let WorkspaceSidebar fill
       leftContent={
-        <LessonPanel
-          title={lesson.title}
-          explanation={lesson.explanation}
-          definitions={lesson.definitions}
-          instructions={lesson.instructions}
-          toolkitElements={lesson.exercise.type === "canvas" ? lesson.exercise.canvasDraggableElements : undefined}
+        <WorkspaceSidebar
+          title={activity.title}
+          explanation={explanation}
+          instructions={instructions}
+          toolkitElements={lessonExercise.type === "canvas" ? lessonExercise.canvasDraggableElements : undefined}
+          lessonId={activity.id}
+          totalSteps={Math.max(lessonExercise.tasks?.length || 0, lessonExercise.questions?.length || 0, 1)}
+        />
+
+      }
+      rightContent={
+        <ExercisePanel 
+          lessonId={activity.id} 
+          exercise={lessonExercise} 
+          studyPlanId={activity.taxonomy?.studyPlanId}
         />
       }
-      rightContent={<ExercisePanel lessonId={lesson.id} exercise={lesson.exercise} />}
+
+      rightSidebarClassName="p-0"
+      rightSidebarContent={<AICoachPanel />}
     />
   );
 }

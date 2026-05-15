@@ -2,16 +2,34 @@
 
 import React, { useRef, useMemo } from "react";
 import ExcalidrawWrapper from "./ExcalidrawWrapper";
-import { DragItem } from "@/data/financeData";
+import { DragItem } from "@/types/exercise";
+
 
 export interface CanvasExerciseProps {
   canvasBackgroundText?: string;
-  onElementsChange?: (elements: any[]) => void;
-  initialElements?: any[];
+  onElementsChange?: (elements: ExcalidrawSceneElement[]) => void;
+  initialElements?: ExcalidrawSceneElement[];
+}
+
+type ExcalidrawSceneElement = Record<string, unknown> & {
+  customData?: { originalId?: string };
+};
+
+interface ExcalidrawApi {
+  getAppState: () => {
+    scrollX: number;
+    scrollY: number;
+    zoom: { value: number };
+  };
+  getSceneElements: () => readonly ExcalidrawSceneElement[];
+  updateScene: (scene: {
+    elements: readonly ExcalidrawSceneElement[];
+    appState: Record<string, unknown>;
+  }) => void;
 }
 
 export const CanvasExercise = ({ canvasBackgroundText, onElementsChange, initialElements }: CanvasExerciseProps) => {
-  const excalidrawRef = useRef<any>(null);
+  const excalidrawRef = useRef<ExcalidrawApi | null>(null);
   const lastUpdateRef = useRef<number>(0);
 
   const generateId = () => Math.random().toString(36).substr(2, 9);
@@ -21,9 +39,9 @@ export const CanvasExercise = ({ canvasBackgroundText, onElementsChange, initial
   const initialData = useMemo(() => ({
     elements: initialElements || [],
     appState: { theme: 'light', viewBackgroundColor: '#ffffff' }
-  }), []); // Stable across re-renders of the same lesson
+  }), [initialElements]);
 
-  const handleChange = (elements: readonly any[]) => {
+  const handleChange = (elements: readonly ExcalidrawSceneElement[]) => {
     const now = Date.now();
     // Throttle/Debounce updates to parent to prevent infinite loops and lag
     if (now - lastUpdateRef.current > 500) {
@@ -101,7 +119,7 @@ export const CanvasExercise = ({ canvasBackgroundText, onElementsChange, initial
         strColor = "#d97706";
       }
 
-      const newElement: any = {
+      const newElement: ExcalidrawSceneElement = {
         ...commonProps,
         strokeColor: strColor,
         id: shapeId,
@@ -114,7 +132,7 @@ export const CanvasExercise = ({ canvasBackgroundText, onElementsChange, initial
         groupIds: [groupId],
       };
 
-      const textElement: any = {
+      const textElement: ExcalidrawSceneElement = {
         ...commonProps,
         strokeColor: "#1f2937",
         id: textId,

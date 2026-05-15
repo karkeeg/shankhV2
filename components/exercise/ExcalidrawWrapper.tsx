@@ -4,11 +4,33 @@ import React, { useEffect, useState } from "react";
 import "@excalidraw/excalidraw/index.css";
 
 interface ExcalidrawWrapperProps {
-  excalidrawRef: any;
-  initialData?: any;
-  onChange?: (elements: any, appState: any, files: any) => void;
+  excalidrawRef: React.MutableRefObject<ExcalidrawApi | null>;
+  initialData?: ExcalidrawInitialData;
+  onChange?: (elements: readonly ExcalidrawSceneElement[]) => void;
   onDrop?: (event: React.DragEvent) => void;
 }
+
+interface ExcalidrawApi {
+  getAppState: () => {
+    scrollX: number;
+    scrollY: number;
+    zoom: { value: number };
+  };
+  getSceneElements: () => readonly ExcalidrawSceneElement[];
+  updateScene: (scene: {
+    elements: readonly ExcalidrawSceneElement[];
+    appState: Record<string, unknown>;
+  }) => void;
+}
+
+interface ExcalidrawInitialData {
+  elements: readonly ExcalidrawSceneElement[];
+  appState: Record<string, unknown>;
+}
+
+type ExcalidrawSceneElement = Record<string, unknown> & {
+  customData?: { originalId?: string };
+};
 
 const ExcalidrawWrapper = ({ 
   excalidrawRef, 
@@ -16,7 +38,7 @@ const ExcalidrawWrapper = ({
   onChange,
   onDrop
 }: ExcalidrawWrapperProps) => {
-  const [Excalidraw, setExcalidraw] = useState<any>(null);
+  const [Excalidraw, setExcalidraw] = useState<React.ComponentType<Record<string, unknown>> | null>(null);
 
   useEffect(() => {
     // Excalidraw must be imported dynamically on the client
@@ -40,7 +62,7 @@ const ExcalidrawWrapper = ({
       onDragOver={(e) => e.preventDefault()}
     >
       <Excalidraw
-        excalidrawAPI={(api: any) => {
+        excalidrawAPI={(api: ExcalidrawApi) => {
           if (excalidrawRef) {
             excalidrawRef.current = api;
           }

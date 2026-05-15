@@ -1,6 +1,7 @@
 import React from 'react';
 import { Target, CheckCircle2 } from 'lucide-react';
-import { DragCategory } from '@/data/financeData';
+import { DragCategory } from '@/types/exercise';
+
 import { CanvasToolkit } from '@/components/exercise/CanvasToolkit';
 
 interface LessonPanelProps {
