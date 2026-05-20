@@ -9,6 +9,7 @@ interface UserLessonState {
   hintsUsedCount?: number;
   lastCanvasElements?: unknown[];
   answers?: any[];
+  cells?: Record<string, unknown>;
 }
 
 interface AppState {
@@ -60,31 +61,40 @@ export const useAppStore = create<AppState>()(
         }));
 
         try {
-          const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1/user/progress/attempt`, {
+          const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+          if (token) headers.Authorization = `Bearer ${token}`;
+          const createRes = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1/attempts`, {
             method: 'POST',
-            headers: { 
-              'Content-Type': 'application/json',
-              'Authorization': token ? `Bearer ${token}` : ""
-            },
+            headers,
+            body: JSON.stringify({ activityId: lessonId }),
+          });
+          const createJson = await createRes.json();
+          const attemptId = createJson?.data?.attemptId;
+          if (!createRes.ok || !attemptId) {
+            throw new Error(createJson?.error || 'Unable to create attempt');
+          }
+
+          const submitRes = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1/attempts/${attemptId}/submit`, {
+            method: 'POST',
+            headers,
             body: JSON.stringify({
               activityId: lessonId,
-              scorePercent: payload?.score ?? state.completedLessons[lessonId]?.score ?? 0,
-              checkCount: payload?.checkCount ?? state.completedLessons[lessonId]?.checkCount ?? 0,
-              hintsUsedCount: payload?.hintsUsedCount ?? state.completedLessons[lessonId]?.hintsUsedCount ?? 0,
-              status: payload.status || "in_progress",
-              studyPlanId: studyPlanId,
-              answers: payload.answers || state.completedLessons[lessonId]?.answers || []
-            })
+              answers: payload.answers || state.completedLessons[lessonId]?.answers || [],
+              cells: payload.cells || {},
+              canvasData: payload.lastCanvasElements || {},
+              hintsUsed: payload?.hintsUsedCount ?? state.completedLessons[lessonId]?.hintsUsedCount ?? 0,
+              status: payload.status || 'in_progress',
+            }),
           });
 
-          if (res.ok) {
-             const { data } = await res.json();
+          if (submitRes.ok) {
+             const { data } = await submitRes.json();
              if (data) {
                set({
-                 xp: data.totalXP,
-                 mastery: data.mastery,
-                 independenceScore: data.independenceScore,
-                 skillRadar: data.skillRadar
+                 xp: data.progress?.totalXP || 0,
+                 mastery: data.progress?.mastery || 0,
+                 independenceScore: data.progress?.independenceScore || 0,
+                 skillRadar: data.progress?.skillRadar || [],
                });
              }
           }

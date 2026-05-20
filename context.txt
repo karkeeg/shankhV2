@@ -1,1204 +1,1400 @@
-# Production-ready learning content set for Shankh
-
-## Executive summary
-
-Shankh should launch as an integrated, case-first learning system rather than as three disconnected tabs. The March 2026 product deck defines the core experience as a multi-interface workspace spanning spreadsheet, decision canvas and simulation, with immediate AI feedback and measurable skill scoring; the product concept narrows Phase 1 to short lessons, interactive exercises, simulations, user scoring and admin authoring, with an initial emphasis on pharma and biotech investment analysis; and the casebook emphasises a disciplined solve pattern of clarify, structure, analyse and conclude across profitability, market entry, pricing, growth and due-diligence cases. Quantus, meanwhile, demonstrates the public-market UX primitives that are already working: guided study paths, adjustable difficulty, structured progress, “Check Answer”, detailed hints and formula guidance, and an AI learning assistant. The production recommendation below therefore makes every module run through a consistent sequence: lesson panel, MCQ warm-up, Quantus task set, Canvas task set, final decision, AI debrief, skill update. fileciteturn0file0 fileciteturn0file1 fileciteturn0file2 citeturn1view0turn1view1turn1view2turn11view0turn11view1
-
-For MVP, the strongest production slice is 12 named modules, 132 graded activities, and 156 importable content objects. That is intentionally smaller than the deck’s longer-term Phase 1 ambition of a 100–150 topic/problem library, but it is large enough to feel complete, to support progressive difficulty, and to give engineering a clean, testable content model. The right cut for MVP is to keep only three user-facing workspaces—Quantus, Canvas and MCQ—while treating “Simulation Cases” as an orchestration layer that combines all three workspaces inside longer case runs rather than as a fourth workspace. fileciteturn0file0 fileciteturn0file2
-
-| Proposed production slice | Recommendation |
-|---|---:|
-| Modules | 12 |
-| MCQs | 60 |
-| Quantus spreadsheet tasks | 36 |
-| Canvas tasks | 24 |
-| Final decision prompts | 12 |
-| Graded activities | 132 |
-| Importable content objects | 156 |
-| Locale | en-GB |
-| Currency | INR where relevant |
-| Recommended pass rule | 70 overall, minimum 50 in each workspace |
-
-## Evidence base and design principles
-
-This design uses four evidence streams. First, the uploaded Shankh materials define the product strategy, user journey, three-panel UI blueprint, skill scoring and phased delivery. Secondly, the uploaded casebook from entity["organization","IIM Ahmedabad","management school india"] provides the intellectual grammar for case-solving: good clarifying questions, non-mechanical framework use, issue trees, and the main case families that should drive Canvas and judgement design. Thirdly, the public Quantus surface and indexed practice pages show how a spreadsheet-first training product presents study paths, difficulty levels, instructions/context, answer validation, hints, progress tracking and an AI assistant. Fourthly, official pharma and biotech data sources provide the right long-term evidence layer for market sizing, diligence and valuation cases. Exact Shankh authoring APIs, formula-evaluator APIs, LLM orchestration internals and warehouse schemas are unspecified, so the report below treats them as implementation details to be mapped later. fileciteturn0file0 fileciteturn0file1 fileciteturn0file2 citeturn12view0turn1view1turn1view2turn11view0turn11view1
-
-The design principles that follow are straightforward. One case context should persist across all three workspaces inside a module. Guidance should be progressive rather than binary: first a hint, then a warning, then a targeted explanation. Spreadsheet tasks should validate both arithmetic and formula logic. Canvas tasks should score semantic equivalence, not only exact labels. Final decisions should always ask for a recommendation, not merely a calculation. And progress should roll up into skill tags rather than into a single opaque score. Those principles fit the Shankh deck’s problem-first approach and the casebook’s insistence that frameworks are tools for structured thinking rather than scripts to be recited. fileciteturn0file0 fileciteturn0file1
-
-## Final app structure and navigation
-
-The private Quantus dashboard route publicly exposes a minimal signed-in shell with Dashboard, Learn, Profile and Contact, while the public learning taxonomy exposes grouped paths for Financial Statements, Financial Analysis, Financial Modelling, Investment Banking and Private Equity. Shankh should keep the same top-shell simplicity, but replace “Contact” with “Progress” and make the three workspaces the centre of the information architecture. The result is a shallower shell and a deeper module system. citeturn12view0turn1view1
-
-### Recommended navigation tree
-
-```text
-Dashboard
-├── Continue learning
-├── Recommended next module
-├── Simulation cases
-├── Skill radar
-└── Recent feedback
-
-Workspaces
-├── Quantus
-│   ├── Foundations
-│   ├── Statement mechanics
-│   ├── Commercial modelling
-│   └── Case models
-├── Canvas
-│   ├── Statement maps
-│   ├── Diagnostic trees
-│   ├── Strategy frameworks
-│   └── Diligence maps
-└── MCQ
-    ├── Concepts and formulae
-    ├── Clarifying questions
-    ├── Framework choice
-    └── Decision judgement
-
-Progress
-├── Skill graph
-├── Module scores
-├── Attempts and streaks
-└── Recommendations
-
-Profile
-└── Preferences, locale, notifications
-```
-
-### Workspace architecture
-
-| Workspace | Core purpose | Activity types | Primary scoring focus |
-|---|---|---|---|
-| Quantus | Quantitative reasoning in an Excel-like environment | Missing-value fills, formula entry, ratio analysis, forecasts, valuation, bridge schedules | Formula correctness, numeric accuracy, spreadsheet logic |
-| Canvas | Structured reasoning and decision mapping | Drag/drop classification, issue trees, framework maps, process flows, prioritisation boards | Structure quality, completeness, prioritisation, judgement |
-| MCQ | Fast retrieval, case logic and judgement | Definitions, formulas, clarifying questions, best-next-step, recommendation quality | Concept mastery, framework recognition, decision judgement |
-
-### Module flow
-
-```mermaid
-flowchart TD
-    A[Open module] --> B[Read lesson panel]
-    B --> C[Attempt 5 MCQs]
-    C --> D[Complete 3 Quantus tasks]
-    D --> E{Check Answer}
-    E -- Incorrect --> F[AI hint or warning]
-    F --> D
-    E -- Correct --> G[Complete 2 Canvas tasks]
-    G --> H{Submit Canvas}
-    H -- Needs work --> I[AI critique]
-    I --> G
-    H -- Accepted --> J[Final decision]
-    J --> K[Debrief]
-    K --> L[Skill update and recommendation]
-```
-
-This flow preserves the Shankh user-journey logic of assessment, workspace activity, score and next case, while borrowing Quantus’s proven practice-shell elements of instructions, context, check-answer, and AI assistance. fileciteturn0file0 citeturn11view0turn11view1turn1view2
-
-### Page-level layout
-
-The production page template should keep a stable three-panel frame. The left panel holds module context, vocabulary, formulas and instructions. The centre panel holds the active workspace. The right panel holds AI Coach and Result tabs. This mirrors the Shankh UI blueprint’s palette/work area/intelligence panel model and the Quantus practice pages’ instructions/context plus AI-assistant pattern. fileciteturn0file0 citeturn11view0turn11view1
-
-## Twelve-module content plan
-
-The 12 modules below stay within the finance-first and strategy-first remit surfaced in the Shankh deck, concept document and casebook. They also form a sensible progression: six foundation modules, three applied analysis modules, and three integrated case modules. Spreadsheet conventions used below are deliberate: percentage inputs may be entered either as 3% or 0.03, percentage outputs may be accepted as either 40% or 0.40, and where a sheet is configured to display crore, the validator should accept either raw INR or the normalised crore value if the template defines the unit. fileciteturn0file0 fileciteturn0file2 fileciteturn0file1
-
-### Delivery summary
-
-| Module | Stage | Primary skill tags | Importable objects |
-|---|---|---|---:|
-| Introduction to Assets | Foundation | current-assets, non-current-assets, liquidity-basics | 13 |
-| Balance Sheet Classification | Foundation | balance-sheet-identity, liabilities, equity | 13 |
-| Income Statement Flow | Foundation | revenue, gross-profit, EBITDA, net-income | 13 |
-| Margin Analysis | Foundation | gross-margin, EBITDA-margin, net-margin | 13 |
-| Cash Flow Basics | Foundation | CFO, CFI, CFF, reconciliation | 13 |
-| Working Capital | Foundation | NWC, current-ratio, CCC | 13 |
-| Break-even Analysis | Applied | contribution, break-even, target-profit | 13 |
-| Market Sizing | Applied | TAM, epidemiology-funnel, sanity-check | 13 |
-| Pricing Strategy | Applied | cost-plus, value-based, pricing-floor | 13 |
-| Profitability Diagnosis | Integrated | issue-tree, revenue-vs-cost, prioritisation | 13 |
-| Market Entry | Integrated | attractiveness, capability, entry-mode | 13 |
-| Biotech Investment Case | Integrated | peak-sales, valuation, risk-adjustment | 13 |
-
-### Stage totals
-
-| Stage | Modules | Graded activities | Importable objects |
-|---|---:|---:|---:|
-| Foundation | 6 | 66 | 78 |
-| Applied | 3 | 33 | 39 |
-| Integrated | 3 | 33 | 39 |
-| Total | 12 | 132 | 156 |
-
-### Introduction to Assets
-
-**Learning objective.** Distinguish current from non-current assets, build asset subtotals correctly, and connect classification to liquidity.  
-**Case context.** A small distribution company is preparing an opening balance-sheet training file after its first full operating quarter.
-
-**MCQs**
-
-| Question | Options | Correct answer | Short rationale |
-|---|---|---|---|
-| Which item is ordinarily a current asset? | A Factory building; B Cash; C Patent; D Long-term loan receivable due in 5 years | B | Cash is available within the operating cycle and supports near-term liquidity. |
-| Accounts receivable refers to | A Money owed to suppliers; B Money owed by customers; C Future tax expense; D Owner’s capital | B | Receivables arise when the company records sales before collecting cash. |
-| Inventory is usually classified as current because it is | A Always cash; B Sold or used within one operating cycle; C A financing source; D Exempt from valuation | B | Inventory is expected to convert into sales or production use in the near term. |
-| Which item belongs in non-current assets? | A Cash; B Inventory; C Land; D Trade receivables | C | Land is a long-lived asset, not expected to convert to cash within a year. |
-| If inventory rises while sales are flat, the most likely near-term effect is | A More cash tied up; B Lower assets; C Higher equity automatically; D Lower current assets | A | Extra stock usually absorbs cash rather than releasing it. |
-
-**Quantus tasks**
-
-| Task | Inputs | Expected formula | Expected answer | Accepted formula variants | Difficulty |
-|---|---|---|---|---|---|
-| Calculate total current assets | Cash ₹12,000; Accounts receivable ₹15,000; Inventory ₹8,000 | `cash + ar + inventory` | ₹35,000 | `=SUM(B2:B4)`; `=B2+B3+B4`; `=cash+ar+inventory` | Easy |
-| Calculate total non-current assets | PPE ₹50,000; Patents ₹10,000; Long-term investments ₹12,000 | `ppe + patents + lti` | ₹72,000 | `=SUM(B6:B8)`; `=B6+B7+B8`; `=ppe+patents+lti` | Easy |
-| Calculate total assets | Current assets ₹35,000; Non-current assets ₹72,000 | `current_assets + non_current_assets` | ₹107,000 | `=B5+B9`; `=current_assets+non_current_assets` | Easy |
-
-**Canvas tasks**
-
-| Task | Expected structure or answer | Scoring rubric |
-|---|---|---|
-| Drag asset cards into Current Assets and Non-current Assets buckets | Current: Cash, Accounts receivable, Inventory. Non-current: Land, Machinery, Patent, Long-term investment. | 12 pts: 6 correct placement, 3 completeness, 2 logic, 1 clarity |
-| Build the asset-side hierarchy | Assets → Current Assets → Cash / AR / Inventory; Assets → Non-current Assets → PPE / Intangibles / Long-term investments; show both subtotals and total assets | 13 pts: 5 correct hierarchy, 4 correct subtotals, 3 completeness, 1 clarity |
-
-**Final decision prompt**
-
-A CFO needs to improve short-term liquidity this quarter with the least strategic disruption. Which action should come first?  
-A Collect receivables faster and reduce slow-moving inventory  
-B Buy additional machinery  
-C Increase dividends  
-D Prepay long-term lease liabilities  
-
-**Scoring.** 15 pts for A with liquidity rationale; 9 pts for A without rationale; 3 pts for D if the answer notes obligation reduction but ignores timing; 0 otherwise.
-
-**AI coach snippets**
-
-| Hint | Warning | Correct feedback | Incorrect feedback |
-|---|---|---|---|
-| “Only include items expected to turn into cash or be used within the operating cycle.” | “You have likely included a non-current item inside a current subtotal.” | “Correct: the subtotal includes only near-term operating assets.” | “Re-check classification before summing; the math may be right on the wrong items.” |
-
-### Balance Sheet Classification
-
-**Learning objective.** Understand how assets, liabilities and equity connect through the balance-sheet identity and financing maturity.  
-**Case context.** A light manufacturing business is financing new machinery and must present a clean opening balance sheet.
-
-**MCQs**
-
-| Question | Options | Correct answer | Short rationale |
-|---|---|---|---|
-| The balance-sheet identity is | A Revenue = Cost + Profit; B Assets = Liabilities + Equity; C Cash = Profit + Debt; D Assets = Equity – Liabilities | B | This is the core accounting identity. |
-| Trade payables are normally classified as | A Asset; B Revenue; C Liability; D Equity | C | Payables are obligations owed to suppliers. |
-| Retained earnings belong to | A Current liabilities; B Equity; C Revenue; D Inventory | B | Retained earnings accumulate profits kept in the business. |
-| If assets are ₹125,000 and liabilities are ₹80,000, equity is | A ₹45,000; B ₹80,000; C ₹125,000; D ₹205,000 | A | Equity is the residual after liabilities are deducted from assets. |
-| A 3-year term loan is usually a | A Current asset; B Current liability; C Non-current liability; D Equity reserve | C | The maturity is beyond the short-term current period. |
-
-**Quantus tasks**
-
-| Task | Inputs | Expected formula | Expected answer | Accepted formula variants | Difficulty |
-|---|---|---|---|---|---|
-| Calculate total assets | Cash ₹10,000; Inventory ₹20,000; PPE ₹70,000 | `cash + inventory + ppe` | ₹100,000 | `=SUM(B2:B4)`; `=cash+inventory+ppe` | Easy |
-| Calculate total liabilities | Accounts payable ₹15,000; Short-term debt ₹10,000; Long-term debt ₹35,000 | `ap + std + ltd` | ₹60,000 | `=SUM(B6:B8)`; `=ap+std+ltd` | Easy |
-| Calculate equity | Assets ₹100,000; Liabilities ₹60,000 | `assets - liabilities` | ₹40,000 | `=B5-B9`; `=assets-liabilities` | Easy |
-
-**Canvas tasks**
-
-| Task | Expected structure or answer | Scoring rubric |
-|---|---|---|
-| Sort accounts into Assets, Liabilities and Equity | Assets: Cash, Inventory, PPE. Liabilities: AP, ST debt, LT debt. Equity: Share capital, Retained earnings. | 12 pts: 6 correct sorting, 3 completeness, 2 logic, 1 clarity |
-| Build financing maturity map | Assets matched against current liabilities, non-current liabilities and equity; long-lived machinery should not be funded mainly with short-term sources | 13 pts: 5 correct maturity logic, 4 correct categories, 3 recommendation logic, 1 clarity |
-
-**Final decision prompt**
-
-The company wants to buy machinery that will be used for five years while preserving its current ratio. Which financing choice is strongest?  
-A Short-term debt  
-B Long-term debt or equity  
-C Record the machinery directly as an expense  
-D Put the machinery under inventory  
-
-**Scoring.** 15 pts for B with maturity-matching rationale; 9 pts for B without rationale; 3 pts for A if liquidity trade-off is at least recognised; 0 otherwise.
-
-**AI coach snippets**
-
-| Hint | Warning | Correct feedback | Incorrect feedback |
-|---|---|---|---|
-| “Ask which side of the equation each line item belongs to.” | “A long-lived asset funded by short-term debt can create liquidity strain.” | “Correct: you preserved the balance-sheet identity and matched financing to asset life.” | “The category may be wrong even if the arithmetic balances.” |
-
-### Income Statement Flow
-
-**Learning objective.** Trace how revenue flows through COGS, operating expenses, interest and tax to net income.  
-**Case context.** A regional packaged-food company is explaining why profit has changed despite higher sales.
-
-**MCQs**
-
-| Question | Options | Correct answer | Short rationale |
-|---|---|---|---|
-| Gross profit equals | A Revenue – COGS; B Revenue – Tax; C EBITDA – Interest; D Cash – Debt | A | Gross profit captures revenue after direct production costs. |
-| EBITDA excludes | A Revenue; B COGS; C Depreciation and amortisation; D SG&A | C | EBITDA is before D&A, interest and tax. |
-| Interest expense appears below | A Revenue only; B EBIT; C Inventory; D Gross margin | B | Interest is financing cost, not an operating cost. |
-| If revenue rises but gross profit barely changes, the most likely issue is | A Higher COGS pressure; B Lower cash only; C Higher equity; D Lower asset turnover automatically | A | Weak gross profit conversion typically signals direct-cost pressure. |
-| The final profit line after tax is | A EBITDA; B EBIT; C Net income; D Gross profit | C | Net income is the bottom line after interest and tax. |
-
-**Quantus tasks**
-
-| Task | Inputs | Expected formula | Expected answer | Accepted formula variants | Difficulty |
-|---|---|---|---|---|---|
-| Calculate gross profit and gross margin | Revenue ₹250; COGS ₹150 | `revenue - cogs`; `(revenue - cogs) / revenue` | ₹100; 40% | `=B2-B3`; `=(B2-B3)/B2`; `=1-B3/B2` | Easy |
-| Calculate EBITDA | Gross profit ₹100; Operating expenses ₹55 | `gross_profit - opex` | ₹45 | `=B4-B5`; `=gross_profit-opex` | Medium |
-| Calculate net income | EBITDA ₹45; D&A ₹10; Interest ₹5; Tax ₹8 | `ebitda - da - interest - tax` | ₹22 | `=B6-B7-B8-B9`; `=ebitda-da-interest-tax` | Medium |
-
-**Canvas tasks**
-
-| Task | Expected structure or answer | Scoring rubric |
-|---|---|---|
-| Arrange the income-statement flow | Revenue → COGS → Gross Profit → Operating Expenses → EBITDA → D&A → EBIT → Interest → Profit Before Tax → Tax → Net Income | 12 pts: 6 correct order, 3 completeness, 2 logic, 1 clarity |
-| Build a diagnostic bridge for falling net income | Revenue, direct costs, opex, D&A, interest, tax; show where margin compression occurs and which line should be investigated first | 13 pts: 5 correct bridge structure, 4 identification of likely driver, 3 prioritisation, 1 clarity |
-
-**Final decision prompt**
-
-Revenue grew 10%, gross profit grew 8%, but EBITDA fell 5%. What should management review first?  
-A Lower tax rate assumptions  
-B SG&A and operating leverage  
-C Share count  
-D Historical depreciation policy only  
-
-**Scoring.** 15 pts for B with operating-cost rationale; 9 pts for B without rationale; 3 pts for D if the answer at least notes below-EBIT effects; 0 otherwise.
-
-**AI coach snippets**
-
-| Hint | Warning | Correct feedback | Incorrect feedback |
-|---|---|---|---|
-| “Move line by line from top to bottom before jumping to the answer.” | “You may be mixing operating cost with financing cost.” | “Correct: you tracked the statement in the right sequence.” | “Revisit which costs belong above and below EBITDA.” |
-
-### Margin Analysis
-
-**Learning objective.** Calculate gross, EBITDA and net margins and interpret where margin pressure sits.  
-**Case context.** A restaurant chain is defending a pricing campaign while profitability weakens.
-
-**MCQs**
-
-| Question | Options | Correct answer | Short rationale |
-|---|---|---|---|
-| Gross margin is | A Gross profit / Revenue; B Net income / Revenue; C EBITDA / Assets; D Revenue / COGS | A | Gross margin measures direct profitability against revenue. |
-| EBITDA margin shows | A Operating profitability before D&A, interest and tax; B Total assets used; C Only free cash flow; D Market share | A | It isolates operating performance before non-cash and financing effects. |
-| Net margin should use which denominator? | A Revenue; B COGS; C Equity; D Debt | A | Margin ratios are typically profit divided by revenue. |
-| If gross margin is stable but EBITDA margin falls, the likely problem is | A SG&A or overhead creep; B Inventory revaluation only; C Lower tax rate; D Higher share capital | A | Stable gross profit with weaker EBITDA points to operating expense pressure. |
-| Higher fixed costs typically make margins | A Less sensitive to volume; B More sensitive to volume; C Equal to gross profit; D Immune to pricing | B | Operating leverage increases sensitivity to changes in sales. |
-
-**Quantus tasks**
-
-| Task | Inputs | Expected formula | Expected answer | Accepted formula variants | Difficulty |
-|---|---|---|---|---|---|
-| Calculate gross margin | Revenue ₹240; COGS ₹144 | `(revenue - cogs) / revenue` | 40% | `=(B2-B3)/B2`; `=1-B3/B2` | Easy |
-| Calculate EBITDA margin | Revenue ₹240; COGS ₹144; Opex ₹48 | `(revenue - cogs - opex) / revenue` | 20% | `=(B2-B3-B4)/B2`; `=ebitda/revenue` | Medium |
-| Calculate net margin | Revenue ₹240; COGS ₹144; Opex ₹48; D&A ₹12; Interest ₹6; Tax ₹9 | `(revenue - cogs - opex - da - interest - tax) / revenue` | 8.75% | `=(B2-B3-B4-B5-B6-B7)/B2`; `=net_income/revenue` | Medium |
-
-**Canvas tasks**
-
-| Task | Expected structure or answer | Scoring rubric |
-|---|---|---|
-| Build a margin waterfall | Revenue → Gross Profit → EBITDA → EBIT → Net Income, with margin % at each level | 12 pts: 5 correct levels, 3 correct percentages, 3 completeness, 1 clarity |
-| Classify levers by margin type | Gross margin levers: price, product mix, COGS. EBITDA margin levers: SG&A, fulfilment, staff cost. Net margin levers: interest, tax, exceptional items. | 13 pts: 5 correct classification, 4 logic, 3 prioritisation, 1 clarity |
-
-**Final decision prompt**
-
-A chain’s gross margin is flat but EBITDA margin has fallen from 20% to 14%. Which lever should be tested first?  
-A Renegotiate direct food inputs only  
-B Audit overhead and store-level operating cost growth  
-C Change depreciation method  
-D Increase debt to fund expansion  
-
-**Scoring.** 15 pts for B with margin-layer rationale; 9 pts for B without rationale; 4 pts for A if the answer notes it may help but misses the evidence; 0 otherwise.
-
-**AI coach snippets**
-
-| Hint | Warning | Correct feedback | Incorrect feedback |
-|---|---|---|---|
-| “Ask whether the pressure sits above or below gross profit.” | “You may be dividing by the wrong base; margins use revenue.” | “Correct: you isolated the margin layer where the problem actually sits.” | “Recompute the margin and then decide which cost bucket it implicates.” |
-
-### Cash Flow Basics
-
-**Learning objective.** Reconcile profit to cash and distinguish operating, investing and financing flows.  
-**Case context.** A wholesaler is profitable on paper but short of cash at month end.
-
-**MCQs**
-
-| Question | Options | Correct answer | Short rationale |
-|---|---|---|---|
-| Profit and cash differ mainly because | A Accounting is accrual-based; B Profit is always cash; C Cash ignores sales; D Assets are liabilities | A | Revenue and expenses can be recognised before cash moves. |
-| An increase in receivables usually | A Improves CFO; B Reduces CFO; C Has no effect; D Creates financing cash flow | B | More receivables mean cash has not yet been collected. |
-| Depreciation is added back in CFO because it is | A Revenue; B A non-cash expense; C A liability; D A dividend | B | It reduces profit without consuming period cash. |
-| Buying machinery is usually classified as | A CFO; B CFI; C CFF; D Equity only | B | Capex is an investing cash outflow. |
-| Paying dividends is usually classified as | A CFO; B CFI; C CFF; D Tax only | C | Dividends are financing cash outflows. |
-
-**Quantus tasks**
-
-| Task | Inputs | Expected formula | Expected answer | Accepted formula variants | Difficulty |
-|---|---|---|---|---|---|
-| Calculate CFO | Net income ₹18; Depreciation ₹6; Increase in AR ₹5; Increase in inventory ₹4; Increase in payables ₹3 | `ni + dep - delta_ar - delta_inv + delta_ap` | ₹18 | `=B2+B3-B4-B5+B6`; `=ni+dep-delta_ar-delta_inv+delta_ap` | Medium |
-| Calculate net change in cash | CFO ₹18; Capex ₹12; Debt raised ₹5; Dividends paid ₹4 | `cfo - capex + debt_raised - dividends` | ₹7 | `=B8-B9+B10-B11`; `=cfo-capex+debt_raised-dividends` | Medium |
-| Calculate ending cash | Opening cash ₹11; Net change in cash ₹7 | `opening_cash + net_change_cash` | ₹18 | `=B13+B14`; `=opening_cash+net_change_cash` | Easy |
-
-**Canvas tasks**
-
-| Task | Expected structure or answer | Scoring rubric |
-|---|---|---|
-| Build a cash bridge from net income to CFO | Net income → + non-cash items → – receivables growth → – inventory growth → + payables growth → CFO | 12 pts: 6 correct bridge, 3 sign accuracy, 2 completeness, 1 clarity |
-| Sort cash items into CFO, CFI and CFF | CFO: NI, depreciation, WC changes. CFI: capex. CFF: debt raised, dividends. | 13 pts: 6 correct sorting, 3 sign logic, 3 completeness, 1 clarity |
-
-**Final decision prompt**
-
-The business is profitable but CFO is negative because receivables and inventory have risen sharply. What is the best first response?  
-A Improve collections and tighten inventory planning  
-B Borrow more and ignore working capital  
-C Increase dividends to reassure investors  
-D Accelerate capex to absorb the excess cash  
-
-**Scoring.** 15 pts for A with working-capital rationale; 9 pts for A without rationale; 2 pts for B if liquidity need is recognised but root cause is missed; 0 otherwise.
-
-**AI coach snippets**
-
-| Hint | Warning | Correct feedback | Incorrect feedback |
-|---|---|---|---|
-| “Receivables up means cash down.” | “You may have treated an investing or financing item as operating cash flow.” | “Correct: the statement now explains why profit and cash diverge.” | “Re-check the sign on working-capital movements before changing the answer.” |
-
-### Working Capital
-
-**Learning objective.** Compute NWC, current ratio and cash-conversion-cycle thinking.  
-**Case context.** An electronics wholesaler wants to release cash without hurting service levels.
-
-**MCQs**
-
-| Question | Options | Correct answer | Short rationale |
-|---|---|---|---|
-| Net working capital equals | A Current assets – current liabilities; B Revenue – COGS; C Debt + equity; D Profit / revenue | A | NWC captures short-term operating liquidity. |
-| Current ratio equals | A Current assets / current liabilities; B Revenue / assets; C Assets / equity; D Cash / debt | A | It is the classic short-term coverage ratio. |
-| DSO mainly measures | A Collection speed; B Inventory quality; C Interest burden; D Tax efficiency | A | It tracks how long customers take to pay. |
-| Higher DPO generally means | A More supplier financing; B Faster collections; C Lower debt; D Higher capital expenditure | A | Paying later temporarily preserves cash. |
-| Cash conversion cycle equals | A DIO + DSO – DPO; B DIO – DSO + DPO; C DSO / DPO; D Revenue / NWC | A | It measures days cash is tied up in operations. |
-
-**Quantus tasks**
-
-| Task | Inputs | Expected formula | Expected answer | Accepted formula variants | Difficulty |
-|---|---|---|---|---|---|
-| Calculate current assets, current liabilities and NWC | Cash ₹8; AR ₹22; Inventory ₹30; AP ₹18; ST debt ₹12 | `(cash+ar+inventory) - (ap+st_debt)` | CA ₹60; CL ₹30; NWC ₹30 | `=SUM(B2:B4)-SUM(B5:B6)`; `=(cash+ar+inventory)-(ap+st_debt)` | Easy |
-| Calculate current ratio | Current assets ₹60; Current liabilities ₹30 | `current_assets / current_liabilities` | 2.0x | `=B8/B9`; `=current_assets/current_liabilities` | Easy |
-| Calculate cash conversion cycle | DIO 50; DSO 35; DPO 30 | `dio + dso - dpo` | 55 days | `=B11+B12-B13`; `=dio+dso-dpo` | Medium |
-
-**Canvas tasks**
-
-| Task | Expected structure or answer | Scoring rubric |
-|---|---|---|
-| Map the working-capital cycle | Buy inventory → sell stock → create receivable → collect cash → pay suppliers | 12 pts: 6 correct flow, 3 completeness, 2 timing logic, 1 clarity |
-| Prioritise levers by bucket | AR: tighter collections / terms; Inventory: slower movers, forecasting; AP: supplier terms without harming supply | 13 pts: 5 correct buckets, 4 prioritisation, 3 realism, 1 clarity |
-
-**Final decision prompt**
-
-Inventory days are the largest driver of a 55-day cash-conversion cycle. What should management do first?  
-A Rationalise slow-moving stock and improve demand planning  
-B Pay suppliers faster  
-C Increase list price immediately  
-D Stop collecting receivables aggressively  
-
-**Scoring.** 15 pts for A with inventory-cash rationale; 9 pts for A without rationale; 2 pts for C if margin is mentioned but cash blockage is missed; 0 otherwise.
-
-**AI coach snippets**
-
-| Hint | Warning | Correct feedback | Incorrect feedback |
-|---|---|---|---|
-| “Begin with the bucket where cash sits longest.” | “You may have improved one metric while worsening another.” | “Correct: you linked operating days to cash release.” | “The answer should release trapped cash, not simply move liabilities around.” |
-
-### Break-even Analysis
-
-**Learning objective.** Use contribution margin to calculate break-even and target-profit volume.  
-**Case context.** A packaged-snacks brand is deciding whether a new SKU is commercially viable.
-
-**MCQs**
-
-| Question | Options | Correct answer | Short rationale |
-|---|---|---|---|
-| Contribution per unit equals | A Price – Variable cost; B Revenue – Fixed cost; C Profit / Units; D Price – Tax | A | Contribution is what remains to cover fixed costs and profit. |
-| Break-even units equal | A Fixed cost / Contribution per unit; B Revenue / Fixed cost; C Price / Variable cost; D Contribution / Fixed cost | A | This is the core break-even formula. |
-| If fixed cost rises and all else stays constant, break-even volume will | A Fall; B Stay the same; C Rise; D Become negative | C | More fixed cost requires more unit contribution to cover it. |
-| If selling price rises and variable cost is unchanged, contribution per unit will | A Fall; B Rise; C Stay flat; D Equal fixed cost | B | The gap between price and variable cost widens. |
-| Units needed for a target profit equal | A Fixed cost / price; B (Fixed cost + target profit) / contribution; C Revenue / contribution; D Profit / revenue | B | Target profit is added to fixed cost before dividing by contribution. |
-
-**Quantus tasks**
-
-| Task | Inputs | Expected formula | Expected answer | Accepted formula variants | Difficulty |
-|---|---|---|---|---|---|
-| Calculate contribution per unit | Selling price ₹120; Variable cost ₹70 | `price - variable_cost` | ₹50 | `=B2-B3`; `=price-variable_cost` | Easy |
-| Calculate break-even units | Fixed cost ₹1,000,000; Contribution ₹50 | `fixed_cost / contribution` | 20,000 units | `=B5/B6`; `=fixed_cost/contribution` | Medium |
-| Calculate units required for target profit | Fixed cost ₹1,000,000; Target profit ₹500,000; Contribution ₹50 | `(fixed_cost + target_profit) / contribution` | 30,000 units | `=(B8+B9)/B10`; `=(fixed_cost+target_profit)/contribution` | Medium |
-
-**Canvas tasks**
-
-| Task | Expected structure or answer | Scoring rubric |
-|---|---|---|
-| Build the break-even driver tree | Price → variable cost → contribution → fixed cost → break-even volume | 12 pts: 6 correct driver order, 3 completeness, 2 logic, 1 clarity |
-| Build a sensitivity canvas | Show how price, variable cost and fixed cost changes move break-even volume; prioritise most controllable lever | 13 pts: 5 correct sensitivity logic, 4 prioritisation, 3 realism, 1 clarity |
-
-**Final decision prompt**
-
-Expected first-year demand is 18,000 units and break-even volume is 20,000 units. What is the best recommendation?  
-A Launch unchanged  
-B Delay launch unless price, variable cost or fixed cost improves  
-C Double marketing fixed cost immediately  
-D Reduce price further to stimulate demand without reworking costs  
-
-**Scoring.** 15 pts for B with economics rationale; 9 pts for B without rationale; 2 pts for A if strategic reasons are at least noted; 0 otherwise.
-
-**AI coach snippets**
-
-| Hint | Warning | Correct feedback | Incorrect feedback |
-|---|---|---|---|
-| “Contribution covers fixed cost before it creates profit.” | “You may have used price instead of contribution in the break-even formula.” | “Correct: the economics now show the launch hurdle clearly.” | “Recalculate contribution first; break-even volume depends on that step.” |
-
-### Market Sizing
-
-**Learning objective.** Build a top-down market-sizing funnel and sanity-check the assumptions.  
-**Case context.** A pharma team is estimating the annual addressable market for a new diabetes therapy in India.
-
-**MCQs**
-
-| Question | Options | Correct answer | Short rationale |
-|---|---|---|---|
-| Which sequence is strongest for drug market sizing? | A Population → Prevalence → Diagnosis → Treatment → Price; B Price → Population → Margin; C Revenue → EBITDA → Market share; D Population → Tax → Profit | A | The market is narrowed step by step before pricing. |
-| Prevalence means | A Share of the population with the disease; B Price per prescription; C Company market share; D Tax rate | A | It describes disease burden in the population. |
-| If diagnosis rate improves, the addressable market will usually | A Fall; B Rise; C Stay unchanged; D Become irrelevant | B | More patients are identified and move into the treatable funnel. |
-| A good top-down estimate should be checked against | A At least one external sanity check; B Nothing if the formula worked; C Only last year’s profit; D Only fixed costs | A | Market-sizing is assumption-heavy and needs triangulation. |
-| Which term is often confused with prevalence but measures new cases over a period? | A Incidence; B Margin; C Dilution; D Leverage | A | Incidence is new-case flow, not total enrolled burden. |
-
-**Quantus tasks**
-
-| Task | Inputs | Expected formula | Expected answer | Accepted formula variants | Difficulty |
-|---|---|---|---|---|---|
-| Calculate diagnosed patients | Population 60,000,000; Prevalence 3%; Diagnosis rate 65% | `population * prevalence * diagnosis_rate` | 1,170,000 patients | `=population*prevalence*diagnosis_rate`; `=B2*B3*B4` | Medium |
-| Calculate treated patients | Diagnosed patients 1,170,000; Treatment rate 55% | `diagnosed_patients * treatment_rate` | 643,500 patients | `=diagnosed_patients*treatment_rate`; `=B6*B7` | Medium |
-| Calculate annual market size | Treated patients 643,500; Annual price ₹30,000 | `treated_patients * annual_price` | ₹19,305,000,000 or ₹1,930.5 crore | `=treated_patients*annual_price`; `=B9*B10` | Hard |
-
-**Canvas tasks**
-
-| Task | Expected structure or answer | Scoring rubric |
-|---|---|---|
-| Build the market-sizing tree | Population → Prevalence → Diagnosed patients → Treated patients → Price per patient → Total market | 12 pts: 6 correct funnel, 3 completeness, 2 logic, 1 clarity |
-| Build an assumption-evidence canvas | Epidemiology, diagnosis, treatment, pricing and adoption assumptions; attach each to an evidence type and flag the weakest assumption | 13 pts: 5 correct assumption buckets, 4 evidence logic, 3 prioritisation, 1 clarity |
-
-**Final decision prompt**
-
-The estimated market is large, but diagnosis rates are low and physician awareness is uneven. What launch approach is strongest?  
-A National rollout immediately  
-B Pilot in target metros and invest in physician education  
-C Halt the project because diagnosis is not 100%  
-D Slash price before validating demand drivers  
-
-**Scoring.** 15 pts for B with funnel rationale; 9 pts for B without rationale; 3 pts for D if access is mentioned but evidence order is wrong; 0 otherwise.
-
-**AI coach snippets**
-
-| Hint | Warning | Correct feedback | Incorrect feedback |
-|---|---|---|---|
-| “Narrow the patient funnel before multiplying by price.” | “You may have priced the total population instead of the treated population.” | “Correct: you sized the market in the right order.” | “Check whether diagnosis and treatment were applied before pricing.” |
-
-### Pricing Strategy
-
-**Learning objective.** Choose an appropriate pricing method and quantify floor, ceiling and launch economics.  
-**Case context.** A diagnostics company is launching a new point-of-care kit into a market with existing alternatives.
-
-**MCQs**
-
-| Question | Options | Correct answer | Short rationale |
-|---|---|---|---|
-| If the objective is to recover cost and earn a target margin, the default method is | A Cost-plus; B Randomised testing; C Equity dilution; D Tax-based pricing | A | Cost-plus starts from the cost base and adds target return. |
-| If a product delivers measurable economic value to the buyer, the most relevant anchor is | A Willingness to pay; B Historical debt; C Share capital; D Depreciation only | A | Value-based pricing links price to customer benefit. |
-| In a crowded market with similar alternatives, the most informative external reference is | A Competitor price band; B Tax rate; C Dividend yield; D Book value | A | Reference pricing matters when differentiation is limited. |
-| Pricing below variable cost is generally | A Sustainable in the long run; B Unsustainable unless used very deliberately; C Best practice; D A pure balance-sheet choice | B | It destroys contribution unless part of a clearly bounded strategy. |
-| Net realised price can be lower than list price because of | A Discounts and rebates; B Depreciation only; C Share repurchases; D Goodwill | A | The realised price is affected by commercial deductions. |
-
-**Quantus tasks**
-
-| Task | Inputs | Expected formula | Expected answer | Accepted formula variants | Difficulty |
-|---|---|---|---|---|---|
-| Calculate cost-plus floor price | Variable cost ₹180; Fixed cost allocation ₹60; Target markup 25% | `(variable_cost + fixed_cost_alloc) * 1.25` | ₹300 | `=(B2+B3)*1.25`; `=(variable_cost+fixed_cost_alloc)*(1+markup)` | Medium |
-| Calculate value-based ceiling | Customer savings per test ₹900; Share of value captured 40% | `savings_per_test * capture_rate` | ₹360 | `=B5*B6`; `=savings_per_test*capture_rate` | Medium |
-| Calculate break-even units at proposed launch price | Launch price ₹320; Variable cost ₹180; Fixed cost ₹1,120,000 | `fixed_cost / (launch_price - variable_cost)` | 8,000 units | `=B9/(B7-B8)`; `=fixed_cost/(launch_price-variable_cost)` | Medium |
-
-**Canvas tasks**
-
-| Task | Expected structure or answer | Scoring rubric |
-|---|---|---|
-| Build the pricing-method decision map | Objective → product type → market context → best method: cost-plus / competitor-based / value-based / hybrid | 12 pts: 5 correct method logic, 3 contextual fit, 3 completeness, 1 clarity |
-| Build a realised-price waterfall | List price → channel discount → rebate/promotions → net realised price; note margin implications | 13 pts: 5 correct waterfall, 4 economic logic, 3 completeness, 1 clarity |
-
-**Final decision prompt**
-
-The price floor is ₹300, the value-based ceiling is ₹360, and competitors cluster around ₹300–₹330. What is the strongest launch price?  
-A ₹280  
-B ₹320  
-C ₹380  
-D ₹450  
-
-**Scoring.** 15 pts for B with range logic; 9 pts for B without rationale; 4 pts for C if premium differentiation is argued but competitive fit is missed; 0 otherwise.
-
-**AI coach snippets**
-
-| Hint | Warning | Correct feedback | Incorrect feedback |
-|---|---|---|---|
-| “Find the floor, then the ceiling, then check market fit.” | “You may have chosen a price that is below contribution viability or above the evidence-based ceiling.” | “Correct: the chosen price clears the floor and stays defensible in-market.” | “Revisit whether your answer sits between viable cost recovery and customer value.” |
-
-### Profitability Diagnosis
-
-**Learning objective.** Structure a profitability case, quantify the gap, and prioritise the highest-leverage driver.  
-**Case context.** A quick-commerce platform’s revenue is up, but profit has fallen sharply.
-
-**MCQs**
-
-| Question | Options | Correct answer | Short rationale |
-|---|---|---|---|
-| In a profitability case, the first split is usually | A Revenue and cost; B Website and office; C Tax and logo; D Debt and equity | A | This is the cleanest starting issue tree. |
-| Revenue can often be decomposed as | A Price × Volume; B Assets × Liabilities; C Debt × Tax; D Profit × Equity | A | That decomposition exposes key commercial drivers. |
-| If profit is down only in one region, you should first clarify | A Scope by region and product; B Office rent only; C Share capital; D Dividend yield | A | Scope-setting prevents solving the wrong problem. |
-| If order volume is rising but profit is falling, one likely issue is | A Worse unit economics; B Better cash position automatically; C Lower liabilities; D Higher goodwill | A | More volume does not help if contribution per order is weak. |
-| A strong recommendation should prioritise | A High-impact, controllable drivers; B The most fashionable idea; C Only long-term acquisitions; D Only tax planning | A | Good case answers are specific and implementable. |
-
-**Quantus tasks**
-
-| Task | Inputs | Expected formula | Expected answer | Accepted formula variants | Difficulty |
-|---|---|---|---|---|---|
-| Calculate last-year profit | Revenue ₹220; Delivery cost ₹90; Marketing ₹40; Overhead ₹55 | `revenue - delivery - marketing - overhead` | ₹35 | `=B2-B3-B4-B5`; `=revenue-delivery-marketing-overhead` | Easy |
-| Calculate this-year profit | Revenue ₹260; Delivery cost ₹120; Marketing ₹55; Overhead ₹65 | `revenue - delivery - marketing - overhead` | ₹20 | `=B7-B8-B9-B10`; `=revenue-delivery-marketing-overhead` | Easy |
-| Calculate the profit gap to close | Target profit ₹35; Current profit ₹20 | `target_profit - current_profit` | ₹15 | `=B12-B13`; `=target_profit-current_profit` | Easy |
-
-**Canvas tasks**
-
-| Task | Expected structure or answer | Scoring rubric |
-|---|---|---|
-| Build the profitability issue tree | Profit → Revenue / Cost; Revenue → price / orders / take rate / mix; Cost → delivery / marketing / refunds / support / dark-store overhead | 12 pts: 6 correct branches, 3 MECE quality, 2 prioritisation, 1 clarity |
-| Build a high-impact prioritisation grid | Prioritise delivery density and promotion efficiency before slower, lower-control levers | 13 pts: 5 correct prioritisation, 4 impact-control logic, 3 realism, 1 clarity |
-
-**Final decision prompt**
-
-Revenue increased, but delivery cost and promotions increased faster. Which lever should management test first?  
-A Expand to more low-density zones  
-B Optimise delivery density and promotion targeting  
-C Increase discounts across the board  
-D Ignore cost and focus only on top-line growth  
-
-**Scoring.** 15 pts for B with unit-economics rationale; 9 pts for B without rationale; 2 pts for D if growth logic is at least acknowledged; 0 otherwise.
-
-**AI coach snippets**
-
-| Hint | Warning | Correct feedback | Incorrect feedback |
-|---|---|---|---|
-| “Revenue up and profit down usually means costs rose faster.” | “You may have jumped to solutions before finding the largest gap.” | “Correct: you focused on the biggest controllable driver.” | “Rebuild the tree and locate where the ₹15 gap is actually coming from.” |
-
-### Market Entry
-
-**Learning objective.** Evaluate market attractiveness, capability, economics and entry mode.  
-**Case context.** A pharma company is considering entry into India with a diabetes therapy.
-
-**MCQs**
-
-| Question | Options | Correct answer | Short rationale |
-|---|---|---|---|
-| The first question in a market-entry case should be | A What is the objective of entry?; B What is the logo colour?; C What is the office lease?; D What is last year’s dividend? | A | Entry only makes sense relative to the client’s objective. |
-| A robust market-entry analysis should cover | A Market, competition, company and economics; B Only market size; C Only product naming; D Only HR headcount | A | Entry must be attractive, feasible and viable. |
-| If the market is attractive but the firm lacks distribution capability, a common answer is | A JV or licensing; B Ignore the gap; C Double fixed cost immediately; D Reduce tax rate assumptions | A | The capability gap often changes the entry mode. |
-| Regulatory barriers mainly affect | A Feasibility and timing; B Brand colour; C Share count only; D Gross margin denominator | A | They shape how and when entry can happen. |
-| A final recommendation should include | A Enter/not enter, mode, risks and next steps; B Only a yes/no; C Only market size; D Only competitor names | A | Client recommendations need to be action-oriented. |
-
-**Quantus tasks**
-
-| Task | Inputs | Expected formula | Expected answer | Accepted formula variants | Difficulty |
-|---|---|---|---|---|---|
-| Calculate projected revenue | Market size ₹2,400 crore; Target market share 3% | `market_size * market_share` | ₹72 crore | `=B2*B3`; `=market_size*market_share` | Medium |
-| Calculate gross profit | Revenue ₹72 crore; Gross margin 65% | `revenue * gross_margin` | ₹46.8 crore | `=B5*B6`; `=revenue*gross_margin` | Medium |
-| Calculate break-even market share | Launch cost ₹30 crore; Annual SG&A ₹10 crore; Market size ₹2,400 crore; Gross margin 65% | `(launch_cost + sga) / (market_size * gross_margin)` | 2.56% | `=(B8+B9)/(B10*B11)`; `=(total_fixed_cost)/(market_size*gross_margin)` | Hard |
-
-**Canvas tasks**
-
-| Task | Expected structure or answer | Scoring rubric |
-|---|---|---|
-| Build the market-entry canvas | Customer, competition, company capability, product fit, economics, risks | 12 pts: 5 correct buckets, 3 completeness, 3 logic, 1 clarity |
-| Build the entry-mode matrix | Greenfield / acquisition / JV / licensing mapped against speed, control, capability gap and risk | 13 pts: 5 correct comparison logic, 4 mode recommendation, 3 realism, 1 clarity |
-
-**Final decision prompt**
-
-The market looks attractive and the economics are acceptable, but the company lacks local distribution and reimbursement depth. What is the best recommendation?  
-A Greenfield national rollout  
-B Enter through JV or licensing with a local partner  
-C Exit the category immediately  
-D Price aggressively and ignore capability gaps  
-
-**Scoring.** 15 pts for B with capability-gap rationale; 9 pts for B without rationale; 3 pts for A if control advantages are argued but feasibility is missed; 0 otherwise.
-
-**AI coach snippets**
-
-| Hint | Warning | Correct feedback | Incorrect feedback |
-|---|---|---|---|
-| “Entry mode should follow capability gaps, not only market size.” | “You may have assumed the company can build distribution instantly.” | “Correct: the recommendation matches both the opportunity and the capability constraint.” | “The market may be attractive, but feasibility still matters.” |
-
-### Biotech Investment Case
-
-**Learning objective.** Integrate epidemiology, market share, peak sales, EBITDA, probability adjustment and investment judgement.  
-**Case context.** An investment fund is assessing whether to back an oncology asset before late-stage development.
-
-**MCQs**
-
-| Question | Options | Correct answer | Short rationale |
-|---|---|---|---|
-| Peak sales means | A Maximum expected annual revenue at maturity; B First-year launch revenue; C Cash on hand; D Net debt | A | Peak sales is the steady-state annual sales potential. |
-| A Phase II asset should usually be valued | A As fully approved revenue with no adjustment; B With risk adjustment for success probability; C Only on book value; D Only on tax assets | B | Development-stage assets carry substantial execution risk. |
-| If a competitor’s efficacy is stronger than expected, your market-share assumption should generally | A Rise; B Fall; C Stay unchanged automatically; D Be replaced by debt | B | Stronger competition can limit uptake. |
-| Clinical-trial data matters because it affects | A Probability of success and differentiation; B Office lease cost; C Share count only; D Working capital only | A | Trial quality changes both risk and commercial potential. |
-| If preliminary efficacy looks good but pricing access is uncertain, the next diligence step should be | A Ignore pricing; B Analyse access and reimbursement assumptions; C Increase the valuation multiple automatically; D Remove all risk adjustment | B | Commercial value depends on both efficacy and access. |
-
-**Quantus tasks**
-
-| Task | Inputs | Expected formula | Expected answer | Accepted formula variants | Difficulty |
-|---|---|---|---|---|---|
-| Calculate peak sales | Population 80,000,000; Prevalence 0.4%; Diagnosis 70%; Eligibility 30%; Uptake 50%; Share 12%; Price ₹600,000 | `population*prevalence*diagnosis*eligibility*uptake*share*price` | ₹2,419,200,000 or ₹241.92 crore | `=population*prevalence*diagnosis*eligibility*uptake*share*price`; `=company_patients*price` | Hard |
-| Calculate EBITDA | Peak sales ₹241.92 crore; EBITDA margin 38% | `peak_sales * ebitda_margin` | ₹91.93 crore | `=B5*B6`; `=peak_sales*ebitda_margin` | Hard |
-| Calculate risk-adjusted enterprise value | EBITDA ₹91.93 crore; EV/EBITDA multiple 9x; Success probability 55% | `ebitda * multiple * probability` | ₹455.05 crore | `=B8*B9*B10`; `=(peak_sales*margin*multiple)*probability` | Hard |
-
-**Canvas tasks**
-
-| Task | Expected structure or answer | Scoring rubric |
-|---|---|---|
-| Build the investment diligence map | Market, patient funnel, competition, clinical data, regulatory path, pricing/access, manufacturing, valuation | 12 pts: 5 correct buckets, 3 completeness, 3 logic, 1 clarity |
-| Build a red-flag and mitigant board | Red flags: efficacy uncertainty, safety, access, manufacturing, competitors. Mitigants: milestone tranches, data readout gates, pricing diligence, partner support | 13 pts: 5 correct red flags, 4 mitigant quality, 3 prioritisation, 1 clarity |
-
-**Final decision prompt**
-
-The risk-adjusted enterprise value is about ₹455 crore and the proposed entry valuation is ₹300 crore, but the asset remains clinically risky. What is the strongest recommendation?  
-A Invest the full amount immediately with no milestones  
-B Invest in stages with milestone-based tranches after deeper diligence  
-C Reject the deal purely because it is not yet approved  
-D Ignore risk adjustment and value on peak sales alone  
-
-**Scoring.** 15 pts for B with valuation-plus-risk rationale; 9 pts for B without rationale; 4 pts for C if risk is noted but value evidence is ignored; 0 otherwise.
-
-**AI coach snippets**
-
-| Hint | Warning | Correct feedback | Incorrect feedback |
-|---|---|---|---|
-| “Do not jump from peak sales straight to decision; pass through margin, multiple and probability.” | “You may have valued a development asset like a de-risked approved product.” | “Correct: the recommendation respects both upside and execution risk.” | “Revisit probability adjustment and compare risk-adjusted value to entry price.” |
-
-## Scoring architecture and skill tags
-
-The deck and concept note make skill scoring a core product requirement, while Quantus’s public surface shows progress tracking, difficulty levels and answer validation. The scoring model should therefore be granular enough to diagnose skills, but simple enough for learners to understand at a glance. The cleanest production model is a 100-point module score with item-level tags rolling into module, category and workspace mastery. fileciteturn0file0 fileciteturn0file2 citeturn1view0turn1view2
-
-### Recommended module scoring model
-
-| Component | Weight | Notes |
-|---|---:|---|
-| MCQ | 20 | 5 questions × 4 points |
-| Quantus | 40 | 3 tasks, weighted by difficulty |
-| Canvas | 25 | 2 tasks, rubric-scored |
-| Final decision | 15 | Recommendation + rationale + risk/next step |
-| Total | 100 | Mastery score |
-
-### Pass and progression rules
-
-| Outcome | Rule | Platform action |
-|---|---|---|
-| Distinction | 85+ overall and at least 60 in each workspace family | Unlock next advanced module immediately |
-| Pass | 70–84 overall and at least 50 in each workspace family | Progress normally |
-| Borderline | 60–69 overall or any workspace family below 50 | Auto-assign one remedial practice and allow reattempt |
-| Reattempt required | Below 60 overall or any workspace family below 40 | Lock next stage until one reattempt is completed |
-
-### Independence score
-
-Mastery should not be heavily penalised for using help. Instead, maintain a separate **Independence Score** out of 100 using hint count, failed checks and elapsed time bands. This avoids punishing learners for seeking guidance while still preserving useful coaching signals.
-
-| Signal | Suggested effect on Independence Score |
-|---|---:|
-| No hints used | +10 |
-| 1–2 hints used | +5 |
-| 3+ hints used | 0 |
-| 0–1 failed checks per task | +10 |
-| 2–3 failed checks per task | +5 |
-| 4+ failed checks per task | 0 |
-
-### Skill-tag taxonomy
-
-| Skill family | Example tags |
-|---|---|
-| Statement mechanics | current-assets, liabilities, equity, revenue, EBITDA, balance-sheet-identity |
-| Performance analysis | gross-margin, net-margin, cash-flow, NWC, current-ratio, CCC |
-| Commercial modelling | break-even, market-sizing, pricing-floor, pricing-ceiling |
-| Case structuring | clarifying-questions, issue-tree, prioritisation, market-entry, due-diligence |
-| Biotech diligence | epidemiology-funnel, clinical-risk, pricing-access, peak-sales, risk-adjusted-valuation |
-
-### Developer-ready counts
-
-| Asset type | Count per module | Total count |
-|---|---:|---:|
-| Lesson object | 1 | 12 |
-| MCQ items | 5 | 60 |
-| Quantus items | 3 | 36 |
-| Canvas items | 2 | 24 |
-| Final decision items | 1 | 12 |
-| AI bundle objects | 1 | 12 |
-| Importable objects | 13 | 156 |
-| Graded activities | 11 | 132 |
-
-## Content schema and developer import examples
-
-The exact authoring API, formula-parser service, content database and CMS workflow are unspecified. The schema below therefore assumes JSON import into a seed pipeline or internal content CMS, with runtime validators reading `acceptedFormulaVariants`, numeric tolerances and skill tags.
-
-### Recommended JSON schema
-
-```json
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "ShankhContentItem",
-  "type": "object",
-  "required": [
-    "id",
-    "version",
-    "locale",
-    "moduleSlug",
-    "workspace",
-    "itemType",
-    "difficulty",
-    "learningObjective",
-    "caseContext",
-    "prompt",
-    "skillTags",
-    "scoring",
-    "aiCoach"
-  ],
-  "properties": {
-    "id": { "type": "string" },
-    "version": { "type": "string" },
-    "locale": { "type": "string", "enum": ["en-GB"] },
-    "moduleSlug": { "type": "string" },
-    "workspace": { "type": "string", "enum": ["mcq", "quantus", "canvas", "decision", "lesson", "aiPack"] },
-    "itemType": { "type": "string", "enum": ["mcq", "spreadsheet", "canvas", "decision", "lesson", "aiPack"] },
-    "difficulty": { "type": "string", "enum": ["easy", "medium", "hard"] },
-    "learningObjective": { "type": "string" },
-    "caseContext": { "type": "string" },
-    "prompt": { "type": "string" },
-    "instructions": { "type": "string" },
-    "skillTags": {
-      "type": "array",
-      "items": { "type": "string" }
-    },
-    "scoring": {
-      "type": "object",
-      "required": ["maxScore"],
-      "properties": {
-        "maxScore": { "type": "number" },
-        "partialCredit": { "type": "boolean" },
-        "rubric": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "required": ["criterion", "points"],
-            "properties": {
-              "criterion": { "type": "string" },
-              "points": { "type": "number" }
-            }
-          }
-        }
-      }
-    },
-    "aiCoach": {
-      "type": "object",
-      "required": ["hint", "warning", "correct", "incorrect"],
-      "properties": {
-        "hint": { "type": "string" },
-        "warning": { "type": "string" },
-        "correct": { "type": "string" },
-        "incorrect": { "type": "string" }
-      }
-    },
-    "options": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["key", "text"],
-        "properties": {
-          "key": { "type": "string" },
-          "text": { "type": "string" }
-        }
-      }
-    },
-    "correctOptionKey": { "type": "string" },
-    "rationale": { "type": "string" },
-    "inputs": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["key", "label", "value"],
-        "properties": {
-          "key": { "type": "string" },
-          "label": { "type": "string" },
-          "value": { "type": ["number", "string"] },
-          "unit": { "type": "string" }
-        }
-      }
-    },
-    "expectedAnswers": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["key", "value"],
-        "properties": {
-          "key": { "type": "string" },
-          "value": { "type": "number" },
-          "unit": { "type": "string" }
-        }
-      }
-    },
-    "acceptedFormulaVariants": {
-      "type": "object",
-      "additionalProperties": {
-        "type": "array",
-        "items": { "type": "string" }
-      }
-    },
-    "tolerance": {
-      "type": "object",
-      "properties": {
-        "absolute": { "type": "number" },
-        "relative": { "type": "number" }
-      }
-    },
-    "analytics": {
-      "type": "object",
-      "properties": {
-        "eventKey": { "type": "string" },
-        "stage": { "type": "string" }
-      }
-    }
-  },
-  "allOf": [
-    {
-      "if": { "properties": { "itemType": { "const": "mcq" } } },
-      "then": {
-        "required": ["options", "correctOptionKey", "rationale"]
-      }
-    },
-    {
-      "if": { "properties": { "itemType": { "const": "spreadsheet" } } },
-      "then": {
-        "required": ["inputs", "expectedAnswers", "acceptedFormulaVariants", "tolerance"]
-      }
-    }
-  ]
-}
-```
-
-### Fully populated example JSON item for MCQ
-
-```json
-{
-  "id": "mcq-profitability-diagnosis-clarify-scope-01",
-  "version": "1.0.0",
-  "locale": "en-GB",
-  "moduleSlug": "profitability-diagnosis",
-  "workspace": "mcq",
-  "itemType": "mcq",
-  "difficulty": "medium",
-  "learningObjective": "Identify the right first clarifying question in a profitability case.",
-  "caseContext": "A quick-commerce client says profits declined in the South over the past two quarters.",
-  "prompt": "What should you ask first?",
-  "instructions": "Choose the strongest clarifying question before building your issue tree.",
-  "skillTags": [
-    "clarifying-questions",
-    "profitability",
-    "scope-definition",
-    "case-structuring"
-  ],
-  "options": [
-    {
-      "key": "A",
-      "text": "What colour is the delivery app interface in the South?"
-    },
-    {
-      "key": "B",
-      "text": "Is the decline company-specific or industry-wide, and which products or cities are affected?"
-    },
-    {
-      "key": "C",
-      "text": "How many employees work at head office?"
-    },
-    {
-      "key": "D",
-      "text": "What is the founder’s ownership percentage?"
-    }
-  ],
-  "correctOptionKey": "B",
-  "rationale": "A strong case start clarifies scope, time frame, affected segment and whether the issue is internal or market-wide.",
-  "scoring": {
-    "maxScore": 4,
-    "partialCredit": false,
-    "rubric": [
-      {
-        "criterion": "Correct option selected",
-        "points": 4
-      }
-    ]
-  },
-  "aiCoach": {
-    "hint": "Before solving, define scope, metric and whether the problem is company-specific.",
-    "warning": "You may be jumping into low-value facts instead of clarifying the case boundary.",
-    "correct": "Correct: you clarified scope before building the tree.",
-    "incorrect": "Start with the boundary of the problem, not a peripheral fact."
-  },
-  "analytics": {
-    "eventKey": "mcq_answered",
-    "stage": "warmup"
-  }
-}
-```
-
-### Fully populated example JSON item for spreadsheet case
-
-```json
-{
-  "id": "quantus-market-sizing-diabetes-annual-market-03",
-  "version": "1.0.0",
-  "locale": "en-GB",
-  "moduleSlug": "market-sizing",
-  "workspace": "quantus",
-  "itemType": "spreadsheet",
-  "difficulty": "hard",
-  "learningObjective": "Calculate diagnosed patients, treated patients and annual market size from a top-down patient funnel.",
-  "caseContext": "A pharma team is estimating the annual market size for a new diabetes therapy in India.",
-  "prompt": "Complete the highlighted cells for diagnosed patients, treated patients and annual market size.",
-  "instructions": "Use the patient funnel in order: population, prevalence, diagnosis, treatment, price.",
-  "skillTags": [
-    "market-sizing",
-    "epidemiology-funnel",
-    "quantitative-reasoning",
-    "pricing"
-  ],
-  "inputs": [
-    {
-      "key": "population",
-      "label": "Population",
-      "value": 60000000,
-      "unit": "people"
-    },
-    {
-      "key": "prevalence",
-      "label": "Disease prevalence",
-      "value": 0.03,
-      "unit": "ratio"
-    },
-    {
-      "key": "diagnosis_rate",
-      "label": "Diagnosis rate",
-      "value": 0.65,
-      "unit": "ratio"
-    },
-    {
-      "key": "treatment_rate",
-      "label": "Treatment rate",
-      "value": 0.55,
-      "unit": "ratio"
-    },
-    {
-      "key": "annual_price",
-      "label": "Annual price per treated patient",
-      "value": 30000,
-      "unit": "INR"
-    }
-  ],
-  "expectedAnswers": [
-    {
-      "key": "diagnosed_patients",
-      "value": 1170000,
-      "unit": "people"
-    },
-    {
-      "key": "treated_patients",
-      "value": 643500,
-      "unit": "people"
-    },
-    {
-      "key": "annual_market_size",
-      "value": 19305000000,
-      "unit": "INR"
-    }
-  ],
-  "acceptedFormulaVariants": {
-    "diagnosed_patients": [
-      "=population*prevalence*diagnosis_rate",
-      "=B2*B3*B4"
-    ],
-    "treated_patients": [
-      "=diagnosed_patients*treatment_rate",
-      "=B6*B7"
-    ],
-    "annual_market_size": [
-      "=treated_patients*annual_price",
-      "=B9*B10"
-    ]
-  },
-  "tolerance": {
-    "absolute": 1,
-    "relative": 0.0001
-  },
-  "scoring": {
-    "maxScore": 17,
-    "partialCredit": true,
-    "rubric": [
-      {
-        "criterion": "Diagnosed patients correct",
-        "points": 5
-      },
-      {
-        "criterion": "Treated patients correct",
-        "points": 5
-      },
-      {
-        "criterion": "Annual market size correct",
-        "points": 5
-      },
-      {
-        "criterion": "Correct formula logic used",
-        "points": 2
-      }
-    ]
-  },
-  "aiCoach": {
-    "hint": "Do not multiply by price until you have reduced the population to treated patients.",
-    "warning": "Your market looks too large; check whether you priced the full population or the treated population.",
-    "correct": "Correct: you applied the patient funnel in the right order and sized the annual market correctly.",
-    "incorrect": "Revisit the patient funnel. Diagnosis and treatment rates must be applied before pricing."
-  },
-  "analytics": {
-    "eventKey": "quantus_check_answer",
-    "stage": "core"
-  }
-}
-```
-
-## UI and UX integration with AI coach and analytics
-
-The screenshots you supplied and the public Quantus practice pages point to the right operating pattern: instructions and context must stay visible; the centre panel must stay clean; and the right rail must support both guidance and answer review. Quantus also explicitly markets limited or unlimited “Check Answer”, detailed hints, formula guidance and progress tracking, which makes those patterns safe to borrow for Shankh’s spreadsheet workspace. The Shankh blueprint extends that logic by adding a richer intelligence panel with decision audit, KPI radar, learning hints and scenario forks. citeturn11view0turn11view1turn1view2 fileciteturn0file0
-
-### Recommended right-rail design
-
-| Tab | Purpose | When shown | What it contains |
-|---|---|---|---|
-| AI Coach | Live guidance during work | Default during attempt | Hint, warning, concept recap, next-step suggestion |
-| Result | Validation after check | After user clicks Check Answer | Correct/incorrect status, targeted explanation, missed cells or branches |
-| Skill View | Reflection and motivation | After activity completion | Skill tags affected, score delta, recommended next module |
-
-### Hint timing
-
-| Trigger | Recommendation |
-|---|---|
-| 60–90 seconds of inactivity on an active task | Show one low-intrusion hint nudge |
-| First failed spreadsheet check | Show one conceptual hint only |
-| Second failed spreadsheet check | Show one procedural hint plus highlight the impacted section |
-| Third failed spreadsheet check | Show precise explanation, but do not auto-fill the answer |
-| Canvas submission below threshold | Show branch-level critique and one “best next edit” instruction |
-| Final decision wrong | Show strongest missing consideration, not the full answer immediately |
-
-### Check-answer flow
-
-| Step | Behaviour |
-|---|---|
-| User clicks Check Answer | Freeze current task state, validate formulas and outputs, log attempt |
-| If correct | Show concise success message, unlock next task, update score immediately |
-| If partially correct | Highlight the affected cells or branches, keep the correct parts locked in place, show one targeted explanation |
-| If incorrect | Keep the user in the task, open AI Coach warning, allow retry without losing correct prior work |
-| After activity completion | Show score contribution, skill tags updated, and recommendation for the next module |
-
-### Analytics events
-
-| Event name | Fired when | Minimum payload |
-|---|---|---|
-| `module_viewed` | Module page loads | moduleSlug, stage, sessionId |
-| `lesson_completed` | User scrolls through or acknowledges lesson | moduleSlug, dwellSeconds |
-| `mcq_answered` | MCQ submitted | itemId, selectedOption, correct, elapsedSeconds |
-| `quantus_check_answer` | Spreadsheet validation clicked | itemId, attemptNo, correct, hintCount, elapsedSeconds |
-| `quantus_formula_flagged` | Formula logic wrong though value may match | itemId, formulaType, attemptNo |
-| `canvas_submitted` | Canvas scoring triggered | itemId, score, hintCount, elapsedSeconds |
-| `decision_submitted` | Final recommendation submitted | itemId, selectedOption, score |
-| `ai_hint_opened` | User manually opens hint | itemId, hintTier |
-| `ai_feedback_shown` | Coach message displayed automatically | itemId, feedbackType |
-| `module_completed` | Entire module completed | moduleSlug, totalScore, independenceScore, passStatus |
-
-### Sample concise AI feedback for common wrong answers
-
-| Wrong-answer pattern | Sample feedback |
-|---|---|
-| Non-current item included in current subtotal | “You have included a long-lived asset in a current subtotal. Re-check classification before summing.” |
-| Margin denominator wrong | “Margin should be divided by revenue, not by cost.” |
-| Receivables sign wrong in CFO | “Receivables up means cash down. Reverse the sign on the working-capital adjustment.” |
-| Market sizing order wrong | “Do not apply price until you have reduced the population to treated patients.” |
-| Entry mode too aggressive | “Your recommendation assumes capabilities the firm does not yet have. Revisit mode selection.” |
-| Valuation skips profitability conversion | “You applied the multiple to revenue directly. Convert to EBITDA or the chosen profit base first.” |
-
-## Implementation roadmap and source prioritisation
-
-The deck’s Phase 1 roadmap targets the spreadsheet engine, decision canvas, simulation lab, core content library, AI feedback and dashboards inside a 0–3 month foundations window. The six-week plan below is therefore a realistic first production slice: enough to ship the first 12 modules, the scoring and telemetry layer, and the content-import pipeline without pretending to complete the entire library ambition at once. fileciteturn0file0 fileciteturn0file2
-
-### MVP priorities
-
-| Priority | What must ship | Why |
-|---|---|---|
-| Must-have | 12 lesson shells, 60 MCQs, 36 Quantus items, 24 Canvas items, 12 final decisions | Without this, the app is a prototype rather than a curriculum |
-| Must-have | Formula validator, Canvas rubric scorer, score roll-up engine | These are the grading spine |
-| Must-have | AI coach scaffolding with hint/warning/correct/incorrect templates | The right rail is a core product promise |
-| Should-have | Progress dashboard and skill graph | Needed for retention and learner orientation |
-| Should-have | Content import tooling and QA harness | Required for repeatable authoring |
-| Nice-to-have | Streaks, badges, social proof and leaderboards | Helpful, but not essential for first release |
-
-### Six-week roadmap
-
-```mermaid
-gantt
-    title Six-week MVP roadmap
-    dateFormat  YYYY-MM-DD
-    axisFormat  %d %b
-
-    section Product design
-    IA, scoring model, schema finalisation      :a1, 2026-05-06, 5d
-    Page template and interaction spec          :a2, after a1, 3d
-
-    section Content system
-    Import pipeline and authoring template      :b1, 2026-05-12, 5d
-    Validation rules and tolerance handling     :b2, after b1, 4d
-
-    section Content production
-    Modules 1-4 authored and QAed               :c1, 2026-05-18, 6d
-    Modules 5-8 authored and QAed               :c2, after c1, 6d
-    Modules 9-12 authored and QAed              :c3, after c2, 6d
-
-    section Core product
-    Quantus validator and scoring engine        :d1, 2026-05-18, 10d
-    Canvas scorer and semantic mapping rules    :d2, 2026-05-25, 8d
-    AI coach templates and event instrumentation:d3, 2026-06-01, 8d
-
-    section Launch readiness
-    Internal pilot, bug fixes, tuning           :e1, 2026-06-09, 5d
-    Release candidate                           :milestone, e2, 2026-06-16, 0d
-```
-
-This cadence fits the foundations phase described in the Shankh roadmap, while keeping content authoring and product-engine work in parallel rather than sequential. fileciteturn0file0
-
-### Recommended source stack
-
-The source stack should be prioritised by task, not by convenience. Quantus public docs and indexed practice pages should be the first reference for signed-in shell behaviour, hint semantics, worksheet structure and check-answer flow. The casebook should be the first reference for MCQ judgement logic, Canvas frameworks, and the structure of integrated case prompts. Pharma and biotech content should be built from official data components, not from a single market-report number. That means epidemiology, clinical development, approvals, pricing and public-company evidence must be assembled from separate primary sources. citeturn12view0turn1view1turn1view2turn11view0turn11view1 fileciteturn0file1
-
-### Task-to-source priority table
-
-| Content need | First source to use | Second source to use | Notes |
-|---|---|---|---|
-| UI shell, check-answer, hint wording | Quantus public routes and practice pages | Your own screenshots | Use for interaction semantics, not copywriting verbatim |
-| Clarifying questions and case trees | The casebook | Internal content guidelines | Best source for Canvas and judgement design |
-| Disease burden and prevalence | Official epidemiology datasets | Official country health datasets | Use for numerator assumptions |
-| Population denominators | Official population datasets | Official census or UN population series | Use for denominator assumptions |
-| Clinical pipeline and trial activity | Official trial registries | Official India regulator lists | Use for pipeline, phase and evidence maturity |
-| Drug approvals and labels | Official regulators | Official India regulator | Use for status, label and timing |
-| India price ceilings | Official price authority | Official reimbursement references where relevant | Use for local market examples |
-| Public-company comparables | Official filings | Company investor relations pages | Use for valuation tasks and examples |
-
-For named source families, prioritise the public corpus from Quantus for workflow patterns; the casebook from the uploaded IIM source for structuring logic; and official external sources for pharma and biotech data, including entity["organization","World Health Organization","public health agency"] for health indicators, entity["organization","World Bank","development bank"] for population denominators, ClinicalTrials.gov for registered trial activity, entity["organization","U.S. Food and Drug Administration","drug regulator"] for Drugs@FDA and the Orange Book, entity["organization","Central Drugs Standard Control Organisation","india drug regulator"] for India approvals and clinical-trial lists, entity["organization","National Pharmaceutical Pricing Authority","drug price regulator india"] for India price ceilings and medicine-price checks, entity["organization","Centers for Medicare & Medicaid Services","us health payer agency"] for spending dashboards, and entity["organization","U.S. Securities and Exchange Commission","market regulator"] for free public access to public-company filings. citeturn2search0turn8view1turn8view3turn8view2turn4search0turn8view6turn3search1turn3search3turn9search13
-
-The practical implication is important: for Shankh’s pharma modules, “market data” should rarely be a single purchased headline number. The more defensible workflow is to synthesise a market estimate from official population, disease-burden, trial-status, approval, pricing and public-company evidence, then teach the learner exactly how that synthesis was constructed. That approach is consistent with the product concept’s long-term ambition to evolve into AI-assisted due diligence rather than remain a quiz platform. fileciteturn0file2 citeturn2search0turn8view1turn8view2turn8view3turn3search1turn9search13
+================================================================================
+SHANKH LEARNING PLATFORM — COMPLETE TECHNICAL REFERENCE
+Final Architecture · All 39 Tables · Every Field · Full System Design
+================================================================================
+
+CORRECTED 5-LEVEL HIERARCHY
+================================================================================
+
+Level 1: MODULE        — Finance | Strategy | Operations
+Level 2: TOPIC         — Core Concepts | DCF | Trading Comps | LBO | M&A | Simulation
+Level 3: SUBTOPIC      — EV vs Equity | Capital Structure | Share Count & Dilution | ...
+Level 4: LESSON        — Lesson 1 · Definition (Easy) | Lesson 2 · Bridge (Medium) | ...
+Level 5: ACTIVITY      — MCQ | Canvas | Quantus (1–3 per lesson)
+
+NOTES:
+- "Module" and "Learning Plan" are the SAME concept. No separate learning_plans table.
+- "Topic" is what was previously called "Learning Plan" (e.g. Core Concepts, DCF).
+- "Subtopic" is what was previously called "Topic" (e.g. EV vs Equity Value).
+- Lesson contains 1–3 activity types based on difficulty.
+- The old learning_plans table is REMOVED entirely.
+
+HIERARCHY EXAMPLE:
+  Module: Finance
+    Topic: Core Concepts
+      Subtopic: Enterprise Value vs Equity Value (type: topic)
+        Lesson 1 [Easy]   → MCQ only
+        Lesson 2 [Medium] → MCQ + Canvas
+        Lesson 3 [Hard]   → MCQ + Canvas + Quantus
+      Subtopic: Capital Structure (type: topic)
+        Lesson 1 / 2 / 3
+      Subtopic: MCQ Set (type: drill)
+        Lesson 1 [Easy]   → MCQ only
+      Subtopic: Quant Lab (type: drill)
+        Lesson 1 [Hard]   → Quantus only
+    Topic: DCF Valuation
+      Subtopic: Free Cash Flow
+      Subtopic: Discount Rates
+      Subtopic: Terminal Value
+    Topic: Trading Comps
+    Topic: Transaction Comps
+    Topic: LBO
+    Topic: M&A
+    Topic: Simulation
+
+
+================================================================================
+SECTION 1: ENUM TYPES
+================================================================================
+
+activity_type   ENUM — 'mcq' | 'quantus' | 'canvas'
+  Used on: lesson_activities, activity_hints, canvas_activities.subtype,
+           user_activity_drafts, skill_bundle_items, user_mcq_sessions,
+           user_canvas_sessions, user_quantus_sessions
+
+cell_type       ENUM — 'editable' | 'formula' | 'prefilled' | 'empty' | 'header'
+  Used on: quantus_cells.cell_type
+  editable  = yellow cell; user inputs value
+  formula   = auto-computed from formula_expression (client-side); not user-editable
+  prefilled = historical/given data (shown in blue); read-only
+  empty     = blank cell with no interaction
+  header    = row/column label cell (not a data cell)
+
+cell_style      ENUM — 'default' | 'yellow' | 'blue' | 'bold' | 'gray' | 'green'
+  Used on: quantus_cells.style_class (visual rendering hint)
+
+difficulty      ENUM — 'easy' | 'medium' | 'hard'
+  Used on: lessons.difficulty
+  easy   = MCQ only (1 activity)
+  medium = MCQ + Canvas (2 activities)
+  hard   = MCQ + Canvas + Quantus (3 activities)
+  Custom lessons may override the default activity count via lesson_activities.
+
+lesson_status   ENUM — 'not_started' | 'in_progress' | 'completed'
+  Used on: user_lesson_progress.status
+
+subtopic_type   ENUM — 'topic' | 'drill'
+  Used on: subtopics.type
+  topic = standard learning subtopic with lessons
+  drill = standalone practice set (MCQ drill, Quant lab)
+
+canvas_subtype  ENUM — 'drag_drop' | 'freeform'
+  Used on: canvas_activities.subtype
+  drag_drop = cards dragged into labelled zones; auto-scored
+  freeform  = blank drawing canvas; user draws flowchart/diagram
+
+session_status  ENUM — 'active' | 'completed' | 'abandoned'
+  Used on: user_lesson_sessions.status
+
+
+================================================================================
+SECTION 2: CONTENT TABLES (Hierarchy)
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+TABLE: modules
+PURPOSE: Top-level subject areas. Level 1 of hierarchy. Also serves as the
+         "Learning Plan" — there is no separate learning_plans table.
+────────────────────────────────────────────────────────────────────────────────
+Column          Type                    Constraints         Description
+──────────────────────────────────────────────────────────────────────────────
+id              UUID                    PK, DEFAULT uuid()  Surrogate primary key
+slug            VARCHAR(50)             UNIQUE NOT NULL     URL-safe identifier: 'finance', 'strategy', 'operations'
+name            VARCHAR(100)            NOT NULL            Display name: 'Finance', 'Strategy', 'Operations'
+description     TEXT                                        Long-form description shown on module landing page
+accent_color    VARCHAR(20)             NOT NULL            Hex color for UI theming: '#0d6e6e'
+icon_key        VARCHAR(50)                                 Icon identifier for sidebar and cards
+order_index     INT                     NOT NULL DEFAULT 0  Sort order in sidebar and dashboard
+is_active       BOOLEAN                 NOT NULL DEFAULT TRUE Toggle visibility without deleting
+deleted_at      TIMESTAMPTZ                                 Soft-delete timestamp. NULL = active
+created_at      TIMESTAMPTZ             NOT NULL DEFAULT now()
+updated_at      TIMESTAMPTZ             NOT NULL DEFAULT now()
+
+INDEXES:
+  idx_modules_active ON modules(order_index) WHERE deleted_at IS NULL
+
+RELATIONSHIPS:
+  → topics (one-to-many): a module contains multiple topics
+  → user_module_progress (one-to-many): tracks per-user progress on this module
+  → topic_profession_tags (indirect via topics)
+
+────────────────────────────────────────────────────────────────────────────────
+TABLE: topics
+PURPOSE: Main subject areas within a module. Level 2 of hierarchy.
+         Examples: Core Concepts, DCF Valuation, Trading Comps, LBO, M&A.
+         Replaces the old "learning_plans" table.
+────────────────────────────────────────────────────────────────────────────────
+Column          Type                    Constraints         Description
+──────────────────────────────────────────────────────────────────────────────
+id              UUID                    PK, DEFAULT uuid()
+module_id       UUID                    NOT NULL FK→modules(id) CASCADE  Parent module
+name            VARCHAR(150)            NOT NULL            e.g. 'Core Concepts', 'DCF Valuation'
+subtitle        TEXT                                        Short descriptor: 'Foundation for valuation'
+description     TEXT                                        Detailed description for topic landing page
+tags            TEXT[]                  NOT NULL DEFAULT '{}'  Search/filter tags: ['LBO','Valuation']
+order_index     INT                     NOT NULL DEFAULT 0  Sort order within module
+is_active       BOOLEAN                 NOT NULL DEFAULT TRUE
+deleted_at      TIMESTAMPTZ                                 Soft-delete
+created_at      TIMESTAMPTZ             NOT NULL DEFAULT now()
+updated_at      TIMESTAMPTZ             NOT NULL DEFAULT now()
+
+INDEXES:
+  idx_topics_module ON topics(module_id, order_index) WHERE deleted_at IS NULL
+
+RELATIONSHIPS:
+  ← modules (many-to-one): belongs to one module
+  → subtopics (one-to-many): contains multiple subtopics
+  → user_topic_progress (one-to-many)
+  → topic_profession_tags (one-to-many)
+
+────────────────────────────────────────────────────────────────────────────────
+TABLE: subtopics
+PURPOSE: Named concept groups within a topic. Level 3 of hierarchy.
+         Examples: EV vs Equity Value, Capital Structure, Share Count & Dilution.
+         Each subtopic contains 1–N lessons ordered by difficulty.
+────────────────────────────────────────────────────────────────────────────────
+Column          Type                    Constraints         Description
+──────────────────────────────────────────────────────────────────────────────
+id              UUID                    PK, DEFAULT uuid()
+topic_id        UUID                    NOT NULL FK→topics(id) CASCADE   Parent topic
+name            VARCHAR(150)            NOT NULL            e.g. 'EV vs Equity Value', 'MCQ Set'
+description     TEXT                                        What this subtopic covers
+type            subtopic_type           NOT NULL DEFAULT 'topic'  'topic' or 'drill'
+thumbnail_url   TEXT                                        Optional card thumbnail image
+order_index     INT                     NOT NULL DEFAULT 0  Sort order within topic
+is_active       BOOLEAN                 NOT NULL DEFAULT TRUE
+deleted_at      TIMESTAMPTZ
+created_at      TIMESTAMPTZ             NOT NULL DEFAULT now()
+updated_at      TIMESTAMPTZ             NOT NULL DEFAULT now()
+
+INDEXES:
+  idx_subtopics_topic ON subtopics(topic_id, order_index) WHERE deleted_at IS NULL
+
+RELATIONSHIPS:
+  ← topics (many-to-one)
+  → lessons (one-to-many)
+  → user_subtopic_progress (one-to-many)
+
+────────────────────────────────────────────────────────────────────────────────
+TABLE: lessons
+PURPOSE: Individual learning units. Level 4 of hierarchy.
+         A lesson contains 1–3 activity types depending on difficulty.
+         Easy = MCQ only. Medium = MCQ + Canvas. Hard = MCQ + Canvas + Quantus.
+────────────────────────────────────────────────────────────────────────────────
+Column          Type                    Constraints         Description
+──────────────────────────────────────────────────────────────────────────────
+id              UUID                    PK, DEFAULT uuid()
+subtopic_id     UUID                    NOT NULL FK→subtopics(id) CASCADE  Parent subtopic
+name            VARCHAR(150)            NOT NULL            e.g. 'Lesson 1 · Definition'
+description     TEXT                                        One-line summary shown in lesson list
+difficulty      difficulty              NOT NULL DEFAULT 'easy'  easy|medium|hard
+order_index     INT                     NOT NULL DEFAULT 0  Sort within subtopic (1=Easy, 2=Medium, 3=Hard)
+estimated_mins  INT                                         Estimated completion time in minutes
+is_active       BOOLEAN                 NOT NULL DEFAULT TRUE
+deleted_at      TIMESTAMPTZ
+created_at      TIMESTAMPTZ             NOT NULL DEFAULT now()
+updated_at      TIMESTAMPTZ             NOT NULL DEFAULT now()
+
+INDEXES:
+  idx_lessons_subtopic ON lessons(subtopic_id, order_index) WHERE deleted_at IS NULL
+
+RELATIONSHIPS:
+  ← subtopics (many-to-one)
+  → lesson_activities (one-to-many): junction to activity types
+  → mcq_activities (one-to-one optional)
+  → canvas_activities (one-to-one optional)
+  → quantus_activities (one-to-one optional)
+  → user_lesson_progress (one-to-many)
+  → user_lesson_sessions (one-to-many)
+  → skill_bundle_items (one-to-many)
+
+────────────────────────────────────────────────────────────────────────────────
+TABLE: lesson_activities
+PURPOSE: Junction table defining which activity types a lesson contains.
+         Flexible: a lesson can have 1, 2, or all 3 activity types.
+         UNIQUE(lesson_id, activity_type) prevents duplicates.
+────────────────────────────────────────────────────────────────────────────────
+Column          Type                    Constraints         Description
+──────────────────────────────────────────────────────────────────────────────
+id              UUID                    PK, DEFAULT uuid()
+lesson_id       UUID                    NOT NULL FK→lessons(id) CASCADE
+activity_type   activity_type           NOT NULL            'mcq' | 'canvas' | 'quantus'
+order_index     INT                     NOT NULL DEFAULT 0  Tab display order in lesson UI
+
+CONSTRAINTS:
+  uq_lesson_act UNIQUE (lesson_id, activity_type)
+
+INDEXES:
+  idx_la_lesson ON lesson_activities(lesson_id)
+
+
+================================================================================
+SECTION 3: MCQ ACTIVITY TABLES
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+TABLE: mcq_activities
+PURPOSE: MCQ activity configuration for a lesson. One per lesson maximum.
+         Stores instructions, context (background reading), and links to questions.
+────────────────────────────────────────────────────────────────────────────────
+Column          Type                    Constraints         Description
+──────────────────────────────────────────────────────────────────────────────
+id              UUID                    PK, DEFAULT uuid()
+lesson_id       UUID                    NOT NULL UNIQUE FK→lessons(id) CASCADE  One MCQ per lesson
+title           VARCHAR(200)                                Activity title shown in UI tab
+instructions    TEXT                    NOT NULL            What the user must do (left panel)
+context         TEXT                                        Background reading (markdown, collapsible tab)
+created_at      TIMESTAMPTZ             NOT NULL DEFAULT now()
+updated_at      TIMESTAMPTZ             NOT NULL DEFAULT now()
+
+RELATIONSHIPS:
+  ← lessons (one-to-one)
+  → mcq_questions (one-to-many)
+  → activity_hints (one-to-many polymorphic)
+  → user_mcq_sessions (one-to-many)
+  → user_activity_drafts (one-to-many)
+
+────────────────────────────────────────────────────────────────────────────────
+TABLE: mcq_questions
+PURPOSE: Individual questions within an MCQ activity.
+         Each question has 2–4 options, exactly one of which is correct.
+────────────────────────────────────────────────────────────────────────────────
+Column          Type                    Constraints         Description
+──────────────────────────────────────────────────────────────────────────────
+id              UUID                    PK, DEFAULT uuid()
+activity_id     UUID                    NOT NULL FK→mcq_activities(id) CASCADE
+question_text   TEXT                    NOT NULL            The question text (supports markdown)
+explanation     TEXT                    NOT NULL            Explanation shown after user submits answer
+order_index     INT                     NOT NULL DEFAULT 0  Question sequence within activity
+created_at      TIMESTAMPTZ             NOT NULL DEFAULT now()
+
+INDEXES:
+  idx_mcq_questions_activity ON mcq_questions(activity_id, order_index)
+
+RELATIONSHIPS:
+  → mcq_options (one-to-many)
+  → user_mcq_answers (one-to-many)
+
+────────────────────────────────────────────────────────────────────────────────
+TABLE: mcq_options
+PURPOSE: Answer choices (A/B/C/D) for each MCQ question.
+         Exactly ONE option per question must have is_correct = TRUE.
+         This is enforced by a partial unique index at the database level.
+────────────────────────────────────────────────────────────────────────────────
+Column          Type                    Constraints         Description
+──────────────────────────────────────────────────────────────────────────────
+id              UUID                    PK, DEFAULT uuid()
+question_id     UUID                    NOT NULL FK→mcq_questions(id) CASCADE
+option_text     TEXT                    NOT NULL            Answer text shown to user
+is_correct      BOOLEAN                 NOT NULL DEFAULT FALSE  TRUE for the correct answer only
+order_index     INT                     NOT NULL DEFAULT 0  A=0, B=1, C=2, D=3
+created_at      TIMESTAMPTZ             NOT NULL DEFAULT now()
+
+CONSTRAINTS:
+  -- Exactly one correct option per question (DB-enforced):
+  uq_one_correct UNIQUE INDEX ON mcq_options(question_id) WHERE is_correct = TRUE
+
+INDEXES:
+  idx_mcq_options_question ON mcq_options(question_id, order_index)
+
+
+================================================================================
+SECTION 4: CANVAS ACTIVITY TABLES
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+TABLE: canvas_activities
+PURPOSE: Canvas activity configuration for a lesson. One per lesson maximum.
+         Supports two subtypes: drag_drop (zones + items) and freeform (drawing canvas).
+────────────────────────────────────────────────────────────────────────────────
+Column          Type                    Constraints         Description
+──────────────────────────────────────────────────────────────────────────────
+id              UUID                    PK, DEFAULT uuid()
+lesson_id       UUID                    NOT NULL UNIQUE FK→lessons(id) CASCADE
+title           VARCHAR(200)            NOT NULL
+instructions    TEXT                    NOT NULL            What user must do (left panel)
+context         TEXT                                        Background reading (markdown)
+subtype         canvas_subtype          NOT NULL DEFAULT 'drag_drop'  'drag_drop' | 'freeform'
+drawing_prompt  TEXT                                        For freeform only: what to draw
+                                                            e.g. 'Draw how revenue flows to net income'
+created_at      TIMESTAMPTZ             NOT NULL DEFAULT now()
+updated_at      TIMESTAMPTZ             NOT NULL DEFAULT now()
+
+RELATIONSHIPS:
+  ← lessons (one-to-one)
+  → canvas_zones (one-to-many, for drag_drop only)
+  → canvas_items (one-to-many, for drag_drop only)
+  → activity_hints (polymorphic)
+  → user_canvas_sessions (one-to-many)
+  → user_activity_drafts (one-to-many)
+
+────────────────────────────────────────────────────────────────────────────────
+TABLE: canvas_zones
+PURPOSE: Drop target zones in a drag-and-drop canvas activity.
+         e.g. "Add to EV", "Subtract from EV", "Balance Sheet", "Income Statement"
+────────────────────────────────────────────────────────────────────────────────
+Column          Type                    Constraints         Description
+──────────────────────────────────────────────────────────────────────────────
+id              UUID                    PK, DEFAULT uuid()
+activity_id     UUID                    NOT NULL FK→canvas_activities(id) CASCADE
+zone_key        VARCHAR(50)             NOT NULL            Machine key: 'add', 'sub', 'bs', 'is'
+label           VARCHAR(100)            NOT NULL            Display label: '+ Add to EV'
+description     TEXT                                        Optional tooltip/explanation for zone
+color           VARCHAR(20)             NOT NULL            Text/border color hex
+bg_color        VARCHAR(20)             NOT NULL            Zone background color hex
+order_index     INT                     NOT NULL DEFAULT 0
+
+CONSTRAINTS:
+  uq_zone_key UNIQUE (activity_id, zone_key)
+
+INDEXES:
+  idx_canvas_zones_activity ON canvas_zones(activity_id, order_index)
+
+────────────────────────────────────────────────────────────────────────────────
+TABLE: canvas_items
+PURPOSE: Draggable cards that users place into zones.
+         Each item has exactly one correct zone (the answer).
+────────────────────────────────────────────────────────────────────────────────
+Column          Type                    Constraints         Description
+──────────────────────────────────────────────────────────────────────────────
+id              UUID                    PK, DEFAULT uuid()
+activity_id     UUID                    NOT NULL FK→canvas_activities(id) CASCADE
+label           VARCHAR(150)            NOT NULL            Card text: 'Total Debt', 'Cash & Equivalents'
+description     TEXT                                        Optional tooltip on the card
+correct_zone_id UUID                    NOT NULL FK→canvas_zones(id)  The correct drop zone (answer)
+order_index     INT                     NOT NULL DEFAULT 0  Initial display order in card pool
+
+INDEXES:
+  idx_canvas_items_activity ON canvas_items(activity_id)
+
+
+================================================================================
+SECTION 5: QUANTUS ACTIVITY TABLES (Multi-Table Spreadsheet Engine)
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+TABLE: quantus_activities
+PURPOSE: Quantus activity configuration for a lesson. One per lesson maximum.
+         Anchor table for the full spreadsheet structure.
+────────────────────────────────────────────────────────────────────────────────
+Column          Type                    Constraints         Description
+──────────────────────────────────────────────────────────────────────────────
+id              UUID                    PK, DEFAULT uuid()
+lesson_id       UUID                    NOT NULL UNIQUE FK→lessons(id) CASCADE
+title           VARCHAR(200)            NOT NULL
+instructions    TEXT                    NOT NULL            What cells to fill; steps to follow
+context         TEXT                                        Background reading (markdown)
+reference_url   TEXT                                        Optional PDF or document link (shown as button)
+created_at      TIMESTAMPTZ             NOT NULL DEFAULT now()
+updated_at      TIMESTAMPTZ             NOT NULL DEFAULT now()
+
+────────────────────────────────────────────────────────────────────────────────
+TABLE: quantus_column_groups
+PURPOSE: Optional spanning header groups across multiple columns.
+         e.g. "Actual" spanning 2020–2022, "Forecast" spanning 2023–2025.
+         These render as merged header cells in the top row.
+────────────────────────────────────────────────────────────────────────────────
+Column          Type                    Constraints         Description
+──────────────────────────────────────────────────────────────────────────────
+id              UUID                    PK, DEFAULT uuid()
+activity_id     UUID                    NOT NULL FK→quantus_activities(id) CASCADE
+label           VARCHAR(100)            NOT NULL            Group header text: 'Actual', 'Forecast'
+col_start       INT                     NOT NULL            0-indexed first column this group covers
+col_end         INT                     NOT NULL            0-indexed last column (inclusive)
+bg_color        VARCHAR(20)             DEFAULT '#e8e8ff'   Header cell background color
+text_color      VARCHAR(20)             DEFAULT '#333333'   Header text color
+order_index     INT                     NOT NULL DEFAULT 0
+
+INDEXES:
+  idx_qcg_activity ON quantus_column_groups(activity_id, order_index)
+
+────────────────────────────────────────────────────────────────────────────────
+TABLE: quantus_columns
+PURPOSE: Individual column definitions. One row per year/period.
+         e.g. columns for 2020, 2021, 2022, 2023, 2024, 2025.
+────────────────────────────────────────────────────────────────────────────────
+Column          Type                    Constraints         Description
+──────────────────────────────────────────────────────────────────────────────
+id              UUID                    PK, DEFAULT uuid()
+activity_id     UUID                    NOT NULL FK→quantus_activities(id) CASCADE
+label           VARCHAR(50)             NOT NULL            Column header: '2020', 'FY23', 'Q1'
+col_index       INT                     NOT NULL            0-based ordering; determines cell position
+width_px        INT                     DEFAULT 100         Rendered column width in pixels
+
+CONSTRAINTS:
+  uq_col_index UNIQUE (activity_id, col_index)
+
+INDEXES:
+  idx_qcol_activity ON quantus_columns(activity_id, col_index)
+
+────────────────────────────────────────────────────────────────────────────────
+TABLE: quantus_sections
+PURPOSE: Named blocks within one Quantus activity.
+         e.g. "Assumptions & Drivers", "Income Statement", "Balance Sheet", "Cash Flow".
+         Each section gets a distinct colored header row.
+────────────────────────────────────────────────────────────────────────────────
+Column          Type                    Constraints         Description
+──────────────────────────────────────────────────────────────────────────────
+id              UUID                    PK, DEFAULT uuid()
+activity_id     UUID                    NOT NULL FK→quantus_activities(id) CASCADE
+label           VARCHAR(150)            NOT NULL            Section header text
+header_bg       VARCHAR(20)             DEFAULT '#6b5ce7'   Header row background color
+header_color    VARCHAR(20)             DEFAULT '#ffffff'   Header row text color
+order_index     INT                     NOT NULL DEFAULT 0
+
+INDEXES:
+  idx_qsec_activity ON quantus_sections(activity_id, order_index)
+
+────────────────────────────────────────────────────────────────────────────────
+TABLE: quantus_rows
+PURPOSE: Each labeled row within a section. Rows have a unique row_key within the
+         activity used to reference them in formula_expressions.
+────────────────────────────────────────────────────────────────────────────────
+Column          Type                    Constraints         Description
+──────────────────────────────────────────────────────────────────────────────
+id              UUID                    PK, DEFAULT uuid()
+section_id      UUID                    NOT NULL FK→quantus_sections(id) CASCADE
+label           VARCHAR(200)            NOT NULL            Row label shown on left: 'Revenue', 'COGS'
+row_key         VARCHAR(80)             NOT NULL            Short unique key: 'rev', 'cogs', 'gp'
+                                                            Used in formula: 'rev[3]-cogs[3]'
+is_separator    BOOLEAN                 NOT NULL DEFAULT FALSE  If TRUE: renders as horizontal rule, no cells
+is_bold         BOOLEAN                 NOT NULL DEFAULT FALSE  Bold label (subtotals, key metrics)
+is_italic       BOOLEAN                 NOT NULL DEFAULT FALSE  Italic label (sub-items)
+indent_level    INT                     NOT NULL DEFAULT 0   0=top, 1=indented, 2=sub-indented
+order_index     INT                     NOT NULL DEFAULT 0
+
+CONSTRAINTS:
+  uq_row_key UNIQUE (section_id, row_key)
+
+INDEXES:
+  idx_qrow_section ON quantus_rows(section_id, order_index)
+
+────────────────────────────────────────────────────────────────────────────────
+TABLE: quantus_cells
+PURPOSE: Individual cell at each (row × column) intersection.
+         Defines whether it's editable, formula-driven, pre-filled, or empty.
+         UNIQUE(row_id, column_id) ensures exactly one cell per intersection.
+────────────────────────────────────────────────────────────────────────────────
+Column              Type                    Constraints         Description
+──────────────────────────────────────────────────────────────────────────────
+id                  UUID                    PK, DEFAULT uuid()
+row_id              UUID                    NOT NULL FK→quantus_rows(id) CASCADE
+column_id           UUID                    NOT NULL FK→quantus_columns(id) CASCADE
+cell_type           cell_type               NOT NULL DEFAULT 'empty'  editable|formula|prefilled|empty|header
+default_value       NUMERIC(15,4)                               Numeric value for prefilled/editable default
+formula_expression  TEXT                                        Formula string: 'rev[3]*(1+sg[3])'
+                                                                Evaluated CLIENT-SIDE only (never server-eval)
+                                                                Syntax: row_key[col_index]
+style_class         cell_style              NOT NULL DEFAULT 'default'  yellow|blue|bold|gray|green
+prefix              VARCHAR(10)                                 Display prefix: '$', '%', '×'
+decimal_places      INT                     DEFAULT 2           Number of decimal places to display
+is_negative_red     BOOLEAN                 DEFAULT TRUE        Render negative values in red
+
+CONSTRAINTS:
+  uq_cell UNIQUE (row_id, column_id)
+
+INDEXES:
+  idx_qcell_row    ON quantus_cells(row_id)
+  idx_qcell_column ON quantus_cells(column_id)
+
+
+================================================================================
+SECTION 6: HINTS TABLE (Shared Across All Activity Types)
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+TABLE: activity_hints
+PURPOSE: Progressive hints for any activity. Revealed one at a time by the user
+         via the "Hint" button. Shown in the AI Coach panel on the right side.
+         Polymorphic: one table handles hints for MCQ, Canvas, AND Quantus activities.
+────────────────────────────────────────────────────────────────────────────────
+Column          Type                    Constraints         Description
+──────────────────────────────────────────────────────────────────────────────
+id              UUID                    PK, DEFAULT uuid()
+activity_type   activity_type           NOT NULL            'mcq' | 'canvas' | 'quantus'
+activity_id     UUID                    NOT NULL            Polymorphic FK to the relevant activity table
+hint_text       TEXT                    NOT NULL            Hint content (markdown supported)
+order_index     INT                     NOT NULL            Reveal order: 1 = first hint shown
+created_at      TIMESTAMPTZ             NOT NULL DEFAULT now()
+
+CONSTRAINTS:
+  uq_hint_order UNIQUE (activity_id, activity_type, order_index)
+
+INDEXES:
+  idx_hints_activity ON activity_hints(activity_id, activity_type, order_index)
+
+
+================================================================================
+SECTION 7: USERS TABLE
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+TABLE: users
+PURPOSE: User accounts. All progress, session, and draft tables reference user_id
+         from this table. Soft-delete preserves data integrity.
+────────────────────────────────────────────────────────────────────────────────
+Column          Type                    Constraints         Description
+──────────────────────────────────────────────────────────────────────────────
+id              UUID                    PK, DEFAULT uuid()
+email           VARCHAR(255)            UNIQUE NOT NULL     Login email
+name            VARCHAR(150)            NOT NULL            Display name
+avatar_url      TEXT                                        Profile picture URL
+plan_type       VARCHAR(30)             NOT NULL DEFAULT 'free'  'free' | 'pro' | 'enterprise'
+timezone        VARCHAR(60)                                 User's timezone (for streak calc)
+created_at      TIMESTAMPTZ             NOT NULL DEFAULT now()
+last_active_at  TIMESTAMPTZ                                 Updated on each API call
+deleted_at      TIMESTAMPTZ                                 Soft-delete
+
+INDEXES:
+  idx_users_email ON users(email) WHERE deleted_at IS NULL
+
+
+================================================================================
+SECTION 8: PROGRESS TABLES (4 Levels)
+================================================================================
+
+All progress tables share these design principles:
+  1. Cached — updated by cascade after every session submit
+  2. Per-user — every table has UNIQUE(user_id, content_id)
+  3. Scores use GREATEST() — never go backwards
+  4. Percentages stored as NUMERIC(5,2) — 0.00 to 100.00
+  5. Three metric scores per level: recall_strength, concept_accuracy, application_score
+
+────────────────────────────────────────────────────────────────────────────────
+TABLE: user_lesson_progress
+PURPOSE: Per-user, per-lesson progress cache. Most granular level.
+         Tracks completion %, best scores per activity type, and current status.
+────────────────────────────────────────────────────────────────────────────────
+Column                Type                    Constraints         Description
+──────────────────────────────────────────────────────────────────────────────
+id                    UUID                    PK, DEFAULT uuid()
+user_id               UUID                    NOT NULL FK→users(id) CASCADE
+lesson_id             UUID                    NOT NULL FK→lessons(id) CASCADE
+lesson_completion_pct NUMERIC(5,2)            NOT NULL DEFAULT 0   0–100
+                                                            = (activity types with ≥1 session / total assigned) × 100
+mcq_best_score        NUMERIC(5,2)                                NULL if no MCQ assigned or not attempted
+                                                            = best score_pct from user_mcq_sessions for this lesson
+canvas_best_score     NUMERIC(5,2)                                NULL if no canvas assigned or not attempted
+quantus_attempted     BOOLEAN                 NOT NULL DEFAULT FALSE  TRUE after first quantus session
+status                lesson_status           NOT NULL DEFAULT 'not_started'
+hints_used            INT                     NOT NULL DEFAULT 0   Total hints revealed across all activities
+started_at            TIMESTAMPTZ                                 Set on first activity attempt
+completed_at          TIMESTAMPTZ                                 Set when lesson_completion_pct = 100
+updated_at            TIMESTAMPTZ             NOT NULL DEFAULT now()
+
+CONSTRAINTS:
+  uq_ulp UNIQUE (user_id, lesson_id)
+
+INDEXES:
+  idx_ulp_user    ON user_lesson_progress(user_id)
+  idx_ulp_lesson  ON user_lesson_progress(lesson_id)
+  idx_ulp_status  ON user_lesson_progress(user_id, status)
+
+────────────────────────────────────────────────────────────────────────────────
+TABLE: user_subtopic_progress
+PURPOSE: Cached rollup per (user, subtopic). Computed as average of lessons.
+────────────────────────────────────────────────────────────────────────────────
+Column                    Type                    Constraints         Description
+──────────────────────────────────────────────────────────────────────────────
+id                        UUID                    PK, DEFAULT uuid()
+user_id                   UUID                    NOT NULL FK→users(id) CASCADE
+subtopic_id               UUID                    NOT NULL FK→subtopics(id) CASCADE
+subtopic_completion_pct   NUMERIC(5,2)            NOT NULL DEFAULT 0
+                                                    = AVG(lesson_completion_pct) for all lessons in subtopic
+recall_strength           NUMERIC(5,2)            NOT NULL DEFAULT 0
+                                                    = AVG(mcq_best_score) for lessons in subtopic
+concept_accuracy          NUMERIC(5,2)            NOT NULL DEFAULT 0
+                                                    = AVG(canvas_best_score) for lessons in subtopic
+application_score         NUMERIC(5,2)            NOT NULL DEFAULT 0
+                                                    = (quantus_attempted_count / quantus_lesson_count) × 100
+lessons_completed         INT                     NOT NULL DEFAULT 0
+lessons_total             INT                     NOT NULL DEFAULT 0   Denormalised for quick reads
+updated_at                TIMESTAMPTZ             NOT NULL DEFAULT now()
+
+CONSTRAINTS:
+  uq_usp UNIQUE (user_id, subtopic_id)
+
+INDEXES:
+  idx_usp_user    ON user_subtopic_progress(user_id)
+  idx_usp_subtopic ON user_subtopic_progress(subtopic_id)
+
+────────────────────────────────────────────────────────────────────────────────
+TABLE: user_topic_progress
+PURPOSE: Cached rollup per (user, topic). Computed as average of subtopics.
+────────────────────────────────────────────────────────────────────────────────
+Column                  Type                    Constraints         Description
+──────────────────────────────────────────────────────────────────────────────
+id                      UUID                    PK, DEFAULT uuid()
+user_id                 UUID                    NOT NULL FK→users(id) CASCADE
+topic_id                UUID                    NOT NULL FK→topics(id) CASCADE
+topic_completion_pct    NUMERIC(5,2)            NOT NULL DEFAULT 0
+                                                  = AVG(subtopic_completion_pct)
+recall_strength         NUMERIC(5,2)            NOT NULL DEFAULT 0
+concept_accuracy        NUMERIC(5,2)            NOT NULL DEFAULT 0
+application_score       NUMERIC(5,2)            NOT NULL DEFAULT 0
+subtopics_completed     INT                     NOT NULL DEFAULT 0
+subtopics_total         INT                     NOT NULL DEFAULT 0
+lessons_completed       INT                     NOT NULL DEFAULT 0
+lessons_total           INT                     NOT NULL DEFAULT 0
+last_accessed_at        TIMESTAMPTZ
+updated_at              TIMESTAMPTZ             NOT NULL DEFAULT now()
+
+CONSTRAINTS:
+  uq_utp UNIQUE (user_id, topic_id)
+
+INDEXES:
+  idx_utp_user  ON user_topic_progress(user_id)
+  idx_utp_topic ON user_topic_progress(topic_id)
+
+────────────────────────────────────────────────────────────────────────────────
+TABLE: user_module_progress
+PURPOSE: Top-level cached rollup per (user, module). Powers dashboard % badges.
+────────────────────────────────────────────────────────────────────────────────
+Column                    Type                    Constraints         Description
+──────────────────────────────────────────────────────────────────────────────
+id                        UUID                    PK, DEFAULT uuid()
+user_id                   UUID                    NOT NULL FK→users(id) CASCADE
+module_id                 UUID                    NOT NULL FK→modules(id) CASCADE
+module_completion_pct     NUMERIC(5,2)            NOT NULL DEFAULT 0
+                                                    = AVG(topic_completion_pct) for all topics in module
+recall_strength           NUMERIC(5,2)            NOT NULL DEFAULT 0
+concept_accuracy          NUMERIC(5,2)            NOT NULL DEFAULT 0
+application_score         NUMERIC(5,2)            NOT NULL DEFAULT 0
+topics_started            INT                     NOT NULL DEFAULT 0
+topics_total              INT                     NOT NULL DEFAULT 0
+lessons_completed         INT                     NOT NULL DEFAULT 0
+lessons_total             INT                     NOT NULL DEFAULT 0
+updated_at                TIMESTAMPTZ             NOT NULL DEFAULT now()
+
+CONSTRAINTS:
+  uq_ump UNIQUE (user_id, module_id)
+
+INDEXES:
+  idx_ump_user   ON user_module_progress(user_id)
+  idx_ump_module ON user_module_progress(module_id)
+
+
+================================================================================
+SECTION 9: SESSION & RESUME TABLES
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+TABLE: user_lesson_sessions
+PURPOSE: Tracks the user's active or completed lesson session.
+         Powers the "Resume Learning" button on the dashboard.
+         One row per (user, lesson) — upserted on start, updated on activity.
+         'last_active_at' is updated every time a draft is saved (every ~2s).
+────────────────────────────────────────────────────────────────────────────────
+Column                Type                    Constraints         Description
+──────────────────────────────────────────────────────────────────────────────
+id                    UUID                    PK, DEFAULT uuid()
+user_id               UUID                    NOT NULL FK→users(id) CASCADE
+lesson_id             UUID                    NOT NULL FK→lessons(id) CASCADE
+current_activity_type activity_type                               Which activity tab user was last on
+status                session_status          NOT NULL DEFAULT 'active'  'active'|'completed'|'abandoned'
+started_at            TIMESTAMPTZ             NOT NULL DEFAULT now()
+last_active_at        TIMESTAMPTZ             NOT NULL DEFAULT now()
+                                                            Updated by draft auto-save (lightweight upsert)
+completed_at          TIMESTAMPTZ                                 Set when all activities are done
+
+CONSTRAINTS:
+  uq_uls UNIQUE (user_id, lesson_id)
+
+INDEXES:
+  idx_uls_resume ON user_lesson_sessions(user_id, last_active_at DESC)
+    WHERE status = 'active'
+  -- This index powers the dashboard Resume query:
+  -- SELECT * FROM user_lesson_sessions
+  -- WHERE user_id = :uid AND status = 'active'
+  -- ORDER BY last_active_at DESC LIMIT 1
+
+────────────────────────────────────────────────────────────────────────────────
+TABLE: user_activity_drafts
+PURPOSE: Stores the unsaved/in-progress state for any activity the user is working on.
+         The draft is the "live" state before the user submits Check Answer.
+         On submit, the draft is DELETED (in the same SERIALIZABLE transaction).
+         On resume, the draft is loaded to restore exact position.
+
+         JSONB draft_state schema per activity_type:
+
+         MCQ:
+           {
+             "current_question_index": 2,          (0-based, which question active)
+             "submitted_answers": {                 (questions already answered)
+               "<question_id>": {
+                 "selected_option_id": "<uuid>",
+                 "is_correct": true,
+                 "answered_at": "ISO timestamp"
+               }
+             }
+           }
+
+         CANVAS:
+           {
+             "placements": {                        (current card positions)
+               "<item_id>": "<zone_id>",            (placed)
+               "<item_id_2>": null                  (not placed yet — in pool)
+             }
+           }
+
+         QUANTUS:
+           {
+             "cells": {                             (all entered cell values)
+               "<row_key>": {
+                 "<col_index>": 54563,              (filled)
+                 "<col_index_2>": null              (not filled)
+               }
+             },
+             "active_cell": {                       (cursor position)
+               "row_key": "rev",
+               "col_index": 3
+             }
+           }
+────────────────────────────────────────────────────────────────────────────────
+Column          Type                    Constraints         Description
+──────────────────────────────────────────────────────────────────────────────
+id              UUID                    PK, DEFAULT uuid()
+user_id         UUID                    NOT NULL FK→users(id) CASCADE
+activity_id     UUID                    NOT NULL            Polymorphic: UUID of mcq/canvas/quantus activity
+activity_type   activity_type           NOT NULL            Determines JSONB schema interpretation
+draft_state     JSONB                   NOT NULL DEFAULT '{}'  Activity-specific state (see schema above)
+hints_revealed  INT                     NOT NULL DEFAULT 0   How many hints shown so far this session
+started_at      TIMESTAMPTZ             NOT NULL DEFAULT now()
+last_saved_at   TIMESTAMPTZ             NOT NULL DEFAULT now()  Updated every auto-save
+
+CONSTRAINTS:
+  uq_uad UNIQUE (user_id, activity_id, activity_type)
+
+INDEXES:
+  idx_uad_lookup ON user_activity_drafts(user_id, activity_id, activity_type)
+
+
+================================================================================
+SECTION 10: COMPLETED SESSION TABLES (Audit / History)
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+TABLE: user_mcq_sessions
+PURPOSE: One row per completed MCQ submission (after Check Answer on final question).
+         The score_pct is a generated/stored computed column.
+────────────────────────────────────────────────────────────────────────────────
+Column          Type                    Constraints         Description
+──────────────────────────────────────────────────────────────────────────────
+id              UUID                    PK, DEFAULT uuid()
+user_id         UUID                    NOT NULL FK→users(id) CASCADE
+activity_id     UUID                    NOT NULL FK→mcq_activities(id)
+score           INT                     NOT NULL            Count of correct answers
+total           INT                     NOT NULL            Total questions in activity
+score_pct       NUMERIC(5,2)            GENERATED ALWAYS AS (score::numeric/total*100) STORED
+hints_used      INT                     NOT NULL DEFAULT 0   Hints used during this session
+completed_at    TIMESTAMPTZ             NOT NULL DEFAULT now()
+
+INDEXES:
+  idx_mcqs_user     ON user_mcq_sessions(user_id, activity_id)
+  idx_mcqs_activity ON user_mcq_sessions(activity_id, completed_at DESC)
+
+────────────────────────────────────────────────────────────────────────────────
+TABLE: user_mcq_answers
+PURPOSE: Per-question answer within a completed MCQ session.
+────────────────────────────────────────────────────────────────────────────────
+Column              Type                    Constraints         Description
+──────────────────────────────────────────────────────────────────────────────
+id                  UUID                    PK, DEFAULT uuid()
+session_id          UUID                    NOT NULL FK→user_mcq_sessions(id) CASCADE
+question_id         UUID                    NOT NULL FK→mcq_questions(id)
+selected_option_id  UUID                    NOT NULL FK→mcq_options(id)
+is_correct          BOOLEAN                 NOT NULL
+
+────────────────────────────────────────────────────────────────────────────────
+TABLE: user_canvas_sessions
+PURPOSE: One row per completed Canvas submission (after Check Answer).
+         Supports both drag_drop (score/total) and freeform (canvas_data stored).
+────────────────────────────────────────────────────────────────────────────────
+Column          Type                    Constraints         Description
+──────────────────────────────────────────────────────────────────────────────
+id              UUID                    PK, DEFAULT uuid()
+user_id         UUID                    NOT NULL FK→users(id) CASCADE
+activity_id     UUID                    NOT NULL FK→canvas_activities(id)
+score           INT                                         Correct placements (drag_drop only)
+total           INT                                         Total items (drag_drop only)
+score_pct       NUMERIC(5,2)            GENERATED ALWAYS AS (score::numeric/total*100) STORED
+canvas_data     JSONB                                       For freeform: vector drawing data (SVG/JSON)
+hints_used      INT                     NOT NULL DEFAULT 0
+completed_at    TIMESTAMPTZ             NOT NULL DEFAULT now()
+
+INDEXES:
+  idx_cvs_user ON user_canvas_sessions(user_id, activity_id)
+
+────────────────────────────────────────────────────────────────────────────────
+TABLE: user_canvas_placements
+PURPOSE: Per-item placement within a completed drag_drop canvas session.
+────────────────────────────────────────────────────────────────────────────────
+Column          Type                    Constraints         Description
+──────────────────────────────────────────────────────────────────────────────
+id              UUID                    PK, DEFAULT uuid()
+session_id      UUID                    NOT NULL FK→user_canvas_sessions(id) CASCADE
+item_id         UUID                    NOT NULL FK→canvas_items(id)
+placed_zone_id  UUID                    NOT NULL FK→canvas_zones(id)
+is_correct      BOOLEAN                 NOT NULL
+
+────────────────────────────────────────────────────────────────────────────────
+TABLE: user_quantus_sessions
+PURPOSE: One row per completed Quantus submission. Stores full input snapshot as
+         JSONB (append-only — never updated in place, only new rows inserted).
+────────────────────────────────────────────────────────────────────────────────
+Column          Type                    Constraints         Description
+──────────────────────────────────────────────────────────────────────────────
+id              UUID                    PK, DEFAULT uuid()
+user_id         UUID                    NOT NULL FK→users(id) CASCADE
+activity_id     UUID                    NOT NULL FK→quantus_activities(id)
+input_snapshot  JSONB                   NOT NULL            Complete cell values at time of submit
+                                                            Format: {"row_key": {"col_index": value}}
+                                                            Written once; never modified
+hints_used      INT                     NOT NULL DEFAULT 0
+completed_at    TIMESTAMPTZ             NOT NULL DEFAULT now()
+
+INDEXES:
+  idx_qts_user ON user_quantus_sessions(user_id, activity_id)
+
+────────────────────────────────────────────────────────────────────────────────
+TABLE: user_hint_usage
+PURPOSE: Full audit trail of every hint reveal event across all activity types.
+         One row per hint per user per reveal. Enables analytics on hint usage.
+────────────────────────────────────────────────────────────────────────────────
+Column          Type                    Constraints         Description
+──────────────────────────────────────────────────────────────────────────────
+id              UUID                    PK, DEFAULT uuid()
+user_id         UUID                    NOT NULL FK→users(id) CASCADE
+hint_id         UUID                    NOT NULL FK→activity_hints(id)
+revealed_at     TIMESTAMPTZ             NOT NULL DEFAULT now()
+
+INDEXES:
+  idx_htu_user ON user_hint_usage(user_id, hint_id)
+  idx_htu_hint ON user_hint_usage(hint_id)
+
+
+================================================================================
+SECTION 11: SKILL BUILDING TABLES
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+TABLE: professions
+PURPOSE: Job roles/professions users can filter by in the Skill Building section.
+         e.g. Chartered Accountant, Investment Banker, Strategy Consultant.
+────────────────────────────────────────────────────────────────────────────────
+Column          Type                    Constraints         Description
+──────────────────────────────────────────────────────────────────────────────
+id              UUID                    PK, DEFAULT uuid()
+name            VARCHAR(100)            NOT NULL UNIQUE     'Chartered Accountant'
+slug            VARCHAR(50)             NOT NULL UNIQUE     'ca'
+description     TEXT                                        What this profession does; why these skills
+icon_key        VARCHAR(50)                                 Icon identifier for UI cards
+order_index     INT                     NOT NULL DEFAULT 0
+is_active       BOOLEAN                 NOT NULL DEFAULT TRUE
+created_at      TIMESTAMPTZ             NOT NULL DEFAULT now()
+
+────────────────────────────────────────────────────────────────────────────────
+TABLE: skill_sections
+PURPOSE: The four skill building categories in the sidebar.
+         Maps to a specific activity type (or NULL for mixed).
+────────────────────────────────────────────────────────────────────────────────
+Column          Type                    Constraints         Description
+──────────────────────────────────────────────────────────────────────────────
+id              UUID                    PK, DEFAULT uuid()
+name            VARCHAR(100)            NOT NULL            'Quant Lab', 'MCQs', 'Framework Drills', 'Case Simulations'
+slug            VARCHAR(50)             NOT NULL UNIQUE     'quant_lab', 'mcqs', 'framework_drills', 'case_simulations'
+activity_type   activity_type                               NULL = mixed; 'quantus'/'mcq'/'canvas' for single type
+description     TEXT
+icon_key        VARCHAR(50)
+order_index     INT                     NOT NULL DEFAULT 0
+
+────────────────────────────────────────────────────────────────────────────────
+TABLE: skill_bundles
+PURPOSE: Named groups of related exercises within a skill section.
+         e.g. "Individual Financial Statement Modeling" in Quant Lab.
+         bundle_group determines which visual section on the page it appears under:
+         'profession_based' → under "Search by Profession"
+         'modeling_fountains' → under "Modeling Fountains" heading
+         Any custom string → creates a new named section dynamically.
+────────────────────────────────────────────────────────────────────────────────
+Column          Type                    Constraints         Description
+──────────────────────────────────────────────────────────────────────────────
+id              UUID                    PK, DEFAULT uuid()
+section_id      UUID                    NOT NULL FK→skill_sections(id)
+name            VARCHAR(200)            NOT NULL            Bundle display name
+description     TEXT                                        What skills this bundle builds
+level           VARCHAR(80)                                 'Beginners / Intermediate', 'Advanced'
+duration_weeks  NUMERIC(4,1)                                Estimated completion in weeks
+bundle_group    VARCHAR(100)            NOT NULL DEFAULT 'profession_based'
+order_index     INT                     NOT NULL DEFAULT 0
+is_active       BOOLEAN                 NOT NULL DEFAULT TRUE
+created_at      TIMESTAMPTZ             NOT NULL DEFAULT now()
+
+INDEXES:
+  idx_sb_section ON skill_bundles(section_id, bundle_group, order_index)
+
+────────────────────────────────────────────────────────────────────────────────
+TABLE: skill_bundle_professions
+PURPOSE: M2M join between bundles and professions.
+         One bundle can appear under multiple profession cards.
+────────────────────────────────────────────────────────────────────────────────
+Column          Type                    Constraints         Description
+──────────────────────────────────────────────────────────────────────────────
+bundle_id       UUID                    NOT NULL FK→skill_bundles(id) CASCADE
+profession_id   UUID                    NOT NULL FK→professions(id) CASCADE
+PRIMARY KEY (bundle_id, profession_id)
+
+INDEXES:
+  idx_sbp_profession ON skill_bundle_professions(profession_id, bundle_id)
+
+────────────────────────────────────────────────────────────────────────────────
+TABLE: skill_bundle_items
+PURPOSE: Ordered list of individual exercises within a bundle.
+         Each item points to a specific lesson + activity_type combination.
+         The same lesson activity that exists in Learning is reused here —
+         no duplicate content. Submitting the activity updates BOTH learning
+         progress AND skill bundle progress in the same transaction.
+────────────────────────────────────────────────────────────────────────────────
+Column          Type                    Constraints         Description
+──────────────────────────────────────────────────────────────────────────────
+id              UUID                    PK, DEFAULT uuid()
+bundle_id       UUID                    NOT NULL FK→skill_bundles(id) CASCADE
+lesson_id       UUID                    NOT NULL FK→lessons(id)
+activity_type   activity_type           NOT NULL            Which activity within the lesson to show
+label           VARCHAR(200)            NOT NULL            Display name in bundle: 'P&L Forecast'
+description     TEXT                                        One-line description of this exercise
+order_index     INT                     NOT NULL DEFAULT 0
+
+CONSTRAINTS:
+  uq_bundle_lesson_act UNIQUE (bundle_id, lesson_id, activity_type)
+
+INDEXES:
+  idx_sbi_bundle ON skill_bundle_items(bundle_id, order_index)
+  idx_sbi_lesson ON skill_bundle_items(lesson_id, activity_type)
+
+────────────────────────────────────────────────────────────────────────────────
+TABLE: topic_profession_tags
+PURPOSE: Tags existing topics with relevant professions.
+         Used to cross-promote Skill Building from the Learning section.
+         Also used to filter subtopics by profession in the Learning view.
+────────────────────────────────────────────────────────────────────────────────
+Column          Type                    Constraints         Description
+──────────────────────────────────────────────────────────────────────────────
+topic_id        UUID                    NOT NULL FK→topics(id) CASCADE
+profession_id   UUID                    NOT NULL FK→professions(id) CASCADE
+PRIMARY KEY (topic_id, profession_id)
+
+INDEXES:
+  idx_tpt_profession ON topic_profession_tags(profession_id)
+  idx_tpt_topic      ON topic_profession_tags(topic_id)
+
+
+================================================================================
+SECTION 12: SKILL BUILDING PROGRESS TABLES
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+TABLE: user_skill_bundle_progress
+PURPOSE: Cached bundle-level progress per user. Updated every time a bundle item
+         is completed (as part of the main session submit transaction).
+────────────────────────────────────────────────────────────────────────────────
+Column              Type                    Constraints         Description
+──────────────────────────────────────────────────────────────────────────────
+id                  UUID                    PK, DEFAULT uuid()
+user_id             UUID                    NOT NULL FK→users(id) CASCADE
+bundle_id           UUID                    NOT NULL FK→skill_bundles(id) CASCADE
+items_completed     INT                     NOT NULL DEFAULT 0
+items_total         INT                     NOT NULL DEFAULT 0   Denormalised for quick reads
+completion_pct      NUMERIC(5,2)            NOT NULL DEFAULT 0   = items_completed/items_total × 100
+recall_strength     NUMERIC(5,2)            NOT NULL DEFAULT 0   AVG MCQ scores for MCQ bundle items
+concept_accuracy    NUMERIC(5,2)            NOT NULL DEFAULT 0   AVG Canvas scores for canvas items
+application_score   NUMERIC(5,2)            NOT NULL DEFAULT 0   AVG Quantus scores for quantus items
+started_at          TIMESTAMPTZ                                 Set on first item attempt
+completed_at        TIMESTAMPTZ                                 Set when completion_pct = 100
+last_accessed_at    TIMESTAMPTZ             NOT NULL DEFAULT now()
+updated_at          TIMESTAMPTZ             NOT NULL DEFAULT now()
+
+CONSTRAINTS:
+  uq_usbp UNIQUE (user_id, bundle_id)
+
+INDEXES:
+  idx_usbp_user ON user_skill_bundle_progress(user_id)
+
+────────────────────────────────────────────────────────────────────────────────
+TABLE: user_skill_item_progress
+PURPOSE: Per-item progress cache within a bundle. One row per (user, bundle_item).
+         Ground truth is the session tables; this is a cache updated by cascade.
+────────────────────────────────────────────────────────────────────────────────
+Column          Type                    Constraints         Description
+──────────────────────────────────────────────────────────────────────────────
+id              UUID                    PK, DEFAULT uuid()
+user_id         UUID                    NOT NULL FK→users(id) CASCADE
+bundle_item_id  UUID                    NOT NULL FK→skill_bundle_items(id) CASCADE
+best_score_pct  NUMERIC(5,2)                                NULL = not attempted
+is_completed    BOOLEAN                 NOT NULL DEFAULT FALSE  TRUE after first submit
+hints_used      INT                     NOT NULL DEFAULT 0
+attempts        INT                     NOT NULL DEFAULT 0
+completed_at    TIMESTAMPTZ                                 First completion timestamp
+updated_at      TIMESTAMPTZ             NOT NULL DEFAULT now()
+
+CONSTRAINTS:
+  uq_usip UNIQUE (user_id, bundle_item_id)
+
+INDEXES:
+  idx_usip_user ON user_skill_item_progress(user_id, bundle_item_id)
+
+
+================================================================================
+SECTION 13: COMPLETE TABLE INVENTORY
+================================================================================
+
+GROUP 1: Content / Hierarchy (6 tables)
+  01. modules
+  02. topics
+  03. subtopics
+  04. lessons
+  05. lesson_activities
+  06. activity_hints
+
+GROUP 2: MCQ Activity (3 tables)
+  07. mcq_activities
+  08. mcq_questions
+  09. mcq_options
+
+GROUP 3: Canvas Activity (3 tables)
+  10. canvas_activities
+  11. canvas_zones
+  12. canvas_items
+
+GROUP 4: Quantus Activity (6 tables)
+  13. quantus_activities
+  14. quantus_column_groups
+  15. quantus_columns
+  16. quantus_sections
+  17. quantus_rows
+  18. quantus_cells
+
+GROUP 5: Users (1 table)
+  19. users
+
+GROUP 6: Learning Progress (4 tables)
+  20. user_lesson_progress
+  21. user_subtopic_progress
+  22. user_topic_progress
+  23. user_module_progress
+
+GROUP 7: Session & Resume (2 tables)
+  24. user_lesson_sessions
+  25. user_activity_drafts
+
+GROUP 8: Completed Sessions (6 tables)
+  26. user_mcq_sessions
+  27. user_mcq_answers
+  28. user_canvas_sessions
+  29. user_canvas_placements
+  30. user_quantus_sessions
+  31. user_hint_usage
+
+GROUP 9: Skill Building Content (6 tables)
+  32. professions
+  33. skill_sections
+  34. skill_bundles
+  35. skill_bundle_professions
+  36. skill_bundle_items
+  37. topic_profession_tags
+
+GROUP 10: Skill Building Progress (2 tables)
+  38. user_skill_bundle_progress
+  39. user_skill_item_progress
+
+TOTAL: 39 TABLES
+
+
+================================================================================
+SECTION 14: FULL ER TREE
+================================================================================
+
+LEARNING HIERARCHY:
+modules
+  └─< topics                    (module_id FK)
+        └─< subtopics            (topic_id FK)
+              └─< lessons        (subtopic_id FK)
+                    └─< lesson_activities   ← junction (lesson_id, activity_type)
+                    │
+                    ├── mcq_activities      (lesson_id UNIQUE)
+                    │     ├─< mcq_questions (activity_id)
+                    │     │     └─< mcq_options (question_id)
+                    │     └─< activity_hints (activity_id, type='mcq')
+                    │
+                    ├── canvas_activities   (lesson_id UNIQUE)
+                    │     ├─< canvas_zones  (activity_id)
+                    │     ├─< canvas_items  (activity_id, correct_zone_id→zones)
+                    │     └─< activity_hints (activity_id, type='canvas')
+                    │
+                    └── quantus_activities  (lesson_id UNIQUE)
+                          ├─< quantus_column_groups (activity_id)
+                          ├─< quantus_columns       (activity_id)
+                          ├─< quantus_sections      (activity_id)
+                          │     └─< quantus_rows    (section_id)
+                          │           └─< quantus_cells (row_id × column_id UNIQUE)
+                          └─< activity_hints (activity_id, type='quantus')
+
+USERS AND PROGRESS:
+users
+  ├─< user_lesson_progress    UNIQUE(user_id, lesson_id)
+  ├─< user_subtopic_progress  UNIQUE(user_id, subtopic_id)
+  ├─< user_topic_progress     UNIQUE(user_id, topic_id)
+  ├─< user_module_progress    UNIQUE(user_id, module_id)
+  │
+  ├─< user_lesson_sessions    UNIQUE(user_id, lesson_id)
+  ├─< user_activity_drafts    UNIQUE(user_id, activity_id, activity_type)
+  │
+  ├─< user_mcq_sessions       → user_mcq_answers (session_id)
+  ├─< user_canvas_sessions    → user_canvas_placements (session_id)
+  ├─< user_quantus_sessions   (input_snapshot JSONB)
+  └─< user_hint_usage         → activity_hints
+
+SKILL BUILDING:
+topics ─< topic_profession_tags >─ professions
+skill_sections ─< skill_bundles ─< skill_bundle_professions >─ professions
+                                └─< skill_bundle_items → lessons + activity_type
+users ─< user_skill_bundle_progress → skill_bundles
+users ─< user_skill_item_progress   → skill_bundle_items
+
+
+================================================================================
+SECTION 15: PROGRESS CASCADE — 8-STEP SERIALIZABLE TRANSACTION
+================================================================================
+
+Triggered by: POST /me/sessions/mcq  |  /me/sessions/canvas  |  /me/sessions/quantus
+
+Step 1: INSERT completed session row + answers/placements/snapshot
+
+Step 2: UPSERT user_lesson_progress
+  mcq_best_score    = GREATEST(existing, new_score_pct)
+  canvas_best_score = GREATEST(existing, new_score_pct)
+  quantus_attempted = TRUE (once set, never false)
+  hints_used       += session.hints_used
+  lesson_completion_pct = (activity types with ≥1 session / total assigned) × 100
+  status = 'completed' if pct=100, 'in_progress' if pct>0, 'not_started' otherwise
+  completed_at = now() if newly completed
+
+Step 3: UPSERT user_subtopic_progress
+  subtopic_completion_pct = AVG(lesson_completion_pct) for all lessons in subtopic
+  recall_strength         = AVG(mcq_best_score) for lessons in subtopic
+  concept_accuracy        = AVG(canvas_best_score) for lessons in subtopic
+  application_score       = (quantus_attempted_count / quantus_lesson_count) × 100
+  lessons_completed       = COUNT(status='completed')
+
+Step 4: UPSERT user_topic_progress
+  topic_completion_pct = AVG(subtopic_completion_pct)
+  [metrics aggregated from subtopics]
+
+Step 5: UPSERT user_module_progress
+  module_completion_pct = AVG(topic_completion_pct)
+  [metrics aggregated from topics]
+
+Step 6: UPDATE user_lesson_sessions
+  last_active_at = now()
+  status = 'completed' if lesson_completion_pct = 100
+
+Step 7: DELETE user_activity_drafts WHERE (user_id, activity_id, activity_type)
+  Draft is cleared atomically with the session submit.
+
+Step 8 (conditional): IF activity is in a skill_bundle_item:
+  UPSERT user_skill_item_progress
+    best_score_pct = GREATEST(existing, new_score)
+    is_completed   = TRUE
+    attempts      += 1
+  UPDATE user_skill_bundle_progress
+    items_completed = COUNT(is_completed = TRUE)
+    completion_pct  = items_completed / items_total × 100
+
+COMMIT — All 8 steps atomic. Full rollback on any failure.
+
+DRAFT AUTO-SAVE (separate lightweight transaction, runs every ~1.5s):
+  UPSERT user_activity_drafts (draft_state, last_saved_at)
+  UPDATE user_lesson_sessions SET last_active_at = now()
+  COMMIT — READ COMMITTED isolation (not SERIALIZABLE)
+
+
+================================================================================
+SECTION 16: API ENDPOINT REFERENCE
+================================================================================
+
+AUTH: Authorization: Bearer <jwt>  (user derived from JWT)
+ADMIN: X-Admin-Key: <secret>
+
+── CONTENT READ ──────────────────────────────────────────────────────────────
+
+GET  /api/v1/modules
+     Returns all active modules with user's module_completion_pct + 3 metrics
+
+GET  /api/v1/modules/:id/topics
+     Returns topics in module with topic_completion_pct + metrics + subtopics_total
+
+GET  /api/v1/topics/:id
+     Returns topic detail + user topic-level progress
+
+GET  /api/v1/topics/:id/subtopics
+     Returns subtopics in topic with subtopic_completion_pct + lessons_total + type
+
+GET  /api/v1/subtopics/:id
+     Returns subtopic detail + lessons list with difficulty + status
+
+GET  /api/v1/subtopics/:id/lessons
+     Returns lessons with: activity_types[], status, lesson_completion_pct,
+     mcq_best_score, canvas_best_score, quantus_attempted,
+     has_active_session, last_active_at
+
+GET  /api/v1/lessons/:id
+     Returns full lesson payload. Only assigned activity objects returned.
+     Includes: mcq (null if not assigned), canvas (null), quantus (null).
+     Each activity includes: instructions, context, hints_count, full structure.
+
+── LESSON SESSION (Resume) ───────────────────────────────────────────────────
+
+GET  /api/v1/me/resume
+     Returns user's most recently active lesson session for dashboard banner.
+     Includes: lesson_name, subtopic_name, topic_name, module_name, last_active_at,
+               lesson_completion_pct, resume_at_activity
+
+POST /api/v1/me/lessons/:id/session/start
+     Start or resume a lesson. Creates user_lesson_sessions if not exists.
+     Returns: session_id, is_resume, resume_at { activity_type, draft_exists },
+              activities list with completion status and draft_exists per activity.
+
+PATCH /api/v1/me/lessons/:id/session
+     Update current activity tab. Called when user switches tabs in lesson.
+     Body: { "current_activity_type": "canvas" }
+
+── DRAFT AUTO-SAVE ───────────────────────────────────────────────────────────
+
+PUT  /api/v1/me/activities/mcq/:id/draft
+     Body: { "draft_state": { "current_question_index": N, "submitted_answers": {...} }, "hints_revealed": N }
+     Upserts draft. Fast, no cascade. Returns: { "saved": true, "last_saved_at": "..." }
+
+GET  /api/v1/me/activities/mcq/:id/draft
+     Returns current draft or null. Called on lesson open to restore state.
+
+PUT  /api/v1/me/activities/canvas/:id/draft
+     Body: { "draft_state": { "placements": { "<item_id>": "<zone_id>" | null } } }
+
+GET  /api/v1/me/activities/canvas/:id/draft
+
+PUT  /api/v1/me/activities/quantus/:id/draft
+     Body: { "draft_state": { "cells": {...}, "active_cell": { "row_key": "...", "col_index": N } } }
+
+GET  /api/v1/me/activities/quantus/:id/draft
+
+DELETE /api/v1/me/activities/:type/:id/draft
+     Called automatically by session submit. Can also be called on Reset button.
+
+── HINTS ─────────────────────────────────────────────────────────────────────
+
+GET  /api/v1/lessons/:id/hints?activity_type=mcq
+     Returns: { total_hints, revealed_count, next_reveal_index }
+
+POST /api/v1/hints/reveal
+     Body: { "activity_type": "mcq", "activity_id": "uuid" }
+     Reveals next hint. Writes user_hint_usage. Updates draft.hints_revealed.
+     Returns: { hint_id, hint_text, index, remaining }
+
+── SESSION SUBMIT (with cascade) ─────────────────────────────────────────────
+
+POST /api/v1/me/sessions/mcq
+     Body: { activity_id, hints_used, answers: [{ question_id, selected_option_id }] }
+     Runs 8-step SERIALIZABLE transaction.
+     Returns: { session_id, score, total, score_pct, results[], draft_cleared,
+                lesson_session: { lesson_completion_pct, all_activities_complete, next_activity },
+                learning_progress: { subtopic_pct, topic_pct, module_pct },
+                skill_progress: { bundle_item_id, bundle_completion_pct } | null }
+
+POST /api/v1/me/sessions/canvas
+     Body: { activity_id, hints_used, placements: [{ item_id, placed_zone_id }] }
+     Same cascade. Returns similar shape.
+
+POST /api/v1/me/sessions/quantus
+     Body: { activity_id, hints_used, input_snapshot: { row_key: { col_index: value } } }
+     Same cascade.
+
+── PROGRESS READ ─────────────────────────────────────────────────────────────
+
+GET  /api/v1/me/progress
+     Full progress: modules → topics. Returns module_completion_pct + 3 metrics for each.
+
+GET  /api/v1/me/modules/:id/progress
+     Deep drill: topics → subtopics → lessons with % and status.
+
+GET  /api/v1/me/subtopics/:id/progress
+     Subtopic-level progress with per-lesson breakdown.
+
+── SKILL BUILDING ────────────────────────────────────────────────────────────
+
+GET  /api/v1/skill/sections
+GET  /api/v1/skill/professions
+GET  /api/v1/skill/sections/:slug/bundles?profession=ca&group=profession_based
+POST /api/v1/skill/bundles/:id/start
+GET  /api/v1/skill/bundles/:id/progress
+GET  /api/v1/me/skill/progress
+
+── ADMIN ─────────────────────────────────────────────────────────────────────
+
+POST /api/v1/admin/modules
+POST /api/v1/admin/topics                    { module_id, name, subtitle, tags }
+POST /api/v1/admin/subtopics                 { topic_id, name, type }
+POST /api/v1/admin/lessons                   { subtopic_id, name, difficulty }
+POST /api/v1/admin/lessons/:id/activities    { activity_type, order_index }
+
+POST /api/v1/admin/activities/mcq/:id/setup
+     { title, instructions, context, questions: [{ question_text, explanation, options: [...] }] }
+
+POST /api/v1/admin/activities/canvas/:id/setup
+     { title, instructions, context, subtype, zones: [...], items: [...] }
+
+POST /api/v1/admin/activities/quantus/:id/setup
+     { title, instructions, context, column_groups, columns, sections with rows and cells }
+
+POST /api/v1/admin/activities/:type/:id/hints
+     { hints: [{ hint_text, order_index }] }
+
+POST /api/v1/admin/skill/bundles             { section_id, name, level, duration_weeks, bundle_group }
+POST /api/v1/admin/skill/bundles/:id/professions  { profession_ids: [...] }
+POST /api/v1/admin/skill/bundles/:id/items   { items: [{ lesson_id, activity_type, label }] }
+POST /api/v1/admin/topics/:id/professions    { profession_ids: [...] }
+POST /api/v1/admin/users/:id/recalculate     Rebuild all progress from raw sessions
+
+
+================================================================================
+SECTION 17: NO-LOOPHOLE RULES (18 total)
+================================================================================
+
+Learning Progress:
+  01. GREATEST() on all best_score updates — scores never go backwards
+  02. UNIQUE(lesson_id, activity_type) on lesson_activities — no duplicate activity types
+  03. UNIQUE INDEX ON mcq_options(question_id) WHERE is_correct=TRUE — exactly one correct option
+  04. UNIQUE(user_id, lesson_id) on all 4 progress tables — no duplicate rows
+  05. SELECT FOR UPDATE on progress rows during cascade — concurrent session protection
+  06. FK CASCADE on all content — deleting lesson deletes activities + sessions
+  07. Lesson complete = ALL assigned activity types have ≥1 session (dynamic check)
+  08. Soft-delete on content (deleted_at) — preserves session referential integrity
+  09. hints_used on every session + user_hint_usage for full audit trail
+  10. All progress queries filter by user_id — no cross-user contamination
+  11. formula_expression strings never eval()'d server-side — client sandbox only
+  12. input_snapshot JSONB written once — append-only history
+  13. POST /admin/users/:id/recalculate rebuilds all progress from raw sessions
+  14. All 8 steps in ONE SERIALIZABLE transaction — full rollback on any failure
+
+Session / Resume:
+  15. UNIQUE(user_id, lesson_id) on user_lesson_sessions — one session per lesson per user
+  16. UNIQUE(user_id, activity_id, activity_type) on user_activity_drafts — one draft per activity
+  17. Draft DELETE runs atomically in the same transaction as session submit
+  18. session.status only moves forward: active → completed (never back)
+
+Skill Building:
+  19. GREATEST() in skill item progress — same rule as learning progress
+  20. UNIQUE(bundle_id, lesson_id, activity_type) on skill_bundle_items — no duplicate items
+
+================================================================================
+END OF DOCUMENT
+================================================================================

@@ -1,61 +1,52 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import React, { useState, useEffect, useRef } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuthStore } from "@/lib/auth-store";
+import { useToastStore } from "@/lib/toast-store";
 import { Loader2 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 import logo from "@/public/shankhLogo.svg"
 import dashImage from "@/public/image.png"
 
-export default function AuthPage({ initialIsLogin = true }: { initialIsLogin?: boolean }) {
+function LoginForm() {
   const [mounted, setMounted] = useState(false);
-  const [isLogin, setIsLogin] = useState(initialIsLogin);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  
   const router = useRouter();
-  const setAuth = useAuthStore((state) => state.setAuth);
+  const login = useAuthStore((state) => state.login);
+  const showToast = useToastStore((state) => state.showToast);
+  const searchParams = useSearchParams();
+  const hasShownRedirectToast = useRef(false);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  if (!mounted) {
-    return <div className="min-h-screen bg-white" />;
-  }
+  // Show toast when user was redirected from a protected page
+  useEffect(() => {
+    if (mounted && searchParams.get("redirect") === "true" && !hasShownRedirectToast.current) {
+      hasShownRedirectToast.current = true;
+      showToast("Please login to continue your journey with us ✨", "info");
+    }
+  }, [mounted, searchParams, showToast]);
+
+  if (!mounted) return <div className="min-h-screen bg-white" />;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError("");
 
-    const endpoint = isLogin ? "/api/v1/auth/login" : "/api/v1/auth/register";
-    const body = isLogin
-      ? { email, password }
-      : { email, password, name: `${firstName} ${lastName}`.trim() };
-
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}${endpoint}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || "Authentication failed");
-      }
-
-      setAuth(data.data.user, data.data.token);
+      await login(email, password);
       router.push("/");
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || "Authentication failed");
     } finally {
       setLoading(false);
     }
@@ -67,47 +58,17 @@ export default function AuthPage({ initialIsLogin = true }: { initialIsLogin?: b
       <div className="flex-1 flex flex-col relative overflow-y-auto">
         <div className="w-full max-w-[500px] mx-auto min-h-full flex flex-col p-8 md:p-12">
           <div className="my-auto py-12">
-            {/* Logo */}
             <div className="flex items-center gap-2 mb-6 md:mb-10">
               <Image src={logo} alt="Shankh Logo" width={120} height={40} className="object-contain" />
             </div>
 
-            <h1 className="text-3xl font-semibold text-[#1a1a1a] mb-1">
-              {isLogin ? "Log In" : "Sign Up"}
-            </h1>
+            <h1 className="text-3xl font-semibold text-[#1a1a1a] mb-1">Log In</h1>
             <p className="text-zinc-500 mb-6">Start learning with Shankh</p>
 
             <form onSubmit={handleSubmit} className="space-y-4">
               {error && (
                 <div className="bg-red-50 text-red-600 text-sm p-4 rounded-xl border border-red-100 mb-4">
                   {error}
-                </div>
-              )}
-
-              {!isLogin && (
-                <div className="flex flex-col sm:flex-row gap-4">
-                  <div className="flex-1 space-y-1.5">
-                    <label className="text-sm font-medium text-[#1a1a1a]">Enter First Name</label>
-                    <input
-                      type="text"
-                      required
-                      value={firstName}
-                      onChange={(e) => setFirstName(e.target.value)}
-                      className="w-full bg-[#F3F1ED] border-none rounded-xl p-3.5 text-[#1a1a1a] placeholder:text-zinc-400 focus:ring-2 focus:ring-[#01696F] outline-none transition-all"
-                      placeholder="e.g. bibek"
-                    />
-                  </div>
-                  <div className="flex-1 space-y-1.5">
-                    <label className="text-sm font-medium text-[#1a1a1a]">Enter Last Name</label>
-                    <input
-                      type="text"
-                      required
-                      value={lastName}
-                      onChange={(e) => setLastName(e.target.value)}
-                      className="w-full bg-[#F3F1ED] border-none rounded-xl p-3.5 text-[#1a1a1a] placeholder:text-zinc-400 focus:ring-2 focus:ring-[#01696F] outline-none transition-all"
-                      placeholder="e.g. karki"
-                    />
-                  </div>
                 </div>
               )}
 
@@ -135,14 +96,12 @@ export default function AuthPage({ initialIsLogin = true }: { initialIsLogin?: b
                 />
               </div>
 
-              {/* Divider */}
               <div className="flex items-center gap-4 py-1">
                 <div className="flex-1 h-px bg-zinc-200" />
                 <span className="text-[10px] text-zinc-400 uppercase tracking-widest font-bold">Or</span>
                 <div className="flex-1 h-px bg-zinc-200" />
               </div>
 
-              {/* Social Logins */}
               <div className="grid grid-cols-1 gap-2.5">
                 <button
                   type="button"
@@ -169,14 +128,10 @@ export default function AuthPage({ initialIsLogin = true }: { initialIsLogin?: b
 
               <div className="mt-4 text-center">
                 <p className="text-zinc-600 text-sm">
-                  {isLogin ? "Already have an account? " : "Don't have an account? "}
-                  <button
-                    type="button"
-                    onClick={() => setIsLogin(!isLogin)}
-                    className="font-semibold text-[#1a1a1a] hover:underline"
-                  >
-                    {isLogin ? "Sign Up" : "Sign In"}
-                  </button>
+                  Don't have an account?{" "}
+                  <Link href="/signup" className="font-semibold text-[#1a1a1a] hover:underline">
+                    Sign Up
+                  </Link>
                 </p>
               </div>
 
@@ -185,7 +140,7 @@ export default function AuthPage({ initialIsLogin = true }: { initialIsLogin?: b
                 disabled={loading}
                 className="w-full bg-[#01696F] text-white py-3.5 rounded-xl font-bold text-base hover:opacity-90 transition-all active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2 mt-2 shadow-lg shadow-[#01696F]/20"
               >
-                {loading ? <Loader2 className="animate-spin" size={20} /> : (isLogin ? "Sign In" : "Sign Up")}
+                {loading ? <Loader2 className="animate-spin" size={20} /> : "Sign In"}
               </button>
             </form>
           </div>
@@ -195,27 +150,25 @@ export default function AuthPage({ initialIsLogin = true }: { initialIsLogin?: b
       {/* Right Column: Promotion */}
       <div className="hidden lg:flex flex-1 bg-[#01696F] relative flex-col justify-center pt-24 pl-16 xl:pl-24 overflow-hidden">
         <div className="relative z-10 max-w-[600px] pr-12">
-          <h2 className="text-5xl font-bold text-white leading-tight mb-6">
-            Build recruiter-grade judgment, not just notes.
-          </h2>
-          <p className="text-white/80 text-lg leading-relaxed max-w-[500px]">
-            Simulated learning across finance, strategy, and operations for consulting, private equity, and investment banking readiness.
-          </p>
+          <h2 className="text-5xl font-bold text-white leading-tight mb-6">Build recruiter-grade judgment, not just notes.</h2>
+          <p className="text-white/80 text-lg leading-relaxed max-w-[500px]">Simulated learning across finance, strategy, and operations for consulting, private equity, and investment banking readiness.</p>
         </div>
-
-        {/* Dashboard Image Overlay */}
         <div className="relative flex-1 w-full">
           <div className="absolute bottom-0 right-0 w-[130%] h-[90%]">
-            <Image
-              src={dashImage}
-              alt="Dashboard Preview"
-              fill
-              className="object-contain object-right-bottom rounded-tl-[40px] shadow-2xl"
-              priority
-            />
+            <Image src={dashImage} alt="Dashboard Preview" fill className="object-contain object-right-bottom rounded-tl-[40px] shadow-2xl" priority />
           </div>
         </div>
       </div>
     </div>
+  );
+}
+
+import { Suspense } from "react";
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-white" />}>
+      <LoginForm />
+    </Suspense>
   );
 }

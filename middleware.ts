@@ -3,17 +3,31 @@ import type { NextRequest } from "next/server";
 
 export function middleware(request: NextRequest) {
   const token = request.cookies.get("shankh-token")?.value;
-  const isLoginPage = request.nextUrl.pathname === "/login";
+  const { pathname, searchParams } = request.nextUrl;
 
-  // If there is no token and the user is not on the login page, redirect to login
-  if (!token && !isLoginPage) {
+  // Bulletproof server-side cookie clearing to break the loop
+  if (searchParams.get("clear_auth") === "true") {
+    const url = request.nextUrl.clone();
+    url.searchParams.delete("clear_auth");
+    url.pathname = "/login";
+    url.searchParams.set("redirect", "true");
+    const response = NextResponse.redirect(url);
+    response.cookies.delete("shankh-token");
+    return response;
+  }
+
+  const isAuthPage = pathname === "/login" || pathname === "/signup";
+
+  // If there is no token and the user is not on an auth page, redirect to login
+  if (!token && !isAuthPage) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
+    url.searchParams.set("redirect", "true");
     return NextResponse.redirect(url);
   }
 
-  // If there is a token and the user is on the login page, redirect to dashboard
-  if (token && isLoginPage) {
+  // If there is a token and the user is on an auth page, redirect to dashboard
+  if (token && isAuthPage) {
     const url = request.nextUrl.clone();
     url.pathname = "/";
     return NextResponse.redirect(url);
@@ -31,8 +45,8 @@ export const config = {
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
-     * - logo.svg (public images)
+     * - public assets (images, icons, manifests)
      */
-    "/((?!api|_next/static|_next/image|favicon.ico|logo.svg).*)",
+    "/((?!api|_next/static|_next/image|favicon\\.ico|.*\\.png$|.*\\.svg$|.*\\.jpg$|.*\\.jpeg$|.*\\.gif$|.*\\.ico$|manifest\\.json$).*)",
   ],
 };

@@ -1,243 +1,215 @@
 import { ExerciseConfig } from "@/types/exercise";
 
+export type BackendActivityType =
+  | "mcq"
+  | "canvas"
+  | "quantus"
+  | "dropdown"
+  | "select"
+  | "excel"
+  | "lesson"
+  | string;
 
-export type WorkspaceTab = "sheets" | "mcq" | "canvas";
-export type PhaseId = "easy" | "medium" | "hard";
+export type BackendDifficulty = "easy" | "medium" | "hard" | "foundation" | string;
 
-export interface BackendTreeActivity {
+export interface BackendActivityOption {
   id: string;
-  slug: string;
-  title: string;
-  type: "mcq" | "spreadsheet" | "canvas" | "decision" | "lesson" | "aiPack" | "basic_input";
-  instructions?: string | null;
+  label: string;
+  isCorrect: boolean;
 }
 
-export interface BackendTreeLevel {
+export interface BackendActivityQuestion {
   id: string;
-  title: string;
-  difficulty: PhaseId;
-  activities: BackendTreeActivity[];
+  question: string;
+  options: BackendActivityOption[];
+  coach?: {
+    hint?: string;
+    correct?: string;
+    incorrect?: string;
+    warning?: string;
+  };
 }
 
-export interface BackendTreeTopic {
-  id: string;
-  title: string;
-  description: string | null;
-  levels: BackendTreeLevel[];
+export interface BackendTableInput {
+  row: number;
+  col: number;
+  correctValue: string | number;
+  type?: "number" | "text";
+  placeholder?: string;
+  formula?: string;
 }
 
-export interface BackendTreeModule {
-  id: string;
-  slug: string;
-  title: string;
-  description: string | null;
-  stage: "foundation" | "applied" | "integrated";
-  topics: BackendTreeTopic[];
+export interface BackendTableDropdown {
+  row: number;
+  col: number;
+  options: string[];
+  correctValue: string;
 }
 
-export interface BackendStudyPlanTree {
+export interface BackendTable {
+  name: string;
+  table: (string | number | null)[][];
+  inputs?: BackendTableInput[];
+  dropdowns?: BackendTableDropdown[];
+}
+
+export interface BackendCanvasDraggableItem {
   id: string;
-  slug: string;
-  title: string;
-  modules: BackendTreeModule[];
+  label: string;
+  type: "shape" | "rectangle" | "ellipse" | "diamond" | "equation";
+  content: string;
+}
+
+export interface BackendCanvasDraggableCategory {
+  category: string;
+  items: BackendCanvasDraggableItem[];
 }
 
 export interface BackendActivityDetail {
   id: string;
   slug: string;
   title: string;
-  type: "mcq" | "spreadsheet" | "canvas" | "decision" | "lesson" | "aiPack" | "basic_input";
-  instructions: string | null;
-  content: Record<string, unknown>;
-  validationRules?: Record<string, unknown>;
-  taxonomy?: {
-    moduleTitle?: string;
-    moduleLearningObjective?: string;
-    moduleCaseContext?: string;
+  type: BackendActivityType;
+  difficulty?: BackendDifficulty;
+  instructions?: string;
+  question?: string;
+  caseContext?: string;
+  overview?: string;
+  learningGoals?: string[];
+  keyConcepts?: { term: string; description: string }[];
+  vocabulary?: string[];
+  formulas?: string[];
+  tasks?: {
+    task: string;
+    answer: string | number;
+    inputs?: string;
+    formula?: string;
+    difficulty?: string;
+  }[];
+  questions?: BackendActivityQuestion[];
+  options?: BackendActivityOption[];
+  table?: (string | number | null)[][];
+  inputs?: BackendTableInput[];
+  dropdowns?: BackendTableDropdown[];
+  tables?: BackendTable[];
+  canvasBackgroundText?: string;
+  canvasDraggableElements?: BackendCanvasDraggableCategory[];
+  canvasSubtype?: "drag_drop" | "freeform";
+  drawingPrompt?: string;
+  coach?: {
+    hint?: string;
+    correct?: string;
+    incorrect?: string;
+    warning?: string;
   };
 }
 
-export function mapActivityTypeToTab(type: BackendTreeActivity["type"]): WorkspaceTab {
-  if (type === "canvas") return "canvas";
-  if (type === "mcq" || type === "decision" || type === "basic_input" || type === "lesson") return "mcq";
-  return "sheets";
+export interface BackendLevel {
+  id: string;
+  title: string;
+  difficulty?: BackendDifficulty;
+  activities: BackendActivityDetail[];
 }
 
-export function mapDifficultyLabel(difficulty: PhaseId): "Easy" | "Medium" | "Hard" {
-  if (difficulty === "easy") return "Easy";
-  if (difficulty === "medium") return "Medium";
-  return "Hard";
+export interface BackendTopic {
+  id: string;
+  title: string;
+  levels: BackendLevel[];
 }
 
-export function mapContentToExercise(detail: BackendActivityDetail): ExerciseConfig {
-  const content = detail.content || {};
-  
-  const coach = content.coach as ExerciseConfig["coach"];
-  const caseContext = (content.caseContext as string) || detail.taxonomy?.moduleCaseContext || "";
+export interface BackendTreeModule {
+  id: string;
+  slug?: string;
+  title: string;
+  description?: string;
+  caseContext?: string;
+  stage?: "foundation" | "applied" | "integrated";
+  skillTags?: string[];
+  topics: BackendTopic[];
+}
 
-  // Handle MCQ
-  if (detail.type === "mcq") {
-    // Check if it has a 'questions' array (new format)
-    if (Array.isArray(content.questions)) {
-      return {
-        type: "select",
-        question: "Knowledge Check", // Generic title if multiple
-        caseContext,
-        coach,
-        questions: content.questions.map((q: any) => ({
-          id: q.id || Math.random().toString(),
-          question: q.prompt || "",
-          options: (Array.isArray(q.options) ? q.options : []).map((opt: string, i: number) => ({
-            id: String.fromCharCode(65 + i),
-            label: opt,
-            isCorrect: String.fromCharCode(65 + i) === q.correctAnswer,
-          })),
-          coach: { correct: q.rationale, hint: q.rationale },
-        })),
-      };
-    }
+export interface BackendStudyPlanTree {
+  modules: BackendTreeModule[];
+}
 
-    // Legacy format
-    return {
-      type: "select",
-      question: asString(content.prompt) || detail.title,
-      coach,
-      caseContext,
-      options: (Array.isArray(content.options) ? content.options : []).map((opt: string, i: number) => ({
-        id: String.fromCharCode(65 + i),
-        label: opt,
-        isCorrect: String.fromCharCode(65 + i) === content.correctAnswer,
-      })),
-    };
+export const mapDifficultyLabel = (level?: string): "Easy" | "Medium" | "Hard" => {
+  if (!level) return "Medium";
+  switch (level.toLowerCase()) {
+    case "easy":
+      return "Easy";
+    case "medium":
+      return "Medium";
+    case "hard":
+      return "Hard";
+    case "foundation":
+      return "Easy";
+    default:
+      return "Medium";
   }
+};
 
-  // Handle Decision
-  if (detail.type === "decision") {
-    const decisionCoach = coach || {
-      correct: asString(content.scoring) || "Choice recorded.",
-      incorrect: "Please make a selection.",
-      hint: "Select the option that best fits the scenario."
-    };
-
-    return {
-      type: "select",
-      question: asString(content.prompt) || detail.title,
-      coach: decisionCoach,
-      caseContext,
-      options: (Array.isArray(content.options) ? content.options : []).map((opt: string, i: number) => ({
-        id: String.fromCharCode(65 + i),
-        label: opt,
-        isCorrect: true, // Decisions are subjective; any selection is considered a valid "completion"
-      })),
-    };
+export const mapActivityTypeToTab = (type?: string): "sheets" | "mcq" | "canvas" => {
+  switch (type?.toLowerCase()) {
+    case "quantus":
+    case "excel":
+      return "sheets";
+    case "mcq":
+    case "select":
+    case "dropdown":
+      return "mcq";
+    case "canvas":
+      return "canvas";
+    default:
+      return "mcq";
   }
+};
 
-  // Handle Canvas
-  if (detail.type === "canvas") {
-    return {
-      type: "canvas",
-      question: asString(content.prompt) || detail.title,
-      tasks: [
-        {
-          task: asString(content.prompt) || detail.title,
-          answer: asString(content.expectedStructure) || "",
-          inputs: "",
-          formula: "",
-          difficulty: "medium"
-        }
-      ],
-      coach,
-      caseContext,
-      canvasBackgroundText:
-        asString(content.canvasBackgroundText) || "Build your structure on canvas and submit.",
-      canvasDraggableElements: [
-        {
-          category: "Components",
-          items: [
-            {
-              id: "item-1",
-              label: "Structure Node",
-              type: "rectangle" as const,
-              content: "New Node",
-            }
-          ],
-        },
-      ],
-    };
+export const mapBackendTypeToExerciseType = (type?: string): ExerciseConfig["type"] => {
+  switch (type?.toLowerCase()) {
+    case "quantus":
+    case "excel":
+      return "excel";
+    case "canvas":
+      return "canvas";
+    case "dropdown":
+      return "dropdown";
+    case "select":
+    case "mcq":
+      return "select";
+    default:
+      return "select";
   }
+};
 
-  // Handle Lesson
-  if (detail.type === "lesson") {
-    return {
-      type: "select", // Lessons can be simple read-only or minimal interaction
-      question: asString(content.learningObjective) || detail.title,
-      coach,
-      caseContext,
-      options: [],
-    };
-  }
-
-  // Quantus / Spreadsheet (Excel)
-  // Multi-tab spreadsheet (tables array with name+table objects)
-  if (Array.isArray(content.tables) && content.tables.length > 0 && (content.tables as any[])[0]?.name) {
-    const tables = content.tables as any[];
-    return {
-      type: "excel",
-      question: asString(content.prompt) || detail.title,
-      table: tables[0].table,
-      tables: tables,
-      coach,
-      caseContext,
-      overview: asString(content.overview),
-      learningGoals: Array.isArray(content.learningGoals) ? content.learningGoals : undefined,
-      keyConcepts: Array.isArray(content.keyConcepts) ? content.keyConcepts : undefined,
-      vocabulary: Array.isArray(content.vocabulary) ? content.vocabulary : undefined,
-      formulas: Array.isArray(content.formulas) ? content.formulas : undefined,
-    };
-  }
-
-  // Single comprehensive sheet (direct table + inputs arrays)
-  if (Array.isArray(content.table) && content.table.length > 0) {
-    return {
-      type: "excel",
-      question: asString(content.prompt) || detail.title,
-      table: content.table as any,
-      inputs: Array.isArray(content.inputs) ? content.inputs as any : undefined,
-      coach,
-      caseContext,
-      overview: asString(content.overview),
-      learningGoals: Array.isArray(content.learningGoals) ? content.learningGoals : undefined,
-      keyConcepts: Array.isArray(content.keyConcepts) ? content.keyConcepts : undefined,
-      vocabulary: Array.isArray(content.vocabulary) ? content.vocabulary : undefined,
-      formulas: Array.isArray(content.formulas) ? content.formulas : undefined,
-    };
-  }
-
-  // Legacy task-based format (inputs as string "Key₹Value;...")
-  return {
-    type: "excel",
-    question: asString(content.prompt) || detail.title,
-    tasks: [
-      {
-        task: asString(content.prompt) || detail.title,
-        answer: asString(content.expectedAnswer) || "",
-        inputs: asString(content.inputs) || "",
-        formula: asString(content.expectedFormula) || "",
-        difficulty: (content.difficulty as any) || "easy"
-      }
-    ],
-    coach,
-    caseContext,
-    overview: asString(content.overview),
-    learningGoals: Array.isArray(content.learningGoals) ? content.learningGoals : undefined,
-    keyConcepts: Array.isArray(content.keyConcepts) ? content.keyConcepts : undefined,
-    vocabulary: Array.isArray(content.vocabulary) ? content.vocabulary : undefined,
-    formulas: Array.isArray(content.formulas) ? content.formulas : undefined,
+export const mapContentToExercise = (activity: BackendActivityDetail): ExerciseConfig => {
+  const exerciseType = mapBackendTypeToExerciseType(activity.type);
+  const exercise: ExerciseConfig = {
+    type: exerciseType,
+    question: activity.question || activity.title || "",
+    table: activity.table,
+    inputs: activity.inputs,
+    dropdowns: activity.dropdowns,
+    tables: activity.tables,
+    options: activity.options,
+    questions: activity.questions,
+    tasks: activity.tasks,
+    coach: activity.coach,
+    caseContext: activity.caseContext,
+    overview: activity.overview,
+    learningGoals: activity.learningGoals,
+    keyConcepts: activity.keyConcepts,
+    vocabulary: activity.vocabulary,
+    formulas: activity.formulas,
+    canvasBackgroundText: activity.canvasBackgroundText,
+    canvasDraggableElements: activity.canvasDraggableElements,
   };
-}
 
+  if (activity.canvasSubtype) {
+    exercise.canvasSubtype = activity.canvasSubtype;
+  }
+  if (activity.drawingPrompt) {
+    exercise.drawingPrompt = activity.drawingPrompt;
+  }
 
-
-function asString(value: unknown): string | undefined {
-  return typeof value === "string" ? value : undefined;
-}
+  return exercise;
+};

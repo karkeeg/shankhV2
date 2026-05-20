@@ -59,10 +59,11 @@ interface ExcelGridProps {
   tabNames?: string[];
   /** Callback when a tab is clicked */
   onTabChange?: (index: number) => void;
-  /** Optional tab name to show in the bottom sheet bar (legacy) */
-  sheetTabName?: string;
   /** If true, shows the rich spreadsheet toolbar (for canvas exercises) */
   showToolbar?: boolean;
+  sheetTabName?: string;
+  colLabels?: string[];
+  rowLabels?: string[];
 }
 
 export const ExcelGrid = ({
@@ -78,6 +79,8 @@ export const ExcelGrid = ({
   onTabChange,
   sheetTabName,
   showToolbar = false,
+  colLabels,
+  rowLabels,
 }: ExcelGridProps) => {
   const [selectedCell, setSelectedCell] = useState<{
     row: number;
@@ -86,7 +89,7 @@ export const ExcelGrid = ({
 
   const handleInputChange = (row: number, col: number, value: string) => {
     if (isValidated) return;
-    const key = tabNames.length > 0 ? `${activeTabIndex}-${row}-${col}` : `${row}-${col}`;
+    const key = getCellKey(row, col);
     setUserInputs((prev) => ({
       ...prev,
       [key]: value,
@@ -94,7 +97,9 @@ export const ExcelGrid = ({
   };
 
   const getCellKey = (row: number, col: number) => {
-    return tabNames.length > 0 ? `${activeTabIndex}-${row}-${col}` : `${row}-${col}`;
+    const rLabel = rowLabels?.[row] !== undefined ? String(rowLabels[row]) : String(row + 1);
+    const cLabel = colLabels?.[col] !== undefined ? String(colLabels[col]) : String.fromCharCode(65 + col);
+    return `${rLabel}-${cLabel}`;
   };
 
   const currentFormulaValue = selectedCell
@@ -104,7 +109,7 @@ export const ExcelGrid = ({
     : "";
 
   // Generate Column Headers (A, B, C...)
-  const colHeaders = Array.from({ length: table[0]?.length || 0 }, (_, i) =>
+  const colHeaders = colLabels || Array.from({ length: table[0]?.length || 0 }, (_, i) =>
     String.fromCharCode(65 + i),
   );
 
@@ -114,10 +119,10 @@ export const ExcelGrid = ({
     : "";
 
   return (
-    <div className="flex flex-col h-full bg-white border border-zinc-200 rounded-lg shadow-xl overflow-hidden font-sans ring-1 ring-zinc-200">
+    <div className="flex flex-col h-full bg-white border border-zinc-200 shadow-xl overflow-hidden font-sans ring-1 ring-zinc-200">
       {/* Rich Toolbar (shown for canvas-style exercises) */}
       {showToolbar && (
-        <div className="flex items-center gap-1 px-4 py-1.5 bg-[#f3f4f6] border-b border-zinc-300 shrink-0 overflow-x-auto h-12 shadow-sm">
+        <div className="flex items-center gap-1 px-4 py-1.5 m-3 rounded-3xl bg-[#EDF2FA] border-b border-zinc-300 shrink-0 overflow-x-auto h-10 shadow-sm">
           {/* Utility icons */}
           <ToolbarBtn icon={<Search size={16} />} />
           <ToolbarBtn icon={<Undo2 size={16} />} />
@@ -181,7 +186,7 @@ export const ExcelGrid = ({
       )}
 
       {/* Cell Reference + Formula Bar */}
-      <div className="flex items-center gap-0 bg-white border-b border-zinc-300 shrink-0 h-9">
+      <div className="flex items-center gap-0 bg-[#F2F2F2] border-b border-zinc-300 shrink-0 h-9">
         {/* Cell address */}
         <div className="flex items-center gap-2 px-4 py-1 border-r border-zinc-200 min-w-[70px]">
           <span className="text-xs font-bold text-zinc-700 select-none tracking-tight">{cellAddress}</span>
@@ -198,7 +203,7 @@ export const ExcelGrid = ({
           type="text"
           readOnly
           value={currentFormulaValue}
-          className="flex-1 px-4 py-1 bg-transparent border-none outline-none text-sm text-zinc-800 font-bold tracking-tight"
+          className="flex-1 px-4 py-1 border-none outline-none text-sm text-zinc-800 font-bold tracking-tight"
           placeholder=""
         />
       </div>
@@ -213,7 +218,10 @@ export const ExcelGrid = ({
               {colHeaders.map((header, idx) => (
                 <th
                   key={idx}
-                  className="w-40 h-6 bg-zinc-100 border border-zinc-200 text-zinc-500 font-normal text-[10px] uppercase sticky top-0 z-10"
+                  className={cn(
+                    "h-6 bg-zinc-100 border border-zinc-200 text-zinc-500 font-normal text-[10px] uppercase sticky top-0 z-10",
+                    idx === 0 ? "w-80" : "w-40"
+                  )}
                 >
                   {header}
                 </th>
@@ -357,7 +365,7 @@ export const ExcelGrid = ({
                           <div
                             className={cn(
                               "px-2 py-1 text-[13px] font-medium overflow-hidden whitespace-nowrap text-ellipsis",
-                              rowIndex === 0
+                              (rowIndex === 0 && !rowLabels)
                                 ? "text-zinc-400 font-bold uppercase text-[10px]"
                                 : "text-zinc-700",
                             )}

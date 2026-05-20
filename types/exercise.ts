@@ -95,6 +95,8 @@ export interface ExerciseConfig {
   }[];
   // canvas: For 'canvas' interactive maps
   canvasBackgroundText?: string;
+  canvasSubtype?: "drag_drop" | "freeform";
+  drawingPrompt?: string;
   canvasDraggableElements?: {
     category: string;
     items: {
@@ -104,4 +106,5 @@ export interface ExerciseConfig {
       content: string; // The text to display in the shape
     }[];
   }[];
+  hints?: string[];
 }

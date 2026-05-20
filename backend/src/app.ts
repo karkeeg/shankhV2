@@ -1,28 +1,45 @@
 import express from "express";
 import cors from "cors";
-import authRouter from "./modules/auth/routes.js";
-import studyPlansRouter from "./modules/study-plans/routes.js";
-import { getDefaultStudyPlanTree } from "./modules/study-plans/controller.js";
-import activitiesRouter from "./modules/activities/routes.js";
-import attemptsRouter from "./modules/attempts/routes.js";
-import { getUserProgress, recordAttempt } from "./modules/progress/controller.js";
-import { logEvent } from "./modules/telemetry/controller.js";
-import { authenticate } from "./middleware/authenticate.js";
+import dotenv from "dotenv";
+import morgan from "morgan";
 
-export const app = express();
+import authRoutes from "./routes/auth";
+import contentRoutes from "./routes/content";
+import sessionRoutes from "./routes/session";
+import draftRoutes from "./routes/draft";
+import progressRoutes from "./routes/progress";
+import skillRoutes from "./routes/skill";
+import adminRoutes from "./routes/admin";
+import activityRoutes from "./routes/activity";
+
+dotenv.config();
+
+const app = express();
+const port = Number(process.env.PORT || 4000);
 
 app.use(cors());
-app.use(express.json({ limit: "2mb" }));
+app.use(express.json());
+app.use(morgan("dev"));
 
-app.get("/health", (_req, res) => {
-  res.json({ data: { status: "ok" } });
+// Request logger to see incoming API calls
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  next();
 });
 
-app.use("/api/v1/auth", authRouter);
-app.use("/api/v1/study-plans", studyPlansRouter);
-app.get("/api/v1/study-plan-tree", getDefaultStudyPlanTree);
-app.get("/api/v1/user/progress", authenticate as any, getUserProgress);
-app.post("/api/v1/user/progress/attempt", authenticate as any, recordAttempt);
-app.post("/api/v1/telemetry", logEvent);
-app.use("/api/v1/activities", authenticate as any, activitiesRouter);
-app.use("/api/v1/attempts", authenticate as any, attemptsRouter);
+// API routes — must come BEFORE the root catch-all
+app.use("/api/v1/auth", authRoutes);
+app.use("/api/v1/content", contentRoutes);
+app.use("/api/v1/session", sessionRoutes);
+app.use("/api/v1/draft", draftRoutes);
+app.use("/api/v1/progress", progressRoutes);
+app.use("/api/v1/skill", skillRoutes);
+app.use("/api/v1/admin", adminRoutes);
+app.use("/api/v1/activities", activityRoutes);
+app.use("/api/v1/attempts", activityRoutes);
+
+
+app.listen(port, () => {
+  console.log(`Shankh backend listening at http://localhost:${port}`);
+});
+

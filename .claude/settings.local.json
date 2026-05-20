@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "Bash(find \"d:\\\\\\\\NxtWave\\\\\\\\shankhV2\\\\\\\\backend\" -type f)",
+      "Bash(find \"d:\\\\\\\\NxtWave\\\\\\\\shankhV2\\\\\\\\backend\" -type f -name \"*.ts\" -o -name \"*.js\")",
+      "Bash(grep -E \"^d:\\\\\\\\\\\\\\\\NxtWave\\\\\\\\\\\\\\\\shankhV2\\\\\\\\\\\\\\\\backend\\\\\\\\/\\(backend/\\)?src/\")"
+    ]
+  }
+}
