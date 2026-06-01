@@ -1,0 +1,892 @@
+================================================================================
+SHANKH — SKILL BUILDING: COMPLETE DEEP-DIVE DESIGN
+================================================================================
+
+================================================================================
+SECTION 1: CONCEPT & ARCHITECTURE
+================================================================================
+
+WHAT IS SKILL BUILDING?
+  A second mode alongside Learning. Same activity content, different lens.
+  Learning = structured curriculum (Module → Topic → Subtopic → Lesson → Activity).
+  Skill Building = profession-filtered practice bundles.
+
+  Key principle: ZERO duplicate content.
+  skill_bundle_items point to existing lessons + activity_type.
+  One session submit updates BOTH Learning progress AND Skill Building progress.
+
+THE TWO-MODE SIDEBAR
+  Left sidebar has two sections:
+  ┌────────────────────────────┐
+  │  LEARNING                  │
+  │  ├ Finance                 │
+  │  ├ Strategy                │
+  │  └ Operations              │
+  │                            │
+  │  SKILL BUILDING            │
+  │  ├ Case Simulations        │
+  │  ├ Framework Drills        │
+  │  ├ Quant Lab               │
+  │  └ MCQs                    │
+  └────────────────────────────┘
+
+FOUR SKILL SECTIONS
+  Section             | Slug               | Activity Type | Description
+  ──────────────────────────────────────────────────────────────────
+  Quant Lab           | quant_lab          | quantus       | Spreadsheet modeling practice
+  MCQs                | mcqs               | mcq           | Multiple choice concept drills
+  Framework Drills    | framework_drills   | canvas        | Drag-drop and structure drills
+  Case Simulations    | case_simulations   | NULL (mixed)  | Full multi-activity cases
+
+  Each section page has tabs that let the user switch between activity types
+  while keeping their profession filter. So on Quant Lab page:
+  Tabs: [Quantus Sheets] [Multiple Choice Questions] [Canvas]
+  These tabs map directly to the three skill_sections with activity_type set.
+
+  Note: "Quantus Sheets" tab = quant_lab section,
+        "Multiple Choice Questions" tab = mcqs section,
+        "Canvas" tab = framework_drills section.
+  The tabs exist as a convenience — they keep profession context while switching.
+
+PROFESSION FILTERING
+  Users can filter bundles by profession. Available professions:
+  - Chartered Accountant (ca)
+  - Account Head (account_head)
+  - Investment Banker (ib)
+  - Private Equity Analyst (pe)
+  - Strategy Consultant (strategy)
+  - Operations Manager (ops_mgr)
+  - Management Consultant (mgmt_consultant)
+  - Financial Analyst (fin_analyst)
+
+  Each bundle is linked to 1 or more professions via skill_bundle_professions (M2M).
+  When user selects a profession, only bundles linked to that profession are shown.
+  If no profession is selected, all bundles are shown.
+
+BUNDLE GROUPS
+  On a section page, bundles are visually grouped by their bundle_group field:
+  - 'profession_based' → shown under "Search by Profession" section
+    Each matching profession gets a card with its bundles inside
+  - 'modeling_fountains' → shown under a "Modeling Fountains" heading
+    These are curated bundles not tied to a specific profession
+  - Any custom string → creates a new named section on the page
+
+SESSION BRIDGE
+  Clicking a bundle item navigates to the same lesson activity page as Learning.
+  No separate activity tables. No duplicate sessions.
+  When user submits from within a Skill Building context:
+    → POST /me/sessions/:type runs the 8-step cascade
+    → Step 8 (conditional) updates user_skill_item_progress + user_skill_bundle_progress
+  One activity, one session, two progress trees updated atomically.
+
+================================================================================
+SECTION 2: DATABASE SCHEMA — ALL SKILL BUILDING TABLES (8 TABLES)
+================================================================================
+
+TABLE COUNT FOR SKILL BUILDING:
+  Content:  professions, skill_sections, skill_bundles,
+            skill_bundle_professions, skill_bundle_items,
+            subtopic_profession_tags                          = 6 tables
+  Progress: user_skill_bundle_progress, user_skill_item_progress = 2 tables
+  TOTAL: 8 tables
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TABLE: professions
+PURPOSE: Defines the professions users can filter by in Skill Building.
+         Also drives subtopic tagging and cross-promotion banners in Learning.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  id            UUID         PRIMARY KEY  DEFAULT gen_random_uuid()
+  name          VARCHAR(100) NOT NULL
+                             Full display name. E.g. "Chartered Accountant".
+  slug          VARCHAR(50)  UNIQUE NOT NULL
+                             URL-safe key. E.g. "ca", "ib", "strategy".
+                             Used in API query params: ?profession=ca
+  description   TEXT
+                             What this profession focuses on and what skills it requires.
+  icon_key      VARCHAR(50)
+                             Frontend icon identifier. E.g. "briefcase", "calculator".
+  order_index   INT          NOT NULL DEFAULT 0
+                             Display order in profession selector dropdown.
+  is_active     BOOLEAN      NOT NULL DEFAULT true
+                             If false, hidden from profession filter.
+  created_at    TIMESTAMPTZ  NOT NULL DEFAULT now()
+
+INDEXES:
+  idx_professions_active ON professions(order_index) WHERE is_active = true
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TABLE: skill_sections
+PURPOSE: The four Skill Building sidebar items. Each maps to a primary activity type.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  id            UUID         PRIMARY KEY  DEFAULT gen_random_uuid()
+  name          VARCHAR(100) NOT NULL
+                             Sidebar label. E.g. "Quant Lab", "MCQs".
+  slug          VARCHAR(50)  UNIQUE NOT NULL
+                             URL key. E.g. "quant_lab", "mcqs", "framework_drills".
+  activity_type activity_type
+                             NULL = mixed (Case Simulations).
+                             quantus = Quant Lab
+                             mcq = MCQs
+                             canvas = Framework Drills
+  description   TEXT
+                             What this section focuses on.
+  icon_key      VARCHAR(50)
+  tab_label     VARCHAR(100)
+                             Label shown in the horizontal tabs at top of page.
+                             E.g. "Quantus Sheets", "Multiple Choice Questions", "Canvas".
+  order_index   INT          NOT NULL DEFAULT 0
+  is_active     BOOLEAN      NOT NULL DEFAULT true
+
+SEED DATA:
+  ('Quant Lab',        'quant_lab',        'quantus', 'Quantus Sheets',           1)
+  ('MCQs',             'mcqs',             'mcq',     'Multiple Choice Questions', 2)
+  ('Framework Drills', 'framework_drills', 'canvas',  'Canvas',                   3)
+  ('Case Simulations', 'case_simulations', NULL,      'Case Simulations',         4)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TABLE: skill_bundles
+PURPOSE: Named exercise groups within a section. One bundle = one card on the page.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  id              UUID         PRIMARY KEY  DEFAULT gen_random_uuid()
+  section_id      UUID         NOT NULL     REFERENCES skill_sections(id)
+                               Which section page this bundle appears on.
+  name            VARCHAR(200) NOT NULL
+                               Bundle card title. E.g. "Individual Financial Statement Modeling".
+  description     TEXT
+                               Expanded description shown inside the card when expanded.
+  level           VARCHAR(80)
+                               Difficulty label shown on card. E.g. "Beginners / Intermediate".
+  duration_weeks  NUMERIC(4,1)
+                               Estimated time to complete. E.g. 1.5 (shown as "1.5 weeks").
+  bundle_group    VARCHAR(100) NOT NULL DEFAULT 'profession_based'
+                               Controls which visual section the bundle appears under:
+                               'profession_based'    → under "Search by Profession" header.
+                                                       Shown inside each matching profession card.
+                               'modeling_fountains'  → under "Modeling Fountains" header.
+                                                       Not profession-gated but still filterable.
+                               <custom string>       → creates a new named section on the page.
+  order_index     INT          NOT NULL DEFAULT 0
+                               Display order within its bundle_group on the page.
+  is_active       BOOLEAN      NOT NULL DEFAULT true
+  created_at      TIMESTAMPTZ  NOT NULL DEFAULT now()
+  updated_at      TIMESTAMPTZ  NOT NULL DEFAULT now()
+
+INDEXES:
+  idx_bundle_section        ON skill_bundles(section_id)
+  idx_bundle_section_group  ON skill_bundles(section_id, bundle_group, order_index)
+  idx_bundle_active         ON skill_bundles(section_id) WHERE is_active = true
+
+EXAMPLES:
+  Bundle: "Individual Financial Statement Modeling"
+    section: quant_lab, level: Beginners/Intermediate, duration: 1.5 weeks
+    bundle_group: profession_based
+    linked to: Chartered Accountant, Account Head
+
+  Bundle: "Financial Statement Fundamentals"
+    section: quant_lab, level: Beginners, duration: 1 week
+    bundle_group: modeling_fountains
+    linked to: (no professions — shown to everyone under Modeling Fountains)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TABLE: skill_bundle_professions
+PURPOSE: M2M join. One bundle can appear under multiple profession cards.
+         One profession can have many bundles.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  bundle_id     UUID         NOT NULL REFERENCES skill_bundles(id)     ON DELETE CASCADE
+  profession_id UUID         NOT NULL REFERENCES professions(id)        ON DELETE CASCADE
+  PRIMARY KEY (bundle_id, profession_id)
+
+INDEXES:
+  idx_sbp_profession ON skill_bundle_professions(profession_id, bundle_id)
+  idx_sbp_bundle     ON skill_bundle_professions(bundle_id)
+
+NOTE: bundle_group='modeling_fountains' bundles may have NO profession rows.
+      bundle_group='profession_based' bundles MUST have ≥1 profession row.
+      This is enforced at application level during admin creation.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TABLE: skill_bundle_items
+PURPOSE: The ordered list of activities within a bundle.
+         Each item is a (lesson_id + activity_type) pair from the Learning content.
+         NO duplicate content — these are references, not copies.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  id            UUID         PRIMARY KEY  DEFAULT gen_random_uuid()
+  bundle_id     UUID         NOT NULL REFERENCES skill_bundles(id)     ON DELETE CASCADE
+  lesson_id     UUID         NOT NULL REFERENCES lessons(id)
+                             The lesson that contains the target activity.
+  activity_type activity_type NOT NULL
+                             Which specific activity within that lesson.
+                             Must match an entry in lesson_activities for this lesson_id.
+  label         VARCHAR(200) NOT NULL
+                             Display name shown in the expandable item list.
+                             E.g. "P&L Forecast", "Balance Sheet Forecast", "EV Bridge".
+                             Can be different from the lesson name — more specific.
+  description   TEXT
+                             Short text shown below the label. Optional.
+  order_index   INT          NOT NULL DEFAULT 0
+                             The order items appear in the expandable list.
+                             Also the order they are worked through when starting sequentially.
+
+CONSTRAINTS:
+  UNIQUE(bundle_id, lesson_id, activity_type)
+  -- A given activity can only appear once in a bundle.
+
+INDEXES:
+  idx_sbi_bundle ON skill_bundle_items(bundle_id, order_index)
+  idx_sbi_lesson ON skill_bundle_items(lesson_id, activity_type)
+  -- idx_sbi_lesson is used to check "is this activity part of any bundle?"
+  -- during the session submit cascade (Step 8).
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TABLE: subtopic_profession_tags
+PURPOSE: Tags subtopics to professions for cross-promotion.
+         When a user is in Learning on a subtopic tagged to their target profession,
+         a banner shows: "This subtopic is in your CA skill path".
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  subtopic_id   UUID         NOT NULL REFERENCES subtopics(id)   ON DELETE CASCADE
+  profession_id UUID         NOT NULL REFERENCES professions(id)  ON DELETE CASCADE
+  PRIMARY KEY (subtopic_id, profession_id)
+
+INDEXES:
+  idx_spt_profession ON subtopic_profession_tags(profession_id)
+  idx_spt_subtopic   ON subtopic_profession_tags(subtopic_id)
+
+USAGE:
+  GET /lessons/:id/skill-context
+  → returns: which professions this lesson's subtopic is tagged to
+  → frontend shows: "💼 Part of CA skill path" banner at top of lesson
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TABLE: user_skill_bundle_progress
+PURPOSE: Overall progress for a user on a specific bundle.
+         One row per (user, bundle) pair. Created on first bundle item submit.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  id               UUID         PRIMARY KEY  DEFAULT gen_random_uuid()
+  user_id          UUID         NOT NULL REFERENCES users(id)          ON DELETE CASCADE
+  bundle_id        UUID         NOT NULL REFERENCES skill_bundles(id)  ON DELETE CASCADE
+  items_completed  INT          NOT NULL DEFAULT 0
+                                Count of bundle items where is_completed = TRUE.
+  items_total      INT          NOT NULL DEFAULT 0
+                                Total items in bundle (denormalised for performance).
+                                Set on first access, updated if bundle items change.
+  completion_pct   NUMERIC(5,2) NOT NULL DEFAULT 0
+                                (items_completed / items_total) × 100.
+  recall_strength  NUMERIC(5,2) NOT NULL DEFAULT 0
+                                AVG of best_score_pct for MCQ items in this bundle.
+                                NULL-safe: only MCQ items with scores contribute.
+  concept_accuracy NUMERIC(5,2) NOT NULL DEFAULT 0
+                                AVG of best_score_pct for Canvas items in this bundle.
+  application_score NUMERIC(5,2) NOT NULL DEFAULT 0
+                                AVG of best_score_pct for Quantus items in this bundle.
+  started_at       TIMESTAMPTZ
+                                When user first started any item in this bundle.
+  completed_at     TIMESTAMPTZ
+                                When completion_pct first reached 100. NULL if not complete.
+  last_accessed_at TIMESTAMPTZ
+                                Last time user touched any item in this bundle.
+                                Updated on every session submit for a bundle item.
+  updated_at       TIMESTAMPTZ  NOT NULL DEFAULT now()
+
+CONSTRAINTS:
+  UNIQUE(user_id, bundle_id)
+
+INDEXES:
+  idx_usbp_user          ON user_skill_bundle_progress(user_id)
+  idx_usbp_last_accessed ON user_skill_bundle_progress(user_id, last_accessed_at DESC)
+  -- Powers: "Recently worked on" and "Resume bundle" features.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TABLE: user_skill_item_progress
+PURPOSE: Per-item progress within a bundle. One row per (user, bundle_item).
+         Updated in the same SERIALIZABLE transaction as Learning progress.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  id              UUID         PRIMARY KEY  DEFAULT gen_random_uuid()
+  user_id         UUID         NOT NULL REFERENCES users(id)               ON DELETE CASCADE
+  bundle_item_id  UUID         NOT NULL REFERENCES skill_bundle_items(id)  ON DELETE CASCADE
+  best_score_pct  NUMERIC(5,2)
+                               Best session score for this item. NULL = not yet attempted.
+                               Updated with GREATEST() — score NEVER decreases.
+  is_completed    BOOLEAN      NOT NULL DEFAULT false
+                               TRUE after first successful session submit.
+                               NEVER reverts to FALSE.
+  hints_used      INT          NOT NULL DEFAULT 0
+                               Total hints revealed across all attempts.
+  attempts        INT          NOT NULL DEFAULT 0
+                               Number of session submits for this item.
+  completed_at    TIMESTAMPTZ
+                               When is_completed was first set to TRUE.
+  updated_at      TIMESTAMPTZ  NOT NULL DEFAULT now()
+
+CONSTRAINTS:
+  UNIQUE(user_id, bundle_item_id)
+
+INDEXES:
+  idx_usip_user   ON user_skill_item_progress(user_id)
+  idx_usip_bundle ON user_skill_item_progress(user_id, bundle_item_id)
+
+================================================================================
+SECTION 3: BUNDLE STRUCTURE — CARD ANATOMY
+================================================================================
+
+BUNDLE CARD STATES
+  State 1: NOT STARTED (no user_skill_bundle_progress row)
+  ┌──────────────────────────────────────────────────────────┐
+  │ Individual Financial Statement Modeling    [Expand ↓]    │
+  │ Build a strong foundation in financial modeling          │
+  │ ┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┐ │
+  │   P&L Forecast ↓                                        │ │
+  │   Balance Sheet Forecast ↓                              │ │
+  │   Cash Flow Forecast ↓                                  │ │
+  │ └ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┘ │
+  │ Beginners / Intermediate          1.5 weeks             │
+  │ [████████████████████████] Start                        │
+  └──────────────────────────────────────────────────────────┘
+
+  State 2: IN PROGRESS (completion_pct > 0 and < 100)
+  ┌──────────────────────────────────────────────────────────┐
+  │ Individual Financial Statement Modeling    [Expand ↓]    │
+  │ ▓▓▓▓▓▓▓▓▓▓▓░░░░░░░░░░   33% — 1/3 complete             │
+  │ ┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┐ │
+  │   ✓ P&L Forecast           score: 87%                   │ │
+  │   ○ Balance Sheet Forecast  ← next                      │ │
+  │   ○ Cash Flow Forecast                                  │ │
+  │ └ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┘ │
+  │ [████████████████████████] Resume                       │
+  └──────────────────────────────────────────────────────────┘
+
+  State 3: COMPLETED (completion_pct = 100)
+  ┌──────────────────────────────────────────────────────────┐
+  │ ✓ Individual Financial Statement Modeling  [Expand ↓]   │
+  │ ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓   100% complete                   │
+  │ ┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┐ │
+  │   ✓ P&L Forecast           87%                          │ │
+  │   ✓ Balance Sheet Forecast  91%                         │ │
+  │   ✓ Cash Flow Forecast      79%                         │ │
+  │ └ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┘ │
+  │ Recall: 87% | Concept: 91% | Application: 79%           │
+  │ [Retry to improve ↑]                                    │
+  └──────────────────────────────────────────────────────────┘
+
+BUNDLE ITEM STATES (within expanded card)
+  ○ = not_started (no user_skill_item_progress row OR is_completed=false, attempts=0)
+  ◐ = in_progress (is_completed=false, attempts > 0) — tried but not yet complete
+  ✓ = completed   (is_completed=true)
+
+  Item rows show:
+  - Icon (○/◐/✓)
+  - Label (e.g. "P&L Forecast")
+  - Score if completed (e.g. "87%")
+  - "← next" indicator on first incomplete item
+  - Expandable detail on click (lesson name, difficulty, estimated time)
+
+EXPANDABLE ITEM DETAIL (on item click):
+  ┌────────────────────────────────────────────────┐
+  │ ↳ P&L Forecast                                 │
+  │   Lesson: FCF Projection Model (Hard)          │
+  │   Activity: Quantus spreadsheet                │
+  │   Estimated: 20–30 min                         │
+  │   [Start this item →]                          │
+  └────────────────────────────────────────────────┘
+
+================================================================================
+SECTION 4: USER JOURNEY — STEP BY STEP
+================================================================================
+
+JOURNEY 1: First time in Skill Building
+───────────────────────────────────────
+Step 1: User clicks "Quant Lab" in sidebar
+        → GET /skill/sections → returns all 4 sections
+        → Page title: "Quant Lab"
+        → Tabs rendered: [Quantus Sheets*] [Multiple Choice Questions] [Canvas]
+        → Active tab: "Quantus Sheets" (quant_lab section)
+
+Step 2: Page loads bundles for quant_lab section
+        → GET /skill/sections/quant_lab/bundles
+        → Shows all bundles (no profession filter yet)
+        → Profession selector shown at top: [All Professions ▼]
+
+Step 3: User opens profession dropdown, selects "Chartered Accountant"
+        → GET /skill/sections/quant_lab/bundles?profession=ca
+        → Page re-renders showing:
+            "Search by Profession" section header
+            Chartered Accountant card (expanded by default) with matching bundles
+            Account Head card (if any bundles match both CA and Account Head)
+          Below:
+            "Modeling Fountains" section with bundle_group='modeling_fountains' bundles
+
+Step 4: User clicks [Expand ↓] on "Individual Financial Statement Modeling" bundle
+        → Bundle card expands to show items list
+        → All items show ○ (not started) since no progress exists
+
+Step 5: User clicks [Start] button
+        → POST /skill/bundles/:bundle_id/start
+        → Response: { next_item: { bundle_item_id, lesson_id, activity_type, label } }
+        → user_skill_bundle_progress row created (started_at = now())
+        → Frontend navigates to: /lessons/:lesson_id?activity=quantus&from=skill&bundle_item=:id
+
+Step 6: User completes the Quantus activity and clicks [Check Answer]
+        → POST /me/sessions/quantus (body includes bundle_item_id)
+        → 8-step cascade runs:
+            Steps 1-7: Learning progress updated (lesson → subtopic → topic → module)
+            Step 8: user_skill_item_progress upserted (is_completed=TRUE, best_score_pct=87)
+                    user_skill_bundle_progress updated (items_completed=1, completion_pct=33.3)
+        → Response includes both learning_progress and skill_progress objects
+        → Frontend: shows result overlay with option to [Return to Bundle] or [Continue Next]
+
+Step 7: User returns to bundle page
+        → P&L Forecast shows ✓ 87%
+        → Balance Sheet Forecast shows ← next (with Resume button on card)
+
+────────────────────────────────────────────────────────────────────────
+JOURNEY 2: Switching activity type tabs
+────────────────────────────────────────────────────────────────────────
+User is on Quant Lab page with CA selected:
+→ Clicks "Multiple Choice Questions" tab
+→ GET /skill/sections/mcqs/bundles?profession=ca
+→ Same profession filter applies
+→ Shows MCQ bundles for CA
+→ URL changes to /skill/mcqs?profession=ca
+→ Tab state persists profession selection
+
+────────────────────────────────────────────────────────────────────────
+JOURNEY 3: Resuming a bundle
+────────────────────────────────────────────────────────────────────────
+User returns next day:
+→ Clicks "Quant Lab" in sidebar
+→ GET /me/skill/recently-active → returns last accessed bundle info
+→ Banner at top: "Resume: Individual Financial Statement Modeling (1/3 done)"
+→ Bundle card shows: [Resume] button + progress bar at 33%
+→ User clicks [Resume]
+→ POST /skill/bundles/:bundle_id/start (same endpoint — server finds next incomplete)
+→ Navigates to Balance Sheet Forecast activity
+
+────────────────────────────────────────────────────────────────────────
+JOURNEY 4: Improving a completed item
+────────────────────────────────────────────────────────────────────────
+User already has P&L Forecast ✓ 87%:
+→ Clicks on the completed item in expanded list
+→ Item detail shows: "Score: 87% | [Retry to improve ↑]"
+→ User clicks [Retry]
+→ Navigates to the same activity again
+→ On submit: GREATEST(87, new_score) — score only improves
+→ If new score is 95: item shows ✓ 95% (updated)
+→ Bundle recall_strength recalculated from all items' best_score_pct
+
+================================================================================
+SECTION 5: SESSION FLOW — COMPLETE TECHNICAL DESIGN
+================================================================================
+
+HOW SKILL BUILDING CONNECTS TO SESSIONS
+  Skill Building does NOT have its own session tables.
+  It reuses: user_lesson_sessions, user_activity_drafts, user_mcq_sessions,
+             user_canvas_sessions, user_quantus_sessions, user_hint_usage
+
+  The connection is in skill_bundle_items:
+  idx_sbi_lesson ON skill_bundle_items(lesson_id, activity_type)
+  
+  When any session is submitted:
+  Step 8 checks: SELECT id, bundle_id FROM skill_bundle_items
+                  WHERE lesson_id = :lid AND activity_type = :type
+  If rows found → update skill progress for each matching bundle.
+
+START BUNDLE — POST /skill/bundles/:id/start
+  1. Find user_skill_bundle_progress for (user, bundle). Create if not exists.
+  2. Get all skill_bundle_items for bundle, ordered by order_index.
+  3. For each item, check user_skill_item_progress.is_completed.
+  4. Return first item where is_completed = FALSE (or NULL = not started).
+  5. If all completed → return { all_complete: true, bundle_id }.
+  6. Create/resume user_lesson_sessions for the lesson_id of the next item.
+  7. Return: { next_item: { bundle_item_id, lesson_id, activity_type, label } }
+
+  URL for navigation:
+  /lessons/:lesson_id?activity=quantus&bundle_item=:bundle_item_id&bundle=:bundle_id
+  The query params tell the lesson page:
+  - Which activity tab to open (activity=quantus)
+  - We came from a skill bundle (bundle_item, bundle)
+  - "Back to bundle" breadcrumb shown instead of subtopic breadcrumb
+
+SUBMIT SESSION FROM SKILL BUILDING (Step 8 detail)
+  POST /me/sessions/quantus
+  Body: { activity_id, hints_used, input_snapshot, bundle_item_id (optional) }
+
+  Step 8 — Skill Building Update (CONDITIONAL):
+  ── 8a: Look up all matching bundle items ──────────────────────────────────
+  SELECT sbi.id AS item_id, sbi.bundle_id
+  FROM skill_bundle_items sbi
+  WHERE sbi.lesson_id = :lesson_id
+    AND sbi.activity_type = :activity_type
+
+  ── 8b: For each matching bundle item ─────────────────────────────────────
+  INSERT INTO user_skill_item_progress
+    (user_id, bundle_item_id, best_score_pct, is_completed, attempts, completed_at)
+  VALUES
+    (:uid, :item_id, :score_pct, TRUE, 1, now())
+  ON CONFLICT (user_id, bundle_item_id) DO UPDATE SET
+    best_score_pct = GREATEST(user_skill_item_progress.best_score_pct, EXCLUDED.best_score_pct),
+    is_completed   = TRUE,
+    attempts       = user_skill_item_progress.attempts + 1,
+    completed_at   = COALESCE(user_skill_item_progress.completed_at, now()),
+    updated_at     = now();
+
+  ── 8c: For each affected bundle ──────────────────────────────────────────
+  INSERT INTO user_skill_bundle_progress
+    (user_id, bundle_id, items_completed, items_total, completion_pct,
+     recall_strength, concept_accuracy, application_score,
+     started_at, last_accessed_at, updated_at)
+  SELECT
+    :uid, :bundle_id,
+    0, 0, 0, 0, 0, 0, now(), now(), now()
+  ON CONFLICT (user_id, bundle_id) DO UPDATE SET
+    items_completed  = (SELECT COUNT(*) FROM user_skill_item_progress usip
+                        JOIN skill_bundle_items sbi ON sbi.id = usip.bundle_item_id
+                        WHERE sbi.bundle_id = :bundle_id AND usip.user_id = :uid
+                          AND usip.is_completed = TRUE),
+    items_total      = (SELECT COUNT(*) FROM skill_bundle_items WHERE bundle_id = :bundle_id),
+    completion_pct   = (items_completed::numeric / NULLIF(items_total, 0)) * 100,
+    recall_strength  = (SELECT COALESCE(AVG(usip.best_score_pct), 0)
+                        FROM user_skill_item_progress usip
+                        JOIN skill_bundle_items sbi ON sbi.id = usip.bundle_item_id
+                        WHERE sbi.bundle_id = :bundle_id AND usip.user_id = :uid
+                          AND sbi.activity_type = 'mcq' AND usip.best_score_pct IS NOT NULL),
+    concept_accuracy = (... same for activity_type = 'canvas' ...),
+    application_score= (... same for activity_type = 'quantus' ...),
+    completed_at     = CASE WHEN items_completed = items_total THEN COALESCE(completed_at, now()) ELSE NULL END,
+    last_accessed_at = now(),
+    updated_at       = now();
+
+RESPONSE SHAPE
+  {
+    "session_id": "uuid",
+    "learning_progress": {
+      "lesson_completion_pct": 100,
+      "subtopic_completion_pct": 33.3,
+      "topic_completion_pct": 11.1,
+      "module_completion_pct": 3.7
+    },
+    "skill_progress": {                      ← NULL if activity not in any bundle
+      "bundle_item_id": "uuid",
+      "bundle_item_label": "P&L Forecast",
+      "bundle_item_completed": true,
+      "best_score_pct": 87,
+      "bundle_id": "uuid",
+      "bundle_name": "Individual Financial Statement Modeling",
+      "bundle_completion_pct": 33.3,
+      "items_completed": 1,
+      "items_total": 3
+    }
+  }
+
+================================================================================
+SECTION 6: API REFERENCE — ALL SKILL BUILDING ENDPOINTS
+================================================================================
+
+─── DISCOVERY ────────────────────────────────────────────────────────────────
+GET /skill/sections
+  Returns all active skill sections for rendering the sidebar and tab bar.
+  Response: [{ id, name, slug, activity_type, tab_label, order_index }]
+
+GET /skill/professions
+  Returns all active professions for the profession selector.
+  Response: [{ id, name, slug, description, icon_key, order_index }]
+
+GET /skill/sections/:slug/bundles
+  Main endpoint for a skill section page. Returns all bundles grouped.
+  Query params:
+    ?profession=ca           Filter bundles by profession slug. Empty = all.
+    ?group=profession_based  Filter by bundle_group. Empty = all groups.
+  Response:
+    {
+      "section": { id, name, slug, activity_type, tab_label },
+      "active_profession": { id, name, slug } | null,
+      "bundle_groups": [
+        {
+          "group_key": "profession_based",
+          "group_label": "Search by Profession",
+          "professions": [                           ← only if group=profession_based
+            {
+              "profession": { id, name, slug },
+              "bundles": [
+                {
+                  "id": "uuid",
+                  "name": "...",
+                  "level": "...",
+                  "duration_weeks": 1.5,
+                  "items_count": 3,
+                  "user_progress": {                 ← null if not started
+                    "completion_pct": 33.3,
+                    "items_completed": 1,
+                    "items_total": 3,
+                    "last_accessed_at": "..."
+                  },
+                  "items": [
+                    {
+                      "id": "uuid",
+                      "label": "P&L Forecast",
+                      "order_index": 1,
+                      "activity_type": "quantus",
+                      "item_progress": {             ← null if not started
+                        "is_completed": true,
+                        "best_score_pct": 87,
+                        "attempts": 1
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "group_key": "modeling_fountains",
+          "group_label": "Modeling Fountains",
+          "bundles": [...]   ← flat list, no profession grouping
+        }
+      ]
+    }
+
+GET /skill/bundles/:id
+  Single bundle detail with all items and full user progress.
+  Response: { ...bundle, items: [...all items with progress] }
+
+─── STARTING & RESUMING ──────────────────────────────────────────────────────
+POST /skill/bundles/:id/start
+  Start or resume a bundle. Creates progress row if first time.
+  Finds next incomplete item. Creates lesson session for it.
+  Body: {} (user from JWT)
+  Response:
+    {
+      "bundle_id": "uuid",
+      "is_resume": false,
+      "all_complete": false,
+      "next_item": {
+        "bundle_item_id": "uuid",
+        "lesson_id": "uuid",
+        "activity_type": "quantus",
+        "label": "P&L Forecast",
+        "lesson_name": "FCF Projection Model",
+        "lesson_difficulty": "hard"
+      },
+      "navigate_to": "/lessons/:lesson_id?activity=quantus&bundle_item=:id&bundle=:bundle_id"
+    }
+
+POST /skill/bundles/:id/items/:item_id/start
+  Start a specific bundle item (for retry or direct access from expanded list).
+  Same response shape as above but for the specific item.
+
+─── PROGRESS ─────────────────────────────────────────────────────────────────
+GET /me/skill/progress
+  Full skill building progress across all bundles.
+  Response:
+    {
+      "sections": [
+        {
+          "section": { name, slug, activity_type },
+          "bundles_started": 2,
+          "bundles_completed": 0,
+          "avg_completion_pct": 45,
+          "bundles": [
+            {
+              "bundle": { id, name, level },
+              "completion_pct": 33.3,
+              "items_completed": 1,
+              "items_total": 3,
+              "recall_strength": 87,
+              "last_accessed_at": "..."
+            }
+          ]
+        }
+      ]
+    }
+
+GET /me/skill/recently-active
+  The last bundle the user was working on. Powers the resume banner.
+  Response:
+    {
+      "bundle_id": "uuid",
+      "bundle_name": "...",
+      "section_name": "Quant Lab",
+      "profession_name": "Chartered Accountant",
+      "completion_pct": 33.3,
+      "items_completed": 1,
+      "items_total": 3,
+      "last_accessed_at": "...",
+      "next_item": { ... }
+    }
+
+GET /me/skill/profession/:slug/progress
+  Skill progress for a specific profession.
+  Returns all bundles linked to that profession with progress.
+  Response: { profession: {...}, bundles: [...with progress] }
+
+─── CROSS-PROMOTION ──────────────────────────────────────────────────────────
+GET /lessons/:id/skill-context
+  Called when loading a lesson page. Returns skill building context.
+  Response:
+    {
+      "profession_tags": [
+        { "profession_id": "uuid", "profession_name": "Chartered Accountant", "slug": "ca" }
+      ],
+      "bundle_items": [
+        {
+          "bundle_item_id": "uuid",
+          "bundle_id": "uuid",
+          "bundle_name": "Individual Financial Statement Modeling",
+          "activity_type": "quantus",
+          "label": "P&L Forecast",
+          "bundle_completion_pct": 33.3
+        }
+      ]
+    }
+  Used to show: "💼 This lesson is part of your CA skill path" banner.
+
+─── ADMIN ────────────────────────────────────────────────────────────────────
+POST /admin/professions
+  Body: { name, slug, description, icon_key, order_index }
+  Creates a new profession.
+
+POST /admin/skill/bundles
+  Body: { section_id, name, description, level, duration_weeks, bundle_group, order_index }
+  Creates a new bundle.
+
+POST /admin/skill/bundles/:id/professions
+  Body: { profession_ids: ["uuid", "uuid"] }
+  Links bundle to one or more professions. Replaces existing links.
+
+POST /admin/skill/bundles/:id/items
+  Body: { items: [{ lesson_id, activity_type, label, description, order_index }] }
+  Adds items to bundle. Returns created item ids.
+
+PUT /admin/skill/bundles/:id/items/reorder
+  Body: { item_ids: ["uuid1", "uuid2", "uuid3"] } (ordered)
+  Updates order_index for all items in a bundle.
+
+DELETE /admin/skill/bundles/:id/items/:item_id
+  Removes an item from a bundle.
+  Note: user_skill_item_progress CASCADE deletes too.
+
+POST /admin/subtopics/:id/professions
+  Body: { profession_ids: ["uuid"] }
+  Tags a subtopic with relevant professions (for cross-promotion).
+
+DELETE /admin/skill/bundles/:id
+  Soft-delete a bundle. Sets is_active = false. Does not delete user progress.
+
+POST /admin/users/:id/skill-recalculate
+  Rebuilds all skill bundle/item progress from raw session data.
+
+================================================================================
+SECTION 7: ADMIN TOOLING — CONTENT CREATION WORKFLOW
+================================================================================
+
+HOW TO CREATE A COMPLETE BUNDLE (admin flow)
+  Step 1: Ensure professions exist
+          GET /admin/professions → check if CA exists
+          POST /admin/professions { name: "Chartered Accountant", slug: "ca" }
+
+  Step 2: Pick the section
+          GET /admin/skill/sections → find quant_lab section id
+
+  Step 3: Create the bundle
+          POST /admin/skill/bundles
+          { section_id: "quant_lab_uuid", name: "Individual Financial Statement Modeling",
+            level: "Beginners / Intermediate", duration_weeks: 1.5,
+            bundle_group: "profession_based" }
+
+  Step 4: Link to professions
+          POST /admin/skill/bundles/:bundle_id/professions
+          { profession_ids: ["ca_uuid", "account_head_uuid"] }
+
+  Step 5: Add items (link to existing lessons)
+          POST /admin/skill/bundles/:bundle_id/items
+          { items: [
+              { lesson_id: "fcf_lesson_uuid", activity_type: "quantus",
+                label: "P&L Forecast", order_index: 1 },
+              { lesson_id: "balance_sheet_uuid", activity_type: "quantus",
+                label: "Balance Sheet Forecast", order_index: 2 },
+              { lesson_id: "cashflow_uuid", activity_type: "quantus",
+                label: "Cash Flow Forecast", order_index: 3 }
+          ]}
+
+  Step 6: Tag subtopics (for Learning cross-promotion)
+          POST /admin/subtopics/:subtopic_id/professions
+          { profession_ids: ["ca_uuid"] }
+          (Do this for each subtopic whose lessons appear in CA bundles)
+
+  Step 7: Verify
+          GET /skill/sections/quant_lab/bundles?profession=ca
+          → Should show the new bundle under CA
+
+VALIDATION RULES FOR ADMIN (app-level enforcement)
+  1. bundle_group='profession_based' bundles MUST be linked to ≥1 profession.
+  2. Each bundle item must reference a lesson that has the matching activity_type
+     in lesson_activities (i.e. the lesson must actually have that activity assigned).
+  3. Duration must be > 0 if provided.
+  4. Items order_index must be unique within a bundle (no gaps required).
+
+================================================================================
+SECTION 8: SKILL BUILDING RULES (no-loophole)
+================================================================================
+
+RULE 1: best_score_pct never decreases
+  GREATEST() used on every upsert of user_skill_item_progress.
+  Even if user retries and gets a worse score, the displayed score stays at best.
+
+RULE 2: is_completed never reverts to FALSE
+  Once set to TRUE, is_completed is protected:
+  ON CONFLICT DO UPDATE SET is_completed = TRUE (always)
+  completed_at = COALESCE(existing_completed_at, now())
+
+RULE 3: Bundle completion = all items completed
+  completion_pct = (items_completed / items_total) × 100
+  items_completed is a COUNT query, not incremented manually.
+  This prevents drift if items are added/removed from a bundle.
+
+RULE 4: Session bridge is lookup-based, not flag-based
+  Step 8 of cascade always looks up skill_bundle_items by (lesson_id, activity_type).
+  This means if an activity is added to a new bundle later, all past sessions
+  retroactively feed into the new bundle progress (via recalculate endpoint).
+  No session needs to "know" it was started from Skill Building.
+
+RULE 5: User isolation
+  All skill progress rows have user_id FK and queries always filter by user_id.
+
+RULE 6: Atomic dual update
+  Steps 1-7 (Learning) and Step 8 (Skill Building) are in the same SERIALIZABLE
+  transaction. If skill update fails, the whole session submit rolls back.
+
+RULE 7: items_total is denormalized but protected
+  items_total in user_skill_bundle_progress is set from a fresh COUNT.
+  If admin adds/removes items, POST /admin/users/:id/skill-recalculate fixes it.
+
+RULE 8: Soft-delete safety
+  If a bundle is deactivated (is_active=false), existing progress rows are kept.
+  Users who already started the bundle can still finish it.
+  The bundle just won't appear in GET /skill/sections/:slug/bundles for new users.
+
+================================================================================
+SECTION 9: CROSS-PROMOTION — LEARNING ↔ SKILL BUILDING
+================================================================================
+
+DIRECTION 1: Learning → Skill Building
+  When user opens a lesson page:
+  → GET /lessons/:id/skill-context
+  → If lesson's subtopic is in subtopic_profession_tags:
+    Show banner: "💼 This lesson is part of your CA skill path"
+    Show: which bundles include this lesson's activity
+    Show: how far along those bundles are (user's bundle progress)
+
+DIRECTION 2: Skill Building → Learning
+  When user is on bundle page looking at an item they haven't started:
+  → Bundle item tooltip shows: "Also in Learning → Finance → Core Concepts → EV vs Equity"
+  → Clicking navigates to the Learning subtopic for context first
+  → Then user can return to Skill Building to practice
+
+DIRECTION 3: Progress sync visual
+  On the Learning lesson page, if the user just completed an activity that
+  is also a bundle item:
+  → Toast notification: "🎯 P&L Forecast complete! Bundle 33% done"
+  → Links back to the bundle page
+
+================================================================================
+END OF DOCUMENT — SHANKH SKILL BUILDING DEEP DIVE
+================================================================================

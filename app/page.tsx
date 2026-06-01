@@ -20,6 +20,16 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [isAiOpen, setIsAiOpen] = useState(true);
 
+  const [dashboardData, setDashboardData] = useState<any>({
+    streak: 0,
+    simulations: 0,
+    completedDates: [],
+    modulesProgress: [],
+    overallProgressPct: 0,
+    resumeLesson: null,
+  });
+  const [resumeLessonTarget, setResumeLessonTarget] = useState<any>(null);
+
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -29,8 +39,29 @@ export default function Dashboard() {
       if (!mounted || !token) return;
 
       try {
-        // Mock data fetching while backend is rebuilt
-        await new Promise(resolve => setTimeout(resolve, 500));
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        headers.Authorization = `Bearer ${token}`;
+        const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1/progress/me/dashboard`, { headers });
+        if (res.ok) {
+          const { data } = await res.json();
+          if (data) {
+            setDashboardData(data);
+
+            // Determine resume target based on sessionStorage vs fallback to Today's Lessons (resumeLesson from DB)
+            const sessionLast = sessionStorage.getItem("shankh:lastLesson");
+            if (sessionLast) {
+              setResumeLessonTarget(JSON.parse(sessionLast));
+            } else {
+              const sessionToday = sessionStorage.getItem("shankh:todaysLesson");
+              if (sessionToday) {
+                setResumeLessonTarget(JSON.parse(sessionToday));
+              } else if (data.resumeLesson) {
+                sessionStorage.setItem("shankh:todaysLesson", JSON.stringify(data.resumeLesson));
+                setResumeLessonTarget(data.resumeLesson);
+              }
+            }
+          }
+        }
       } catch (err) {
         console.error("Failed to fetch dashboard data:", err);
       } finally {
@@ -57,15 +88,19 @@ export default function Dashboard() {
       <div className="p-6 max-w-full mx-auto space-y-6">
         <DashboardHeader isAiOpen={isAiOpen} onOpenAi={() => setIsAiOpen(true)} />
 
-        <ResumeLessonCard />
+        <ResumeLessonCard lesson={resumeLessonTarget} />
         <ProgramInfoCard />
-        <ProgressOverview />
+        <ProgressOverview modules={dashboardData.modulesProgress} />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <LearningPathOverview progressPercentage={74} />
+          <LearningPathOverview 
+            progressPercentage={dashboardData.overallProgressPct} 
+            streak={dashboardData.streak} 
+            simulations={dashboardData.simulations} 
+          />
 
           <div className="bg-white border border-zinc-200 rounded-2xl p-6 shadow-sm flex items-center justify-center">
-            <Heatmap />
+            <Heatmap completedDates={dashboardData.completedDates} />
           </div>
         </div>
 

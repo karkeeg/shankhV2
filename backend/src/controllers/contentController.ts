@@ -258,20 +258,47 @@ const buildHintSummary = async (activityId: string, activityType: string, userId
 
 export const getLessonDetail = async (req: Request, res: Response) => {
   const { lessonId } = req.params;
+  const userId = await getUserIdFromRequest(req);
   const lesson = await prisma.lesson.findUnique({
     where: { id: lessonId },
     include: {
-      lessonActivities: true,
+      lessonActivities: {
+        orderBy: { orderIndex: "asc" },
+      },
       mcqActivity: { include: { questions: { include: { options: true } } } },
-      canvasActivity: { include: { zones: true, items: true } },
-      quantusActivity: { include: { columnGroups: true, columns: true, sections: { include: { rows: { include: { quantusCells: true } } } } } },
+      canvasActivity: { include: { tokens: { orderBy: { orderIndex: "asc" } } } },
+      quantusActivity: { include: { columnGroups: true, columns: true, quantusCells: true } },
       subtopic: { include: { topic: true } },
     },
   });
 
   if (!lesson) return res.status(404).json({ error: "Lesson not found" });
 
-  const activities: Record<string, unknown> = {
+  let activitiesCompleted = 0;
+  if (userId) {
+    const ulp = await prisma.userLessonProgress.findUnique({
+      where: { userId_lessonId: { userId, lessonId } },
+    });
+    if (ulp) {
+      if (lesson.mcqActivity && ulp.mcqBestScore !== null) activitiesCompleted++;
+      if (lesson.canvasActivity && ulp.canvasBestScore !== null) activitiesCompleted++;
+      if (lesson.quantusActivity && ulp.quantusAttempted) activitiesCompleted++;
+    }
+  }
+
+  const activitiesList = lesson.lessonActivities.map((act) => {
+    let activityId = "";
+    if (act.activityType === "mcq") activityId = lesson.mcqActivity?.id || "";
+    if (act.activityType === "canvas") activityId = lesson.canvasActivity?.id || "";
+    if (act.activityType === "quantus") activityId = lesson.quantusActivity?.id || "";
+    return {
+      type: act.activityType,
+      activity_id: activityId,
+      order_index: act.orderIndex,
+    };
+  });
+
+  const activitiesData: Record<string, unknown> = {
     mcq: null,
     canvas: null,
     quantus: null,
@@ -279,7 +306,7 @@ export const getLessonDetail = async (req: Request, res: Response) => {
 
   if (lesson.mcqActivity) {
     const hintsCount = await prisma.activityHint.count({ where: { activityId: lesson.mcqActivity.id, activityType: "mcq" } });
-    activities.mcq = {
+    activitiesData.mcq = {
       id: lesson.mcqActivity.id,
       title: lesson.mcqActivity.title,
       instructions: lesson.mcqActivity.instructions,
@@ -301,22 +328,21 @@ export const getLessonDetail = async (req: Request, res: Response) => {
 
   if (lesson.canvasActivity) {
     const hintsCount = await prisma.activityHint.count({ where: { activityId: lesson.canvasActivity.id, activityType: "canvas" } });
-    activities.canvas = {
+    activitiesData.canvas = {
       id: lesson.canvasActivity.id,
       title: lesson.canvasActivity.title,
       instructions: lesson.canvasActivity.instructions,
       context: lesson.canvasActivity.context,
-      subtype: lesson.canvasActivity.subtype,
-      drawingPrompt: lesson.canvasActivity.drawingPrompt,
       hintsCount,
-      zones: lesson.canvasActivity.zones,
-      items: lesson.canvasActivity.items,
+      assemblyMode: lesson.canvasActivity.assemblyMode,
+      scoringMode: lesson.canvasActivity.scoringMode,
+      tokens: lesson.canvasActivity.tokens,
     };
   }
 
   if (lesson.quantusActivity) {
     const hintsCount = await prisma.activityHint.count({ where: { activityId: lesson.quantusActivity.id, activityType: "quantus" } });
-    activities.quantus = {
+    activitiesData.quantus = {
       id: lesson.quantusActivity.id,
       title: lesson.quantusActivity.title,
       instructions: lesson.quantusActivity.instructions,
@@ -324,30 +350,7 @@ export const getLessonDetail = async (req: Request, res: Response) => {
       hintsCount,
       columnGroups: lesson.quantusActivity.columnGroups,
       columns: lesson.quantusActivity.columns,
-      sections: lesson.quantusActivity.sections.map((section) => ({
-        id: section.id,
-        label: section.label,
-        headerBg: section.headerBg,
-        headerColor: section.headerColor,
-        orderIndex: section.orderIndex,
-        rows: section.rows.map((row) => ({
-          id: row.id,
-          label: row.label,
-          rowKey: row.rowKey,
-          isSeparator: row.isSeparator,
-          isBold: row.isBold,
-          indentLevel: row.indentLevel,
-          orderIndex: row.orderIndex,
-          cells: row.quantusCells.map((cell) => ({
-            id: cell.id,
-            columnId: cell.columnId,
-            cellType: cell.cellType,
-            defaultValue: cell.defaultValue,
-            formulaExpression: cell.formulaExpression,
-            styleClass: cell.styleClass,
-          })),
-        })),
-      })),
+      quantusCells: lesson.quantusActivity.quantusCells,
     };
   }
 
@@ -359,7 +362,10 @@ export const getLessonDetail = async (req: Request, res: Response) => {
       difficulty: lesson.difficulty,
       topic: { id: lesson.subtopic.topic.id, name: lesson.subtopic.topic.name },
       subtopic: { id: lesson.subtopic.id, name: lesson.subtopic.name },
-      activities,
+      activities: activitiesList,
+      activities_total: lesson.lessonActivities.length,
+      activities_completed: activitiesCompleted,
+      activitiesData,
     },
   });
 };

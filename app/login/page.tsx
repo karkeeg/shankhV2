@@ -44,7 +44,12 @@ function LoginForm() {
 
     try {
       await login(email, password);
-      router.push("/");
+      const user = useAuthStore.getState().user;
+      if (user?.role === "admin") {
+        router.push("/admin");
+      } else {
+        router.push("/");
+      }
     } catch (err: any) {
       setError(err.message || "Authentication failed");
     } finally {

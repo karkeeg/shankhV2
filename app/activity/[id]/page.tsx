@@ -1,48 +1,371 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import logo from "@/public/ShankhFull.png";
 import {
-  RefreshCw, ChevronLeft, ChevronRight,
-  Lightbulb, CheckCircle2, X, ZoomIn, Undo, Redo, Printer,
-  Bold, Italic, Strikethrough, Underline, ThumbsUp, ThumbsDown, Play,
-  BookMarked, Loader2
+  RefreshCw,
+  Lightbulb,
+  CheckCircle2,
+  XCircle,
+  ThumbsUp,
+  ThumbsDown,
+  Loader2,
+  ArrowLeft,
+  ArrowRight,
+  Shuffle,
+  ChevronLeft,
+  ChevronRight,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DifficultyBadge } from "@/components/ui/DifficultyBadge";
 import { useAuthStore } from "@/lib/auth-store";
 import { CanvasExercise } from "@/components/exercise/CanvasExercise";
-import { ExcelGrid } from "@/components/exercise/ExcelGrid";
+import { ExcelGrid, evaluateExcelFormula } from "@/components/exercise/ExcelGrid";
 import { CanvasToolkit } from "@/components/exercise/CanvasToolkit";
 
-const defaultCanvasElements = [
-  {
-    category: "Drivers & Inputs",
-    items: [
-      { id: "rev-acv", type: "rectangle" as const, label: "Average Contract Value (ACV)", content: "ACV: $12,500" },
-      { id: "rev-win", type: "rectangle" as const, label: "New Logo Win Rate", content: "Win Rate: 24%" },
-      { id: "rev-churn", type: "rectangle" as const, label: "Customer Churn Rate", content: "Churn: 8% p.a." },
-    ],
-  },
-  {
-    category: "Outputs & Statements",
-    items: [
-      { id: "stmt-is", type: "diamond" as const, label: "Income Statement", content: "Income Statement" },
-      { id: "stmt-cf", type: "diamond" as const, label: "Cash Flow Statement", content: "Cash Flow Statement" },
-      { id: "stmt-bs", type: "diamond" as const, label: "Balance Sheet", content: "Balance Sheet" },
-    ],
-  },
-  {
-    category: "Metrics & Calculations",
-    items: [
-      { id: "eq-gm", type: "equation" as const, label: "Gross Margin %", content: "Gross Margin = Gross Profit / Revenue" },
-      { id: "eq-ebitda", type: "equation" as const, label: "EBITDA Summary", content: "EBITDA = EBIT + D&A" },
-      { id: "eq-fcf", type: "equation" as const, label: "Free Cash Flow (FCF)", content: "FCF = Cash from Ops - CapEx" },
-    ],
-  },
-];
+// ─── Shuffle Utilities ────────────────────────────────────────────────────────
+
+function fisherYates<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// Fully mixed: every step (each MCQ question, canvas, excel) is an independent
+// card and can land anywhere. Incomplete steps are shuffled to the front so
+// unfinished work surfaces first; completed ones trail.
+function buildShuffledOrder(steps: any[]): number[] {
+  const incomplete: number[] = [];
+  const complete: number[] = [];
+  steps.forEach((s, idx) => (s.completed ? complete : incomplete).push(idx));
+  return [...fisherYates(incomplete), ...fisherYates(complete)];
+}
+
+function loadPersistedOrder(id: string): number[] | null {
+  try { const r = localStorage.getItem(`shankh:order:${id}`); return r ? JSON.parse(r) : null; }
+  catch { return null; }
+}
+function savePersistedOrder(id: string, o: number[]) {
+  try { localStorage.setItem(`shankh:order:${id}`, JSON.stringify(o)); } catch { }
+}
+function loadPersistedPosition(id: string): number | null {
+  try { const r = localStorage.getItem(`shankh:pos:${id}`); return r !== null ? +r : null; }
+  catch { return null; }
+}
+function savePersistedPosition(id: string, p: number) {
+  try { localStorage.setItem(`shankh:pos:${id}`, String(p)); } catch { }
+}
+
+// ─── Normalization ──────────────────────────────────────────────────────────
+// The API returns steps as { type, orderIndex, data: {...} }. MCQ steps hold
+// multiple questions. We flatten everything into a single flat list of cards
+// the UI renders against — one card per MCQ question, one per canvas/excel.
+
+function normalizeSteps(rawSteps: any[]): any[] {
+  return (rawSteps ?? []).flatMap((s: any) => {
+    const d = s.data ?? {};
+
+    if (s.type === "mcq") {
+      const draftState = s.draft as { selectedOptionId?: string } | null;
+      return (d.questions ?? []).map((q: any) => {
+        const matchingAnswer = s.submittedAnswers?.find((a: any) => a.questionId === q.id);
+        return {
+          type: "mcq",
+          id: q.id,
+          activityId: d.id,
+          questionText: q.questionText,
+          instructions: d.instructions,
+          contextText: d.context,
+          explanation: q.explanation,
+          options: (q.options ?? []).map((o: any, idx: number) => ({
+            id: o.id,                                // real UUID — selection + submit
+            label: o.optionText,                     // answer text
+            display: String.fromCharCode(65 + idx),  // A, B, C, D
+          })),
+          completed: s.completedByUser === true,
+          submittedOptionId: matchingAnswer?.selectedOptionId || draftState?.selectedOptionId || null,
+        };
+      });
+    }
+
+    if (s.type === "canvas") {
+      // s.submittedCanvasData from UserCanvasSession is a graph object ({ placedTokens, edges }),
+      // NOT an array of Excalidraw elements. Only the draft (saved from frontend) is an array.
+      const draftData = s.draft;
+      const canvasInitial = Array.isArray(draftData) ? draftData : [];
+      return [{
+        type: "canvas",
+        id: d.id,
+        instructions: d.instructions,
+        contextText: d.context,
+        questionText: d.title,
+        assemblyMode: d.assemblyMode || "sequence",
+        scoringMode: d.scoringMode || "partial",
+        tokens: d.tokens || [],
+        draggableElements: d.draggableElements,
+        completed: s.completedByUser === true,
+        submittedCanvasData: canvasInitial,
+      }];
+    }
+
+    if (s.type === "quantus") {
+      return [{
+        type: "quantus",
+        id: d.id,
+        instructions: d.instructions,
+        contextText: d.context,
+        gridRows: d.gridRows,
+        gridCols: d.gridCols,
+        gridValues: d.gridValues,
+        correctAnswers: d.correctAnswers,
+        completed: s.completedByUser === true,
+        submittedGrid: s.submittedGrid || s.draft || null,
+      }];
+    }
+
+    return [];
+  });
+}
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+
+
+
+const TYPE_META: Record<string, { label: string; color: string }> = {
+  quantus: { label: "Spreadsheet", color: "bg-sky-100 text-sky-700 border-sky-200" },
+  mcq: { label: "Multiple Choice", color: "bg-violet-100 text-violet-700 border-violet-200" },
+  canvas: { label: "Framework Drill", color: "bg-amber-100 text-amber-700 border-amber-200" },
+};
+
+// ─── Small reusable pieces ────────────────────────────────────────────────────
+
+function ActivityTypePill({ type }: { type: string }) {
+  const m = TYPE_META[type] ?? { label: type, color: "bg-zinc-100 text-zinc-600 border-zinc-200" };
+  return (
+    <span className={cn("px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest border", m.color)}>
+      {m.label}
+    </span>
+  );
+}
+
+function ShuffleToast({ visible }: { visible: boolean }) {
+  return (
+    <div className={cn(
+      "fixed top-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-2",
+      "bg-[#28251D] text-white text-xs font-bold rounded-full shadow-xl border border-white/10",
+      "transition-all duration-500 pointer-events-none",
+      visible ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-4"
+    )}>
+      <Shuffle size={13} className="text-[#00A389]" />
+      Activities shuffled
+    </div>
+  );
+}
+
+// Sits visually on the seam between a panel and the workspace.
+function PanelToggle({
+  open, onClick, side,
+}: { open: boolean; onClick: () => void; side: "left" | "right" }) {
+  return (
+    <button
+      onClick={onClick}
+      aria-label={open ? "Collapse panel" : "Expand panel"}
+      className={cn(
+        "self-center z-20 flex-shrink-0 flex items-center justify-center",
+        "w-5 h-14 rounded-full bg-white border border-zinc-200 shadow-md",
+        "hover:bg-[#E6F0F1] hover:border-[#01696F]/30 transition-all duration-200 active:scale-90",
+        "group"
+      )}
+    >
+      {side === "left"
+        ? (open ? <ChevronLeft size={13} className="text-zinc-500 group-hover:text-[#01696F]" />
+          : <ChevronRight size={13} className="text-zinc-500 group-hover:text-[#01696F]" />)
+        : (open ? <ChevronRight size={13} className="text-zinc-500 group-hover:text-[#01696F]" />
+          : <ChevronLeft size={13} className="text-zinc-500 group-hover:text-[#01696F]" />)
+      }
+    </button>
+  );
+}
+
+function BottomFeedback({
+  feedback,
+  onClose,
+  onNext,
+  onNextLesson,
+  isLastPosition,
+  allDone,
+}: {
+  feedback: any;
+  onClose: () => void;
+  onNext: () => void;
+  onNextLesson: () => void;
+  isLastPosition: boolean;
+  allDone: boolean;
+}) {
+  if (!feedback) return null;
+  const ok = !feedback.isError;
+  return (
+    <div className={cn(
+      "absolute bottom-4 left-1/2 -translate-x-1/2 z-30",
+      "w-[min(480px,calc(100%-2rem))] rounded-2xl shadow-2xl border",
+      "animate-fade-in-up overflow-hidden",
+      ok ? "bg-emerald-50 border-emerald-200" : "bg-rose-50 border-rose-200"
+    )}>
+      <div className={cn("h-1 w-full", ok ? "bg-emerald-500" : "bg-rose-500")} />
+      <div className="px-5 py-4 flex items-start gap-3">
+        <div className={cn(
+          "mt-0.5 w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center shadow-sm",
+          ok ? "bg-emerald-100" : "bg-rose-100"
+        )}>
+          {ok
+            ? <CheckCircle2 size={18} className="text-emerald-600" fill="currentColor" />
+            : <XCircle size={18} className="text-rose-500" fill="currentColor" />}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className={cn("text-sm font-bold", ok ? "text-emerald-800" : "text-rose-800")}>
+            {feedback.message}
+          </p>
+          {ok && feedback.metrics?.conceptAccuracy !== undefined && (
+            <div className="mt-2 flex flex-wrap gap-3 text-[10px] font-extrabold uppercase tracking-wide text-emerald-700/80">
+              <span>Accuracy {Math.round(feedback.metrics.conceptAccuracy)}%</span>
+              <span>Recall {Math.round(feedback.metrics.recallStrength)}%</span>
+              <span>Application {Math.round(feedback.metrics.applicationScore)}%</span>
+            </div>
+          )}
+          {ok && (
+            <div className="mt-3">
+              {allDone ? (
+                <button
+                  onClick={onNextLesson}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black uppercase tracking-wider rounded-xl transition-all active:scale-95 shadow"
+                >
+                  🎉 Next Lesson <ArrowRight size={12} />
+                </button>
+              ) : !isLastPosition ? (
+                <button
+                  onClick={onNext}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black uppercase tracking-wider rounded-xl transition-all active:scale-95 shadow"
+                >
+                  Next Activity <ArrowRight size={12} />
+                </button>
+              ) : null}
+            </div>
+          )}
+        </div>
+        <button
+          onClick={onClose}
+          className={cn(
+            "flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center transition-all",
+            ok ? "hover:bg-emerald-100 text-emerald-500" : "hover:bg-rose-100 text-rose-400"
+          )}
+        >
+          <ChevronLeft size={14} className="rotate-[-90deg]" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function HintsPopup({
+  hints,
+  unlocked,
+  onUnlockNext,
+  onClose,
+  anchorRef,
+}: {
+  hints: string[];
+  unlocked: number;
+  onUnlockNext: () => void;
+  onClose: () => void;
+  anchorRef: React.RefObject<HTMLButtonElement | null>;
+}) {
+  const popupRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (
+        popupRef.current &&
+        !popupRef.current.contains(e.target as Node) &&
+        anchorRef.current &&
+        !anchorRef.current.contains(e.target as Node)
+      ) {
+        onClose();
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [onClose, anchorRef]);
+
+  return (
+    <div
+      ref={popupRef}
+      className={cn(
+        "absolute left-0 top-full mt-3 z-[9999]",
+        "w-48 rounded-2xl",
+        "bg-white/70 backdrop-blur-2xl",
+        "border border-white/30",
+        "shadow-[0_20px_60px_rgba(0,0,0,0.12)]",
+        "animate-fade-in-up"
+      )}
+    >
+      <div className="flex items-center justify-between px-3 py-2 border-b border-black/5">
+        <div className="flex items-center gap-2">
+          <div className="flex flex-col leading-none">
+            <span className="text-[11px] font-semibold text-zinc-800">Smart Hints</span>
+            <span className="text-[9px] text-zinc-400">{unlocked}/{hints.length}</span>
+          </div>
+        </div>
+
+        {unlocked < hints.length && (
+          <button
+            onClick={onUnlockNext}
+            className={cn(
+              "relative w-6 h-6 rounded-full",
+              "bg-amber-100 shadow-md",
+              "flex items-center justify-center",
+              "animate-bounce hover:scale-110 transition"
+            )}
+          >
+            <Lightbulb size={12} className="text-amber-600" fill="currentColor" />
+            <span className="absolute inset-0 rounded-full animate-ping bg-amber-300/40" />
+          </button>
+        )}
+        <button
+          onClick={onClose}
+          className="w-6 h-6 rounded-full hover:bg-black/5 flex items-center justify-center"
+        >
+          <X size={12} className="text-zinc-500" />
+        </button>
+      </div>
+
+      <div className="p-2 flex flex-col gap-2 max-h-64 overflow-y-auto">
+        {hints.slice(0, unlocked).map((hint, idx) => (
+          <div
+            key={idx}
+            className="rounded-xl px-3 py-2 bg-white/70 border border-black/5 text-[11px] text-zinc-700 animate-fade-in"
+          >
+            <span className="block text-[9px] font-semibold text-amber-500 mb-1">Hint {idx + 1}</span>
+            {hint}
+          </div>
+        ))}
+        {unlocked === hints.length && (
+          <div className="text-center text-[10px] text-zinc-400 py-2">All hints unlocked ✨</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MAIN COMPONENT
+// ═══════════════════════════════════════════════════════════════════════════════
 
 export default function UnifiedActivityPage() {
   const router = useRouter();
@@ -52,487 +375,670 @@ export default function UnifiedActivityPage() {
   const [activity, setActivity] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  const [currentStepIdx, setCurrentStepIdx] = useState(0);
+  // ── Shuffle / navigation ────────────────────────────────────────────────────
+  const [shuffledOrder, setShuffledOrder] = useState<number[]>([]);
+  const [orderPosition, setOrderPosition] = useState(0);
+  const [showShuffleToast, setShowShuffleToast] = useState(false);
+  const currentStepIdx = shuffledOrder[orderPosition] ?? 0;
+
+  // ── Panel visibility ────────────────────────────────────────────────────────
+  const [leftPanelOpen, setLeftPanelOpen] = useState(true);
+  const [rightPanelOpen, setRightPanelOpen] = useState(true);
+
+  // ── UI ──────────────────────────────────────────────────────────────────────
   const [activeLeftTab, setActiveLeftTab] = useState<"instructions" | "context">("instructions");
-  const [aiCoachOpen, setAiCoachOpen] = useState(true);
-
-  // MCQ selections state
-  const [selectedOption, setSelectedOption] = useState<string | null>(null);
-  const [attemptId, setAttemptId] = useState<string | null>(null);
-  const token = useAuthStore((state) => state.token);
-
-  // Hints state
-  const [hintsUnlocked, setHintsUnlocked] = useState<number>(1);
-
-  // Grid values state
-  const [spreadsheetGrid, setSpreadsheetGrid] = useState<Record<string, string>>({});
-
-  const [submitting, setSubmitting] = useState(false);
+  const [hintPopupOpen, setHintPopupOpen] = useState(false);
+  const hintButtonRef = useRef<HTMLButtonElement>(null);
+  const [hintsUnlocked, setHintsUnlocked] = useState(1);
   const [feedback, setFeedback] = useState<any>(null);
 
+  // ── Answer state ────────────────────────────────────────────────────────────
+  const [selectedOption, setSelectedOption] = useState<string | null>(null);
+  const [spreadsheetGrid, setSpreadsheetGrid] = useState<Record<string, string>>({});
+  const [canvasElements, setCanvasElements] = useState<any[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+
+  const token = useAuthStore((state) => state.token);
+
+  // ── Mobile: collapse panels by default on small screens ─────────────────────
   useEffect(() => {
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "";
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
-    if (token) {
-      headers.Authorization = `Bearer ${token}`;
+    if (typeof window !== "undefined" && window.innerWidth < 768) {
+      setLeftPanelOpen(false);
+      setRightPanelOpen(false);
     }
+  }, []);
+
+  // ── Load activity ───────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!token) return; // wait for auth to hydrate
+
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "";
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    headers.Authorization = `Bearer ${token}`;
 
     setLoading(true);
     fetch(`${backendUrl}/api/v1/activities/${id}`, { headers })
-      .then((res) => {
-        if (!res.ok) throw new Error("Failed to fetch activity");
-        return res.json();
+      .then(async (r) => {
+        if (!r.ok) {
+          const body = await r.text().catch(() => "");
+          throw new Error(`Activity fetch failed: ${r.status} ${r.statusText} — ${body.slice(0, 200)}`);
+        }
+        return r.json();
       })
       .then((data) => {
-        const actData = data.data || data;
+        const raw = data.data || data;
+        const steps = normalizeSteps(raw.steps);
+
+        const actData = {
+          id: raw.lessonId,
+          title: raw.lessonName,
+          difficulty: raw.difficulty,
+          moduleSlug: raw.moduleSlug,
+          caseNotes: raw.subtopicName,
+          hints: raw.hints ?? [],
+          steps,
+        };
+
         setActivity(actData);
 
-        // Recover saved step index from localStorage if exists
-        const savedIdx = localStorage.getItem(`currentStepIdx_${id}`);
-        const initialIdx = savedIdx !== null ? parseInt(savedIdx, 10) : (actData?.startIndex ?? 0);
-        setCurrentStepIdx(initialIdx);
+        sessionStorage.setItem("shankh:lastLesson", JSON.stringify({
+          id: actData.id,
+          title: actData.title,
+          moduleSlug: actData.moduleSlug,
+          moduleName: actData.moduleSlug === "finance" ? "Finance" : actData.moduleSlug === "strategy" ? "Strategy" : "Operations",
+          subtopicName: actData.caseNotes || "Core Concepts",
+        }));
 
+        // Always generate a fresh shuffle on every visit so Canvas, Quantus,
+        // and MCQ cards can appear in any order — no type is pinned to the front.
+        const order = buildShuffledOrder(steps);
+        const pos = 0;
+        savePersistedOrder(id, order);
+        savePersistedPosition(id, 0);
+        setShowShuffleToast(true);
+        setTimeout(() => setShowShuffleToast(false), 2800);
+
+        setShuffledOrder(order);
+        setOrderPosition(pos);
         setHintsUnlocked(1);
         setSelectedOption(null);
       })
-      .catch((err) => console.error("Error loading activity:", err))
+      .catch((err) => console.error(err))
       .finally(() => setLoading(false));
   }, [id, token]);
 
-  // Persist step index on local step index change
+  // Persist position as the user navigates.
   useEffect(() => {
-    if (id && currentStepIdx !== undefined) {
-      localStorage.setItem(`currentStepIdx_${id}`, String(currentStepIdx));
-    }
-  }, [id, currentStepIdx]);
+    if (id && shuffledOrder.length > 0) savePersistedPosition(id, orderPosition);
+  }, [id, orderPosition, shuffledOrder]);
+
+  // ── Re-shuffle ──────────────────────────────────────────────────────────────
+  const handleReshuffle = useCallback(() => {
+    if (!activity?.steps) return;
+    const newOrder = buildShuffledOrder(activity.steps);
+    setShuffledOrder(newOrder);
+    setOrderPosition(0);
+    savePersistedOrder(id, newOrder);
+    savePersistedPosition(id, 0);
+    setShowShuffleToast(true);
+    setTimeout(() => setShowShuffleToast(false), 2800);
+    setFeedback(null);
+  }, [activity, id]);
 
   const step = activity?.steps?.[currentStepIdx];
 
-  // Dynamically build 2D table matrix for ExcelGrid component
+  // ── Excel helpers ────────────────────────────────────────────────────────────
   const excelTable = React.useMemo(() => {
     if (!step?.gridRows || !step?.gridCols) return [];
-    return step.gridRows.map((row: string) => {
-      return step.gridCols.map((col: string) => {
-        const cellKey = `${row}-${col}`;
-        return step.gridValues?.[cellKey] || "";
-      });
-    });
+    return step.gridRows.map((row: string) =>
+      step.gridCols.map((col: string) => step.gridValues?.[`${row}-${col}`] || "")
+    );
   }, [step]);
 
-  // Dynamically build inputs configuration array
   const excelInputs = React.useMemo(() => {
     if (!step?.gridRows || !step?.gridCols) return [];
     const list: any[] = [];
     step.gridRows.forEach((row: string, rIdx: number) => {
-      step.gridCols.forEach((col: string, cIdx: number) => {
-        const cellKey = `${row}-${col}`;
-        const isHeaderColumn = cIdx === 0;
-        if (!isHeaderColumn) {
-          list.push({
-            row: rIdx,
-            col: cIdx,
-            correctValue: step.correctAnswers?.[cellKey] || "",
-            placeholder: "",
-          });
-        }
+      step.gridCols.forEach((_: string, cIdx: number) => {
+        if (cIdx !== 0) list.push({ row: rIdx, col: cIdx, correctValue: step.correctAnswers?.[`${row}-${step.gridCols[cIdx]}`] || "", placeholder: "" });
       });
     });
     return list;
   }, [step]);
 
-  // Dynamically compute cell feedback mappings for correct/incorrect inputs
   const excelFeedback = React.useMemo(() => {
     const map: Record<string, boolean> = {};
     if (feedback && step?.gridRows && step?.gridCols) {
-      step.gridRows.forEach((row: string) => {
+      step.gridRows.forEach((row: string) =>
         step.gridCols.forEach((col: string) => {
-          const cellKey = `${row}-${col}`;
-          const userVal = spreadsheetGrid[cellKey]?.toString().trim() || "";
-          const correctVal = step.correctAnswers?.[cellKey]?.toString().trim() || "";
-          map[cellKey] = userVal === correctVal;
-        });
-      });
+          const k = `${row}-${col}`;
+          map[k] = (spreadsheetGrid[k]?.toString().trim() || "") === (step.correctAnswers?.[k]?.toString().trim() || "");
+        })
+      );
     }
     return map;
   }, [feedback, step, spreadsheetGrid]);
 
-  // Group consecutive MCQ questions into 1 unified Activity index
-  const logicalActivities: { type: string; stepIndices: number[] }[] = [];
-  if (activity?.steps) {
-    let mcqIndices: number[] = [];
-    activity.steps.forEach((st: any, idx: number) => {
-      if (st.type === "mcq") {
-        mcqIndices.push(idx);
-      } else {
-        if (mcqIndices.length > 0) {
-          logicalActivities.push({ type: "mcq", stepIndices: mcqIndices });
-          mcqIndices = [];
-        }
-        logicalActivities.push({ type: st.type, stepIndices: [idx] });
-      }
-    });
-    if (mcqIndices.length > 0) {
-      logicalActivities.push({ type: "mcq", stepIndices: mcqIndices });
-    }
-  }
-
-  const activeActivityIdx = logicalActivities.findIndex(act => act.stepIndices.includes(currentStepIdx));
-  const activeActivity = logicalActivities[activeActivityIdx];
-  const subIdx = activeActivity ? activeActivity.stepIndices.indexOf(currentStepIdx) + 1 : 1;
-  const totalSub = activeActivity ? activeActivity.stepIndices.length : 1;
-
-  // Sync values and show completion status when step changes
+  // ── Sync when step changes ───────────────────────────────────────────────────
   useEffect(() => {
     if (!step) return;
-
     setSelectedOption(null);
     setFeedback(null);
-
     if (step.type === "quantus") {
       setSpreadsheetGrid(step.submittedGrid || step.gridValues || {});
-      if (step.completed) {
-        setFeedback({
-          isError: false,
-          message: "Activity Completed! You already filled this spreadsheet correctly.",
-          metrics: {},
-        });
-      }
     } else if (step.type === "mcq") {
-      if (step.submittedOptionId) {
-        setSelectedOption(step.submittedOptionId);
-      }
-      if (step.completed) {
-        setFeedback({
-          isError: false,
-          message: "Activity Completed! You already answered this question correctly.",
-          metrics: {},
-        });
-      }
+      if (step.submittedOptionId) setSelectedOption(step.submittedOptionId);
     } else if (step.type === "canvas") {
-      if (step.submittedCanvasData) {
-        setSpreadsheetGrid(step.submittedCanvasData);
+      setCanvasElements(step.submittedCanvasData || []);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentStepIdx]);
+
+  // ── Autosave to Database ─────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!step || step.completed) return;
+    const delay = step.type === "canvas" ? 500 : 1000;
+    const t = setTimeout(async () => {
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "";
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) headers.Authorization = `Bearer ${token}`;
+
+      let draftState: any = null;
+      let activityId = step.id;
+
+      if (step.type === "quantus" && Object.keys(spreadsheetGrid).length > 0) {
+        draftState = spreadsheetGrid;
+      } else if (step.type === "canvas" && canvasElements.length > 0) {
+        draftState = canvasElements;
+      } else if (step.type === "mcq" && selectedOption) {
+        draftState = { selectedOptionId: selectedOption };
+        activityId = step.activityId;
       }
-      if (step.completed) {
-        setFeedback({
-          isError: false,
-          message: "Activity Completed! You already categorized this framework correctly.",
-          metrics: {},
+
+      if (!draftState || !activityId) return;
+
+      try {
+        await fetch(`${backendUrl}/api/v1/draft/me/activities/${step.type}/${activityId}/draft`, {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({ draft_state: draftState }),
         });
+      } catch (err) {
+        console.error("Autosave draft failed:", err);
+      }
+    }, delay);
+    return () => clearTimeout(t);
+  }, [spreadsheetGrid, canvasElements, selectedOption, step, token]);
+
+  // ── Validation ────────────────────────────────────────────────────────────────
+  const validateExcel = () => {
+    const result: Record<string, boolean> = {};
+    const key = (r: number, c: number) => `${r}-${c}`;
+    excelInputs.forEach(({ row, col }) => {
+      const k = key(row, col);
+      let n = 0;
+      try { n = Number(evaluateExcelFormula(spreadsheetGrid[k] ?? "", spreadsheetGrid, [], key)); }
+      catch { n = Number(spreadsheetGrid[k]); }
+      result[k] = Math.abs(n - Number(step.correctAnswers?.[k])) < 0.0001;
+    });
+    return result;
+  };
+
+  /**
+   * Extract the structural representation from the current Excalidraw canvas.
+   * Returns { placedTokens: string[], edges: { from, to, slot? }[] }
+   */
+  const extractCanvasGraph = () => {
+    // Collect all placed token shapes (ignore zones, text labels, etc.)
+    const tokenElements = canvasElements.filter(
+      (el) => el.customData?.originalId && !el.customData?.isZone && el.type !== "text"
+    );
+    const placedTokens = tokenElements.map((el) => el.customData!.originalId as string);
+
+    // Collect arrows and resolve their connections
+    const arrows = canvasElements.filter((el) => el.type === "arrow");
+    const edges: { from: string; to: string; slot?: string }[] = [];
+
+    for (const arrow of arrows) {
+      const startBinding = (arrow as any).startBinding;
+      const endBinding = (arrow as any).endBinding;
+      if (!startBinding?.elementId || !endBinding?.elementId) continue;
+
+      // Resolve Excalidraw element IDs → original token IDs
+      const fromEl = canvasElements.find((el) => el.id === startBinding.elementId);
+      const toEl = canvasElements.find((el) => el.id === endBinding.elementId);
+      if (!fromEl?.customData?.originalId || !toEl?.customData?.originalId) continue;
+
+      const fromId = fromEl.customData.originalId as string;
+      const toId = toEl.customData.originalId as string;
+
+      // Infer slot from geometric position for sequence mode
+      // (left operand is to the left of the operator, right is to the right)
+      let slot: string | undefined;
+      if (step.assemblyMode === "sequence" || step.assemblyMode === "graph") {
+        const toToken = (step.tokens || []).find((t: any) => t.id === toId);
+        if (toToken && (toToken.tokenRole === "operator" || toToken.tokenRole === "relation")) {
+          // The from-element's center X relative to the to-element determines slot
+          const fromCx = (fromEl.x ?? 0) + (fromEl.width ?? 0) / 2;
+          const toCx = (toEl.x ?? 0) + (toEl.width ?? 0) / 2;
+          slot = fromCx < toCx ? "left" : "right";
+        }
+      }
+
+      edges.push({ from: fromId, to: toId, ...(slot ? { slot } : {}) });
+    }
+
+    // For sequence mode without explicit arrows, infer adjacency from left-to-right order
+    if (step.assemblyMode === "sequence" && edges.length === 0 && tokenElements.length > 1) {
+      const sorted = [...tokenElements].sort((a, b) => (a.x ?? 0) - (b.x ?? 0));
+      for (let i = 0; i < sorted.length - 1; i++) {
+        const fromId = sorted[i].customData!.originalId as string;
+        const toId = sorted[i + 1].customData!.originalId as string;
+        // Infer slot based on target token role
+        const toToken = (step.tokens || []).find((t: any) => t.id === toId);
+        let slot: string | undefined;
+        if (toToken && (toToken.tokenRole === "operator" || toToken.tokenRole === "relation")) {
+          slot = "left"; // first operand connecting to operator
+        }
+        const fromToken = (step.tokens || []).find((t: any) => t.id === fromId);
+        if (fromToken && (fromToken.tokenRole === "operator" || fromToken.tokenRole === "relation")) {
+          slot = "right"; // operator connecting to right operand
+        }
+        edges.push({ from: fromId, to: toId, ...(slot ? { slot } : {}) });
       }
     }
-  }, [step]);
 
+    return { placedTokens, edges };
+  };
+
+  // ── Reset — allows re-answering even on completed steps ───────────────────────
+  const handleReset = () => {
+    if (!step) return;
+    if (step.type === "quantus") setSpreadsheetGrid(step.gridValues || {});
+    else if (step.type === "mcq") setSelectedOption(null);
+    else if (step.type === "canvas") setCanvasElements([]);
+    setFeedback(null);
+    if (activity?.steps) {
+      const updated = [...activity.steps];
+      updated[currentStepIdx] = { ...updated[currentStepIdx], completed: false };
+      setActivity({ ...activity, steps: updated });
+    }
+  };
+
+  // ── Navigation ────────────────────────────────────────────────────────────────
+  const handlePrevStep = () => { if (orderPosition > 0) setOrderPosition(p => p - 1); };
+  const handleNextStep = () => { if (orderPosition < shuffledOrder.length - 1) setOrderPosition(p => p + 1); };
+
+  const handleClose = () => router.push(activity?.moduleSlug ? `/learning/${activity.moduleSlug}` : "/learning/finance");
+  const handleNextLesson = () => {
+    if (activity?.nextLessonId) router.push(`/activity/${activity.nextLessonId}`);
+    else if (activity?.moduleSlug) router.push(`/learning/${activity.moduleSlug}`);
+    else router.push("/learning/finance");
+  };
+
+  // ── Check answer ──────────────────────────────────────────────────────────────
   const handleCheckAnswer = async () => {
     if (!step) return;
     const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "";
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
-    if (token) {
-      headers.Authorization = `Bearer ${token}`;
-    }
-
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (token) headers.Authorization = `Bearer ${token}`;
     setSubmitting(true);
     setFeedback(null);
 
-    const payload: any = { activityId: id };
+    // Base payload — backend controllers require lessonId + activityType
+    const payload: Record<string, unknown> = { lessonId: id, activityType: step.type };
+
     if (step.type === "mcq") {
       if (!selectedOption) {
         setFeedback({ isError: true, message: "Please select an option first!" });
         setSubmitting(false);
         return;
       }
-      payload.answers = [{
-        questionId: step.id || "",
-        selectedOptionId: selectedOption,
-      }];
+      payload.answers = [{ questionId: step.id || "", selectedOptionId: selectedOption }];
+
     } else if (step.type === "quantus") {
-      payload.cells = spreadsheetGrid;
+      const res = validateExcel();
+      const correct = Object.values(res).filter(Boolean).length;
+      const total = Object.values(res).length;
+      const allCorrect = correct === total && total > 0;
+      setFeedback({
+        isError: !allCorrect,
+        message: allCorrect ? "Excellent! All cells are correct." : "Some cells are incorrect — check your formulas.",
+        metrics: { excelResult: res },
+      });
+      if (!allCorrect) { setSubmitting(false); return; }
+      payload.inputSnapshot = spreadsheetGrid;
+      payload.score = correct;
+      payload.total = total;
+
     } else if (step.type === "canvas") {
-      payload.canvasData = spreadsheetGrid;
+      // Extract structural graph from Excalidraw state — server does all grading
+      const graph = extractCanvasGraph();
+      if (graph.placedTokens.length === 0) {
+        setFeedback({ isError: true, message: "Drag some tokens onto the canvas first!" });
+        setSubmitting(false);
+        return;
+      }
+      payload.canvasData = graph;
     }
 
     try {
-      const attemptRes = await fetch(`${backendUrl}/api/v1/attempts`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ activityId: id }),
-      });
-      const attemptJson = await attemptRes.json();
-      const newAttemptId = attemptJson?.data?.attemptId;
-      if (!attemptRes.ok || !newAttemptId) {
-        throw new Error(attemptJson?.error || "Unable to start attempt");
-      }
-      setAttemptId(newAttemptId);
-
-      const submitRes = await fetch(`${backendUrl}/api/v1/attempts/${newAttemptId}/submit`, {
+      // Single direct POST to the typed session endpoint — no separate "create attempt" step needed
+      const sr = await fetch(`${backendUrl}/api/v1/attempts/session/${step.type}`, {
         method: "POST",
         headers,
         body: JSON.stringify(payload),
       });
-      const submitJson = await submitRes.json();
-      if (!submitRes.ok) {
-        throw new Error(submitJson?.error || "Submission failed");
-      }
+      const sj = await sr.json();
+      if (!sr.ok) throw new Error(sj?.error || "Submission failed");
 
-      const resData = submitJson.data || {};
-      const correct = resData.isCorrect !== false; // quantus and canvas default to true
+      // Mark the step completed locally (accuracy >= 70 is "correct" by backend rules)
+      const accuracy: number = sj.data?.accuracy ?? sj.data?.scorePct ?? 100;
+      const isCorrect = accuracy >= 70;
 
-      if (correct) {
-        if (activity?.steps) {
-          activity.steps[currentStepIdx].completed = true;
-        }
-        setFeedback({
-          isError: false,
-          message: "Excellent! Correct answer.",
-          metrics: resData,
-        });
-      } else {
-        setFeedback({
-          isError: true,
-          message: "Incorrect! Please try again.",
-          metrics: resData,
-        });
+      if (activity?.steps) {
+        const updated = [...activity.steps];
+        updated[currentStepIdx] = {
+          ...updated[currentStepIdx],
+          completed: isCorrect,
+          submittedOptionId: step.type === "mcq" ? selectedOption : updated[currentStepIdx].submittedOptionId,
+          submittedGrid: step.type === "quantus" ? spreadsheetGrid : updated[currentStepIdx].submittedGrid,
+          submittedCanvasData: step.type === "canvas" ? canvasElements : updated[currentStepIdx].submittedCanvasData,
+        };
+        setActivity({ ...activity, steps: updated });
       }
-    } catch (err: any) {
-      console.error(err);
-      setFeedback({ isError: true, message: err?.message || "Network error submitting results." });
+      setFeedback({
+        isError: !isCorrect,
+        message: isCorrect ? "Excellent! Correct answer." : "Not quite — try again!",
+        metrics: sj.data || {},
+      });
+    } catch (e: any) {
+      setFeedback({ isError: true, message: e?.message || "Network error." });
     } finally {
       setSubmitting(false);
-      setAiCoachOpen(true);
     }
   };
 
-  const handleGridChange = (cellKey: string, val: string) => {
-    setSpreadsheetGrid((prev) => ({ ...prev, [cellKey]: val }));
-  };
+  // ── Progress ──────────────────────────────────────────────────────────────────
+  const totalSteps = shuffledOrder.length;
+  const completedCount = activity?.steps?.filter((s: any) => s.completed).length ?? 0;
+  const progressPct = totalSteps > 0 ? Math.round((completedCount / totalSteps) * 100) : 0;
+  const allDone = completedCount === totalSteps && totalSteps > 0;
+  const isLastPosition = orderPosition >= totalSteps - 1;
 
-  const unlockNextHint = () => {
-    if (activity?.hints && hintsUnlocked < activity.hints.length) {
-      setHintsUnlocked((prev) => prev + 1);
-    }
-  };
+  // ── Loading / error ───────────────────────────────────────────────────────────
+  if (loading) return (
+    <div className="flex flex-col items-center justify-center h-screen bg-[#F0EDE7] text-[#01696F] gap-2">
+      <Loader2 className="w-10 h-10 animate-spin" />
+      <span className="text-sm font-semibold">Loading activity...</span>
+    </div>
+  );
+  if (!activity || !step) return (
+    <div className="flex flex-col items-center justify-center h-screen bg-[#F0EDE7] text-zinc-600 gap-4">
+      <span className="font-semibold text-lg">Failed to load activity.</span>
+      <button onClick={() => router.push("/learning/finance")} className="px-4 py-2 bg-[#01696F] text-white rounded-xl shadow">
+        Return to Dashboard
+      </button>
+    </div>
+  );
 
-  const handlePrevStep = () => {
-    if (currentStepIdx > 0) {
-      setCurrentStepIdx((prev) => prev - 1);
-    }
-  };
-
-  const handleNextStep = () => {
-    if (activity?.steps && currentStepIdx < activity.steps.length - 1) {
-      setCurrentStepIdx((prev) => prev + 1);
-    }
-  };
-
-
-  const handleClose = () => {
-    if (activity?.moduleSlug) {
-      router.push(`/learning/${activity.moduleSlug}`);
-    } else {
-      router.push("/learning/finance");
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center h-screen bg-[#F0EDE7] text-[#01696F] gap-2">
-        <Loader2 className="w-10 h-10 animate-spin" />
-        <span className="text-sm font-semibold">Loading financial model activity...</span>
-      </div>
-    );
-  }
-
-  if (!activity || !step) {
-    return (
-      <div className="flex flex-col items-center justify-center h-screen bg-[#F0EDE7] text-zinc-600 gap-4">
-        <span className="font-semibold text-lg">Failed to load this learning activity.</span>
-        <button onClick={() => router.push("/learning/finance")} className="px-4 py-2 bg-[#01696F] text-white rounded-xl shadow">
-          Return to Dashboard
-        </button>
-      </div>
-    );
-  }
-
+  // ─────────────────────────────────────────────────────────────────────────────
   return (
-    <div className="flex h-screen overflow-hidden font-sans bg-white text-zinc-800 p-3 gap-3">
+    <div className="flex flex-row h-screen overflow-hidden font-sans bg-white text-zinc-800 p-2 sm:p-3 gap-0">
+      <ShuffleToast visible={showShuffleToast} />
 
-      {/* Left Panel */}
-      <div className="w-64 flex flex-col justify-between h-full shrink-0 animate-slide-in">
-        <div className="flex flex-col gap-4 overflow-y-auto flex-1 pb-4">
-          {/* Brand Header & Back Button */}
-          <div className="flex flex-col items-center gap-3 border-b border-zinc-100 pb-4">
-            <div className="w-full flex justify-center py-2">
-              <Image src={logo} alt="Shankh Logo" width={120} height={35} className="object-contain" />
-            </div>
-            <button
-              onClick={handleClose}
-              className="w-36 py-1.5 bg-[#DFEAEA] text-[#01696F] hover:bg-[#D7E8E9] font-bold text-xs rounded-xl shadow-sm transition-all active:scale-95 flex items-center justify-center gap-1.5 border border-[#01696F]/10"
-            >
-              ← Back to content
-            </button>
-          </div>
+      {/* ══════════════════════ LEFT PANEL ══════════════════════ */}
+      <div className={cn(
+        "flex-shrink-0 transition-all duration-300 ease-in-out overflow-hidden",
+        leftPanelOpen ? "w-60 xl:w-64" : "w-0"
+      )}>
+        <div className="w-60 xl:w-64 h-full flex flex-col justify-between pr-2">
+          <div className="flex flex-col gap-3 overflow-y-auto flex-1 pb-3">
 
-          {/* Nav Tabs */}
-          <div className="flex bg-[#F0EDE7] p-1.5 rounded-full w-full border border-zinc-200/50 shadow-sm shrink-0">
-            <button
-              onClick={() => setActiveLeftTab("instructions")}
-              className={cn(
-                "flex-1 py-1.5 text-xs font-bold rounded-full transition-all duration-200 select-none",
-                activeLeftTab === "instructions" ? "bg-[#28251D] text-white shadow-sm" : "text-zinc-500 hover:text-zinc-800"
-              )}
-            >
-              Instructions
-            </button>
-            <button
-              onClick={() => setActiveLeftTab("context")}
-              className={cn(
-                "flex-1 py-1.5 text-xs font-bold rounded-full transition-all duration-200 select-none",
-                activeLeftTab === "context" ? "bg-[#28251D] text-white shadow-sm" : "text-zinc-500 hover:text-zinc-800"
-              )}
-            >
-              Context
-            </button>
-          </div>
-
-          {/* Skin/Cream/Peach colored instruction card */}
-          <div className="bg-[#FAF7F2] shadow-[0_2px_4px_0_#0000001F_inset] border border-[#F0EDE7] rounded-2xl p-4 flex flex-col gap-4 flex-1 overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-zinc-200/50 pb-2">
-              <h3 className="font-extrabold text-zinc-900 text-sm leading-tight tracking-tight">{activity.title}</h3>
-              <DifficultyBadge difficulty={activity.difficulty} />
-            </div>
-
-            {activeLeftTab === "instructions" ? (
-              /* Instruction Part */
-              <div className="flex flex-col gap-1 animate-fade-in">
-                <span className="text-[9px] uppercase font-black tracking-widest text-[#01696F]/70">
-                  Instructions
-                </span>
-                <div className="text-xs text-zinc-700 leading-relaxed font-semibold whitespace-pre-line">
-                  {step.instructions}
-                </div>
+            {/* Logo + back */}
+            <div className="flex flex-col items-center gap-3 border-b border-zinc-100 pb-3 pt-1">
+              <div className="w-full flex justify-center">
+                <Image src={logo} alt="Shankh" width={110} height={32} className="object-contain" style={{ width: "auto", height: "auto" }} />
               </div>
-            ) : (
-              /* Context Part */
-              step.contextText && (
-                <div className="flex flex-col gap-1 animate-fade-in">
-                  <span className="text-[9px] uppercase font-black tracking-widest text-[#01696F]/70">
-                    Context & Scenario
-                  </span>
-                  <div className="text-xs text-zinc-600 leading-relaxed font-medium whitespace-pre-line">
-                    {step.contextText}
-                  </div>
-                </div>
-              )
-            )}
-
-            {step.type === "canvas" && (
-              <CanvasToolkit draggableElements={step.draggableElements || defaultCanvasElements} />
-            )}
-          </div>
-
-
-        </div>
-
-        {/* Andrew Smith Profile Card */}
-        <div className="bg-[#DFEAEA] border border-[#01696F]/10 rounded-2xl p-3 flex items-center gap-3 shrink-0">
-          <div className="w-9 h-9 rounded-full bg-white flex items-center justify-center text-[#01696F] font-bold shadow-sm shrink-0 border border-zinc-200">
-            A
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-extrabold text-zinc-800 truncate">Andrew Smith</p>
-            <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">Free Plan</p>
-          </div>
-          <div className="text-right shrink-0">
-            <div className="flex items-center gap-1 text-[10px] font-bold text-zinc-500 justify-end">
-              <ThumbsUp size={10} /> 4 <ThumbsDown size={10} /> 2
+              <button
+                onClick={handleClose}
+                className="w-full py-1.5 bg-[#DFEAEA] text-[#01696F] hover:bg-[#D7E8E9] font-bold text-xs rounded-xl shadow-sm transition-all active:scale-95 flex items-center justify-center gap-1.5 border border-[#01696F]/10"
+              >
+                ← Back to content
+              </button>
             </div>
-            <p className="text-[9px] text-[#01696F] font-extrabold uppercase tracking-tight mt-0.5">53.47% Success</p>
+
+            {/* Progress */}
+            <div className="flex flex-col gap-1.5 px-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Progress</span>
+                <span className="text-[10px] font-black text-[#01696F]">{completedCount}/{totalSteps}</span>
+              </div>
+              <div className="w-full h-2 bg-zinc-100 rounded-full overflow-hidden border border-zinc-200">
+                <div className="h-full bg-[#01696F] rounded-full transition-all duration-700" style={{ width: `${progressPct}%` }} />
+              </div>
+              {allDone && (
+                <div className="flex flex-col gap-1.5 animate-fade-in">
+                  <p className="text-[10px] text-emerald-600 font-bold text-center">🎉 All activities complete!</p>
+                  <button
+                    onClick={handleNextLesson}
+                    className="w-full py-2 bg-[#01696F] hover:bg-[#01696F]/90 text-white font-black text-[11px] uppercase tracking-wider rounded-xl shadow transition-all active:scale-95 flex items-center justify-center gap-1.5"
+                  >
+                    Next Lesson <ArrowRight size={13} />
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Activity type + position */}
+            <div className="flex items-center justify-between px-1">
+              <ActivityTypePill type={step.type} />
+              <span className="text-[10px] font-bold text-zinc-400">{orderPosition + 1}/{totalSteps}</span>
+            </div>
+
+            {/* Instruction / Context tabs */}
+            <div className="flex bg-[#F0EDE7] p-1 rounded-full w-full border border-zinc-200/50 shadow-sm">
+              {(["instructions", "context"] as const).map(tab => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveLeftTab(tab)}
+                  className={cn(
+                    "flex-1 py-1.5 text-[10px] font-bold rounded-full transition-all duration-200 capitalize",
+                    activeLeftTab === tab ? "bg-[#28251D] text-white shadow-sm" : "text-zinc-500 hover:text-zinc-800"
+                  )}
+                >
+                  {tab}
+                </button>
+              ))}
+            </div>
+
+            {/* Content card */}
+            <div className="bg-[#FAF7F2] shadow-[0_2px_4px_0_#0000001F_inset] border border-[#F0EDE7] rounded-2xl p-3 flex flex-col gap-3 flex-1 overflow-y-auto">
+              <div className="flex items-start justify-between gap-2 border-b border-zinc-200/50 pb-2">
+                <h3 className="font-extrabold text-zinc-900 text-xs leading-tight tracking-tight">{activity.title}</h3>
+                <DifficultyBadge difficulty={activity.difficulty} />
+              </div>
+              {activeLeftTab === "instructions" ? (
+                <div className="animate-fade-in">
+                  <span className="text-[9px] uppercase font-black tracking-widest text-[#01696F]/70 block mb-1">Instructions</span>
+                  <p className="text-xs text-zinc-700 leading-relaxed font-semibold whitespace-pre-line">{step.instructions}</p>
+                </div>
+              ) : step.contextText && (
+                <div className="animate-fade-in">
+                  <span className="text-[9px] uppercase font-black tracking-widest text-[#01696F]/70 block mb-1">Context & Scenario</span>
+                  <p className="text-xs text-zinc-600 leading-relaxed font-medium whitespace-pre-line">{step.contextText}</p>
+                </div>
+              )}
+              {step.type === "canvas" && (
+                <CanvasToolkit draggableElements={step.draggableElements || []} />
+              )}
+            </div>
+          </div>
+
+          {/* User profile card */}
+          <div className="bg-[#DFEAEA] border border-[#01696F]/10 rounded-2xl p-2.5 flex items-center gap-2 flex-shrink-0">
+            <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-[#01696F] font-bold shadow-sm flex-shrink-0 border border-zinc-200 text-xs">
+              A
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-extrabold text-zinc-800 truncate">Andrew Smith</p>
+              <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">Free Plan</p>
+            </div>
+            <div className="text-right flex-shrink-0">
+              <div className="flex items-center gap-1 text-[10px] font-bold text-zinc-500 justify-end">
+                <ThumbsUp size={9} /> 4 <ThumbsDown size={9} /> 2
+              </div>
+              <p className="text-[9px] text-[#01696F] font-extrabold uppercase tracking-tight mt-0.5">53.47%</p>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Middle Workspace */}
-      <div className="flex-1 flex flex-col bg-[#F0EDE7] shadow-[0px_4px_8px_0px_#0000003D_inset] border border-[#F0EDE7] rounded-2xl overflow-hidden h-full">
+      {/* ── Left panel toggle ── */}
+      <PanelToggle open={leftPanelOpen} onClick={() => setLeftPanelOpen(o => !o)} side="left" />
 
-        {/* Toolbar */}
-        <div className="flex items-center justify-between p-3.5 border-b border-zinc-200 bg-[#F0EDE7]/40 shadow-sm shrink-0">
-          <div className="flex items-center gap-3">
+      {/* ══════════════════════ MAIN WORKSPACE ══════════════════════ */}
+      <div className="flex-1 min-w-0 flex flex-col bg-[#F0EDE7] shadow-[0px_4px_8px_0px_#0000003D_inset] border border-[#F0EDE7] rounded-2xl overflow-hidden mx-1.5">
+
+        {/* ── Toolbar ── */}
+        <div className="flex items-center justify-between px-3 py-2.5 border-b border-zinc-200 bg-[#F0EDE7]/60 shrink-0 gap-2 flex-wrap">
+
+          {/* Left controls */}
+          <div className="flex items-center gap-2 flex-wrap">
             <button
-              onClick={() => {
-                if (step.type === "quantus") {
-                  setSpreadsheetGrid(step.gridValues || {});
-                } else if (step.type === "mcq") {
-                  setSelectedOption(null);
-                } else if (step.type === "canvas") {
-                  setSpreadsheetGrid({});
-                }
-                setFeedback(null);
-              }}
-              className="px-3.5 py-1.5 bg-white border border-zinc-300 text-zinc-700 hover:bg-zinc-50 font-bold text-xs rounded-xl transition-all shadow-sm flex items-center gap-1.5 active:scale-95"
+              onClick={handleReset}
+              className="px-3 py-1.5 bg-[#01696F] text-white hover:bg-[#01696F]/90 font-bold text-xs rounded-xl shadow-sm transition-all active:scale-95 flex items-center gap-1.5 flex-shrink-0"
             >
-              <RefreshCw size={12} className="text-zinc-500" /> Reset
+              <RefreshCw size={11} /> Reset
             </button>
+
             <button
               onClick={handlePrevStep}
-              disabled={currentStepIdx === 0}
-              className="px-3.5 py-1.5 bg-white border border-zinc-300 text-zinc-700 hover:bg-zinc-50 disabled:opacity-40 disabled:pointer-events-none font-bold text-xs rounded-xl transition-all shadow-sm flex items-center gap-1 active:scale-95"
+              disabled={orderPosition === 0}
+              className="px-3 py-1.5 bg-[#01696F] text-white hover:bg-[#01696F]/90 disabled:opacity-40 disabled:pointer-events-none font-bold text-xs rounded-xl shadow-sm transition-all active:scale-95 flex items-center gap-1 flex-shrink-0"
             >
-              ⟨ Previous
+              <ArrowLeft size={13} /> <span className="hidden sm:inline">Prev</span>
             </button>
 
-            <div className="shrink-0">
-              <span className="text-[14px] font-semibold text-[#01696F] uppercase bg-[#E6F0F1] px-3.5 py-1.5 rounded-xl shadow-sm border border-[#01696F]/10 select-none">
-                {step.type === "mcq" && `MCQ (Question ${subIdx} of ${totalSub})`}
-                {step.type === "quantus" && `Quant Lab`}
-                {step.type === "canvas" && `Framework`}
-              </span>
-            </div>
+            <span className="text-[12px] font-semibold text-[#01696F] bg-[#E6F0F1] px-3 py-1.5 rounded-xl shadow-sm border border-[#01696F]/10 select-none flex-shrink-0 whitespace-nowrap">
+              {orderPosition + 1} / {totalSteps}
+            </span>
+
+            {allDone && isLastPosition ? (
+              <button
+                onClick={handleNextLesson}
+                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm transition-all active:scale-95 flex items-center gap-1 ring-2 ring-emerald-300 flex-shrink-0"
+              >
+                <span className="hidden sm:inline">Next Lesson</span>
+                <span className="sm:hidden">Lesson</span>
+                <ArrowRight size={13} />
+              </button>
+            ) : (
+              <button
+                onClick={handleNextStep}
+                disabled={isLastPosition && !allDone}
+                className="px-3 py-1.5 bg-[#01696F] text-white hover:bg-[#01696F]/90 disabled:opacity-40 disabled:pointer-events-none font-bold text-xs rounded-xl shadow-sm transition-all active:scale-95 flex items-center gap-1 flex-shrink-0"
+              >
+                <span className="hidden sm:inline">Next</span> <ArrowRight size={13} />
+              </button>
+            )}
 
             <button
-              onClick={handleNextStep}
-              disabled={activity?.steps && currentStepIdx === activity.steps.length - 1}
-              className="px-3.5 py-1.5 bg-white border border-zinc-300 text-zinc-700 hover:bg-zinc-50 disabled:opacity-40 disabled:pointer-events-none font-bold text-xs rounded-xl transition-all shadow-sm flex items-center gap-1 active:scale-95"
+              onClick={handleReshuffle}
+              className="px-2.5 py-1.5 text-[#01696F] hover:bg-[#E6F0F1] font-bold text-xs rounded-xl transition-all flex items-center gap-1 active:scale-95 border border-[#01696F]/20 flex-shrink-0"
+              title="Re-shuffle activities"
             >
-              Next ⟩
+              <Shuffle size={12} /> <span className="hidden md:inline">Shuffle</span>
             </button>
           </div>
 
-          <div className="flex items-center gap-3">
-            <button
-              onClick={unlockNextHint}
-              className="px-3 py-1.5 text-[#01696F] hover:text-[#01696F]/80 font-bold text-xs rounded-xl transition-all flex items-center gap-1.5 active:scale-95"
-            >
-              <Lightbulb size={14} className="text-[#01696F]" fill="currentColor" /> Hint
-            </button>
+          {/* Right controls */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <div className="relative">
+              <button
+                ref={hintButtonRef}
+                onClick={() => setHintPopupOpen(o => !o)}
+                className={cn(
+                  "px-3 py-1.5 font-bold text-xs bg-[#01696F]/10 rounded-xl transition-all flex items-center gap-1.5 active:scale-95 border",
+                  hintPopupOpen ? "bg-[#01696F] text-white" : "text-[#01696F] hover:bg-[#E6F0F1] border-transparent"
+                )}
+              >
+                <Lightbulb size={13} fill="currentColor" className={cn("text-[#01696F]", hintPopupOpen && "text-white")} />
+                <span className="hidden sm:inline">Hint</span>
+                {activity?.hints?.length > 0 && (
+                  <span className={cn("w-4 h-4 rounded-full bg-[#01696F]/20 text-[#01696F] text-[12px] font-black flex items-center justify-center", hintPopupOpen ? "bg-white text-gray-800" : "")}>
+                    {Math.min(hintsUnlocked, activity.hints.length)}
+                  </span>
+                )}
+              </button>
+
+              {hintPopupOpen && activity?.hints?.length > 0 && (
+                <HintsPopup
+                  hints={activity.hints}
+                  unlocked={hintsUnlocked}
+                  onUnlockNext={() => { if (hintsUnlocked < activity.hints.length) setHintsUnlocked(h => h + 1); }}
+                  onClose={() => setHintPopupOpen(false)}
+                  anchorRef={hintButtonRef}
+                />
+              )}
+            </div>
+
             <button
               onClick={handleCheckAnswer}
-              disabled={submitting}
-              className="px-4 py-2 bg-[#00A389] text-white hover:bg-[#00A389]/90 disabled:opacity-50 font-extrabold text-xs rounded-xl shadow-sm transition-all active:scale-95 flex items-center gap-1.5"
+              disabled={submitting || step.completed}
+              className="px-3 sm:px-4 py-2 bg-[#00A389] text-white hover:bg-[#00A389]/90 disabled:opacity-50 font-extrabold text-xs rounded-xl shadow-sm transition-all active:scale-95 flex items-center gap-1.5 flex-shrink-0"
             >
               {submitting ? (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" /> Checking...
-                </>
-              ) : "Check Answer"}
-            </button>
-            <button
-              onClick={handleClose}
-              className="w-8 h-8 rounded-full border border-zinc-200 text-rose-500 hover:bg-rose-50 flex items-center justify-center bg-white shadow-sm transition-all active:scale-90"
-            >
-              <X size={14} className="stroke-[3]" />
+                <><Loader2 className="w-3.5 h-3.5 animate-spin" /> <span className="hidden sm:inline">Checking…</span></>
+              ) : step.completed ? (
+                <><CheckCircle2 size={13} /> <span className="hidden sm:inline">Done</span></>
+              ) : (
+                <><span className="hidden sm:inline">Check Answer</span><span className="sm:hidden">Check</span></>
+              )}
             </button>
           </div>
         </div>
 
-        {/* Inner Question Area */}
-        <div className="flex-1 overflow-auto flex flex-col animate-fade-in">
+        {/* ── Completed activity banner ── */}
+        {step.completed && !allDone && (
+          <div className="flex items-center justify-between gap-3 px-4 py-2 bg-emerald-50 border-b border-emerald-100 shrink-0 animate-fade-in">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 size={14} className="text-emerald-600 shrink-0" fill="currentColor" />
+              <span className="text-xs font-bold text-emerald-700 truncate">
+                Activity complete{step.score !== undefined ? ` — best: ${step.score}%` : ""}
+              </span>
+            </div>
+            <button
+              onClick={handleNextStep}
+              disabled={isLastPosition}
+              className="px-3 py-1 text-[#01696F] bg-white border border-[#01696F]/20 hover:bg-[#E6F0F1] font-bold text-[10px] rounded-lg transition-all active:scale-95 disabled:opacity-40 disabled:pointer-events-none flex items-center gap-1 flex-shrink-0"
+            >
+              Next <ArrowRight size={11} />
+            </button>
+          </div>
+        )}
 
-          {step.type === "quantus" ? (
-            /* Spreadsheet view using modular ExcelGrid component */
-            <div className="flex-1 flex flex-col h-full overflow-hidden bg-white relative">
+        {/* ── All done banner ── */}
+        {allDone && (
+          <div className="flex items-center justify-between gap-3 px-4 py-2 bg-emerald-600 border-b border-emerald-700 shrink-0 animate-fade-in">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 size={14} className="text-white shrink-0" fill="currentColor" />
+              <span className="text-xs font-bold text-white">🎉 Lesson complete — you've finished all activities!</span>
+            </div>
+            <button
+              onClick={handleNextLesson}
+              className="px-4 py-1.5 bg-white text-emerald-700 hover:bg-emerald-50 font-black text-[11px] uppercase tracking-wider rounded-xl transition-all active:scale-95 flex items-center gap-1.5 shadow-sm flex-shrink-0"
+            >
+              Next Lesson <ArrowRight size={11} />
+            </button>
+          </div>
+        )}
+
+        {/* ── Activity area (with bottom feedback overlay) ── */}
+        <div className="flex-1 overflow-auto relative">
+
+          {step.type === "quantus" && (
+            <div className="absolute inset-0 flex flex-col">
               <ExcelGrid
                 table={excelTable}
                 inputs={excelInputs}
@@ -546,51 +1052,48 @@ export default function UnifiedActivityPage() {
                 rowLabels={step.gridRows}
               />
             </div>
-          ) : step.type === "canvas" ? (
-            /* Canvas/Flowchart view */
-            <div className="flex-1 flex flex-col h-full overflow-hidden bg-white relative">
+          )}
+
+          {step.type === "canvas" && (
+            <div className="absolute inset-0 flex flex-col">
               <CanvasExercise
-                canvasBackgroundText={step.questionText || "Flowchart Editor"}
+                canvasBackgroundText={step.questionText || (step.assemblyMode === "graph" ? "Graph Editor" : "Equation Builder")}
+                onElementsChange={setCanvasElements}
+                initialElements={step.submittedCanvasData || []}
+                assemblyMode={step.assemblyMode}
               />
             </div>
-          ) : (
-            /* MCQ view */
-            <div className="flex-1 flex flex-col p-10 justify-center max-w-4xl mx-auto space-y-10 animate-fade-in bg-zinc-50/20 w-full h-full rounded-2xl">
-              <h2 className="text-xl font-extrabold text-zinc-900 leading-snug tracking-tight max-w-3xl">
+          )}
+
+          {step.type === "mcq" && (
+            <div className="flex flex-col p-6 sm:p-10 justify-center max-w-3xl mx-auto space-y-8 animate-fade-in w-full min-h-full">
+              <h2 className="text-lg sm:text-xl font-extrabold text-zinc-900 leading-snug tracking-tight">
                 {step.questionText}
               </h2>
-
-              <div className="space-y-4 max-w-3xl">
+              <div className="space-y-3">
                 {step.options?.map((opt: any) => {
                   const isSelected = selectedOption === opt.id;
                   return (
                     <button
                       key={opt.id}
-                      onClick={() => setSelectedOption(opt.id)}
+                      onClick={() => !step.completed && setSelectedOption(opt.id)}
                       className={cn(
-                        "w-full text-left p-5 rounded-2xl border transition-all duration-200 flex items-center justify-between shadow-sm active:scale-[0.99] group",
-                        isSelected
-                          ? "bg-[#01696F] border-transparent text-white font-bold"
-                          : "border-zinc-200 hover:border-zinc-300 hover:bg-zinc-50/50 text-zinc-700 bg-white"
+                        "w-full text-left p-4 sm:p-5 rounded-2xl border transition-all duration-200 flex items-center justify-between shadow-sm active:scale-[0.99] group",
+                        isSelected ? "bg-[#01696F] border-transparent text-white font-bold" : "border-zinc-200 hover:border-zinc-300 hover:bg-zinc-50/50 text-zinc-700 bg-white",
+                        step.completed && "pointer-events-none opacity-80"
                       )}
                     >
-                      <div className="flex items-center gap-4">
-                        <span
-                          className={cn(
-                            "w-8 h-8 rounded-full flex items-center justify-center text-xs font-black shrink-0 shadow-sm transition-all duration-200",
-                            isSelected
-                              ? "bg-white text-[#01696F]"
-                              : "bg-white border border-zinc-200 text-zinc-700 group-hover:border-zinc-300"
-                          )}
-                        >
-                          {opt.id}
+                      <div className="flex items-center gap-3 sm:gap-4">
+                        <span className={cn(
+                          "w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0 shadow-sm transition-all",
+                          isSelected ? "bg-white text-[#01696F]" : "bg-white border border-zinc-200 text-zinc-700"
+                        )}>
+                          {opt.display}
                         </span>
                         <span className="text-sm font-semibold tracking-tight">{opt.label}</span>
                       </div>
                       {isSelected && (
-                        <div className="w-6 h-6 rounded-full bg-white flex items-center justify-center text-[#01696F] shrink-0 shadow-sm animate-scale-in">
-                          <CheckCircle2 size={18} className="text-[#01696F]" fill="currentColor" />
-                        </div>
+                        <CheckCircle2 size={18} className="text-white flex-shrink-0" fill="currentColor" />
                       )}
                     </button>
                   );
@@ -598,93 +1101,92 @@ export default function UnifiedActivityPage() {
               </div>
             </div>
           )}
-        </div>
 
+          {/* ── Bottom-center feedback ── */}
+          <BottomFeedback
+            feedback={feedback}
+            onClose={() => setFeedback(null)}
+            onNext={handleNextStep}
+            onNextLesson={handleNextLesson}
+            isLastPosition={isLastPosition}
+            allDone={allDone}
+          />
+        </div>
       </div>
 
-      {/* Right AI Coach Sidebar */}
-      {aiCoachOpen ? (
-        <div className="w-[300px] flex flex-col gap-3 h-full shrink-0 animate-slide-in">
+      {/* ── Right panel toggle ── */}
+      <div className="absolute right-0 z-10">
+        <PanelToggle open={rightPanelOpen} onClick={() => setRightPanelOpen(o => !o)} side="right" />
+      </div>
 
-          {/* Hints Card Container */}
-          <div className="bg-white p-2 flex flex-col h-full flex-1 overflow-hidden">
-            <div className="flex items-center border-b border-zinc-400 justify-between pb-3 mb-4 shrink-0">
-              <h3 className="font-bold text-zinc-800 text-2xl flex items-center gap-2">
-                AI Coach
-              </h3>
-              <button onClick={() => setAiCoachOpen(false)} className="p-1 hover:bg-zinc-100 rounded text-zinc-400">
-                <X size={16} />
-              </button>
+      {/* ══════════════════════ RIGHT PANEL — AI COACH ══════════════════════ */}
+      <div className={cn(
+        "flex-shrink-0 transition-all duration-300 ease-in-out overflow-hidden",
+        rightPanelOpen ? "w-72 xl:w-80" : "w-0"
+      )}>
+        <div className="w-72 xl:w-80 h-full flex flex-col pl-2">
+          <div className="bg-white flex flex-col h-full overflow-hidden rounded-2xl border border-zinc-100 shadow-sm">
+
+            {/* AI Coach header */}
+            <div className="flex items-center gap-2.5 px-4 py-3 border-b border-zinc-200 flex-shrink-0 bg-[#FAF7F2]">
+              <Image src="/AiAssistance.svg" alt="" width={24} height={24} />
+              <h3 className="font-black text-zinc-800 text-base tracking-tight">AI Coach</h3>
+              <div className="ml-auto flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">Active</span>
+              </div>
             </div>
 
-            <div className="flex-1 bg-[#F0EDE7] rounded-2xl p-4 shadow-[inset_0px_2px_4px_rgba(0,0,0,0.02)]">
-              {/* Dynamic feedback card displayed directly inside the AI Coach sidebar */}
+            {/* Coach body */}
+            <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-3 bg-[#F0EDE7]">
+              {!feedback && (
+                <div className="bg-white rounded-2xl p-4 border border-zinc-100 shadow-sm">
+                  <p className="text-xs text-zinc-500 font-medium leading-relaxed">
+                    Complete the activity and I'll give you instant feedback here. Use the <strong className="text-amber-600">Hint</strong> button above if you get stuck — hints appear right there so you can keep your eyes on the work.
+                  </p>
+                </div>
+              )}
+
               {feedback && (
                 <div className={cn(
-                  "p-3.5 border rounded-2xl mb-4 animate-fade-in flex flex-col gap-2 relative shadow-sm shrink-0",
-                  feedback.isError
-                    ? "bg-rose-50 border-rose-100 text-rose-800"
-                    : "bg-emerald-50 border-emerald-100 text-emerald-800"
+                  "rounded-2xl p-4 border animate-fade-in flex flex-col gap-2",
+                  feedback.isError ? "bg-rose-50 border-rose-100" : "bg-emerald-50 border-emerald-100"
                 )}>
-                  <button
-                    onClick={() => setFeedback(null)}
-                    className="absolute top-2 right-2 p-0.5 hover:bg-black/5 rounded text-zinc-500 hover:text-zinc-700"
-                  >
-                    <X size={14} />
-                  </button>
-                  <p className="text-xs font-bold leading-relaxed pr-4">{feedback.message}</p>
-                  {feedback.metrics && (
-                    <div className="flex flex-col gap-1 text-[10px] font-extrabold uppercase tracking-wide opacity-90 border-t border-black/5 pt-1.5 mt-0.5">
-                      <span>Accuracy: {Math.round(feedback.metrics.conceptAccuracy)}%</span>
-                      <span>Recall: {Math.round(feedback.metrics.recallStrength)}%</span>
-                      <span>Application: {Math.round(feedback.metrics.applicationScore)}%</span>
+                  <div className="flex items-center gap-2">
+                    {feedback.isError
+                      ? <XCircle size={15} className="text-rose-500 flex-shrink-0" fill="currentColor" />
+                      : <CheckCircle2 size={15} className="text-emerald-600 flex-shrink-0" fill="currentColor" />}
+                    <p className={cn("text-xs font-bold", feedback.isError ? "text-rose-800" : "text-emerald-800")}>
+                      {feedback.message}
+                    </p>
+                  </div>
+                  {!feedback.isError && feedback.metrics?.conceptAccuracy !== undefined && (
+                    <div className="grid grid-cols-3 gap-1 mt-1">
+                      {[
+                        ["Accuracy", feedback.metrics.conceptAccuracy],
+                        ["Recall", feedback.metrics.recallStrength],
+                        ["Apply", feedback.metrics.applicationScore],
+                      ].map(([label, val]: any) => (
+                        <div key={label} className="bg-white rounded-xl p-2 text-center border border-emerald-100">
+                          <p className="text-[14px] font-black text-emerald-700">{Math.round(val)}%</p>
+                          <p className="text-[8px] font-bold text-zinc-400 uppercase tracking-wider">{label}</p>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
               )}
 
-              <div className="flex-1 overflow-y-auto space-y-3 pb-4">
-                {activity.hints?.slice(0, hintsUnlocked).map((hint: string, idx: number) => (
-                  <div
-                    key={idx}
-                    className="bg-[#E6F0F1] border border-[#01696F]/10 rounded-2xl p-3 text-xs font-semibold text-[#01696F] leading-relaxed shadow-sm relative group animate-fade-in"
-                  >
-                    {hint}
-                  </div>
-                ))}
-
-                {activity?.hints && hintsUnlocked < activity.hints.length && (
-                  <button
-                    onClick={unlockNextHint}
-                    className="w-full flex items-center justify-center gap-2 py-3 border border-dashed border-[#01696F]/30 hover:bg-[#E6F0F1]/20 text-[#01696F] text-xs font-bold rounded-2xl transition-all active:scale-95 animate-pulse"
-                  >
-                    <Lightbulb size={14} className="text-amber-500" /> Reveal next hint
-                  </button>
-                )}
-              </div>
-
-              {/* Case Notes footer */}
-              <div className="pt-4 border-t border-zinc-100 shrink-0 space-y-2 bg-[#FDFCFA] rounded-xl p-3 border border-zinc-100 shadow-[inset_0px_2px_4px_rgba(0,0,0,0.02)]">
-                <h4 className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Case Notes</h4>
-                <p className="text-[11px] text-zinc-500 font-medium leading-relaxed">
-                  {activity.caseNotes}
-                </p>
-              </div>
+              {activity.caseNotes && (
+                <div className="bg-white rounded-2xl p-3 border border-zinc-100 shadow-sm">
+                  <h4 className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-1.5">Case Notes</h4>
+                  <p className="text-[11px] text-zinc-500 font-medium leading-relaxed">{activity.caseNotes}</p>
+                </div>
+              )}
             </div>
           </div>
         </div>
-      ) : (
-        <button
-          onClick={() => setAiCoachOpen(true)}
-          className="w-12 bg-white hover:bg-zinc-50 border border-zinc-200 rounded-2xl h-full flex flex-col items-center justify-center gap-4 shadow-sm shrink-0 transition-all duration-200 group active:scale-95 animate-slide-out"
-        >
-          <span className="text-[10px] font-bold text-[#01696F] uppercase tracking-widest [writing-mode:vertical-lr] transform rotate-180">
-            Open AI Coach
-          </span>
-          <Lightbulb size={16} className="text-[#01696F] animate-pulse" fill="currentColor" />
-        </button>
-      )}
-
+      </div>
     </div>
   );
 }

@@ -3,9 +3,8 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { MainLayout } from "@/components/layout/MainLayout";
-import { Search, Bell, ChevronRight, Loader2, BookOpen, Layers } from "lucide-react";
+import { Search, Bell, ChevronRight, Loader2, BookOpen, Layers, ArrowRight, CheckCircle2 } from "lucide-react";
 import { ProgressBar } from "@/components/ui/ProgressBar";
-import { DifficultyBadge } from "@/components/ui/DifficultyBadge";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/lib/auth-store";
 
@@ -61,13 +60,15 @@ interface SubtopicDetail extends Subtopic {
 export default function ModulePage() {
   const router = useRouter();
   const params = useParams();
-  const moduleSlug = (params?.moduleSlug as string) || "finance";
+  const moduleSlug = (params?.moduleSlug as string);
   const token = useAuthStore((state) => state.token);
 
   const [module, setModule] = useState<Module | null>(null);
   const [topics, setTopics] = useState<Topic[]>([]);
   const [subtopics, setSubtopics] = useState<Subtopic[]>([]);
   const [subtopicDetail, setSubtopicDetail] = useState<SubtopicDetail | null>(null);
+
+
 
   const [selectedTopicId, setSelectedTopicId] = useState<string>("");
   const [selectedSubtopicId, setSelectedSubtopicId] = useState<string>("");
@@ -76,6 +77,7 @@ export default function ModulePage() {
   const [loadingModule, setLoadingModule] = useState(true);
   const [loadingSubtopics, setLoadingSubtopics] = useState(false);
   const [loadingLessons, setLoadingLessons] = useState(false);
+
 
   const authHeaders = useCallback((): HeadersInit => {
     return token ? { Authorization: `Bearer ${token}` } : {};
@@ -171,79 +173,89 @@ export default function ModulePage() {
 
   return (
     <MainLayout>
-      <div className="p-6 space-y-6 max-w-full mx-auto animate-fade-in">
-        {/* Header */}
-        <header className="flex items-center justify-between gap-4">
-          <h2 className="text-2xl font-bold text-[#01696F]">{module.name}</h2>
+      <div className="flex flex-col max-h-[calc(100vh-24px)] overflow-y-auto p-6 gap-6 select-none animate-fade-in">
+
+        {/* ── Header ──────────────────────────────────────────────────────── */}
+        <header className="flex items-center justify-between gap-4 shrink-0">
+          <h2 className="text-2xl font-extrabold text-[#01696F] tracking-tight">{module.name}</h2>
           <div className="flex items-center gap-3 flex-1 justify-end">
-            <div className="relative w-[300px]">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#01696F]" size={18} />
+            <div className="relative w-[340px]">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#01696F]" size={16} />
               <input
                 type="text"
-                placeholder="Search topics, subtopics..."
-                className="w-full bg-white border border-[#01696F]/30 rounded-full py-2 pl-10 pr-4 outline-none focus:border-[#01696F] focus:ring-2 focus:ring-[#01696F]/10 transition-all text-xs font-medium placeholder:text-zinc-400 shadow-sm"
+                placeholder="Search topics, cases and formulas"
+                className="w-full bg-white border border-[#01696F]/30 rounded-full py-2.5 pl-11 pr-4 outline-none focus:border-[#01696F] focus:ring-2 focus:ring-[#01696F]/10 transition-all text-xs font-semibold placeholder:text-zinc-400 shadow-sm"
               />
             </div>
-            <button className="w-9 h-9 flex items-center justify-center bg-white border border-zinc-200 rounded-xl hover:bg-zinc-50 transition-colors relative shadow-sm">
+            <button className="w-10 h-10 flex items-center justify-center bg-white border border-zinc-300 rounded-xl hover:bg-zinc-50 transition-colors relative shadow-sm active:scale-95">
               <Bell size={18} className="text-[#01696F]" />
-              <div className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border border-white animate-pulse" />
+              <div className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border border-white animate-pulse" />
             </button>
           </div>
         </header>
 
-        {/* Resume Banner */}
-        <div
-          className="text-white rounded-3xl p-6 shadow-md relative overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-6"
-          style={{ backgroundColor: module.accentColor || "#005B60" }}
-        >
-          <div className="space-y-3 z-10">
-            <div className="text-xs font-bold opacity-80 uppercase tracking-widest">
-              {activeTopic?.name || "Select a topic"} &middot;{" "}
-              {subtopicDetail?.name || "Pick a subtopic"}
-            </div>
-            <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight">
-              {resumeLesson ? resumeLesson.name : "Ready to Learn"}
-            </h1>
-            <div className="flex flex-wrap gap-2 items-center text-xs pt-1">
-              <span className="bg-white/20 px-3 py-1 rounded-full font-bold">
-                {Math.round(module.completionPercentage)}% Completed
-              </span>
-              <span className="bg-white/20 px-3 py-1 rounded-full font-bold">
-                {totalCompletedLessons}/{totalTopicLessons} Lessons Covered
-              </span>
-              {resumeLesson && (
+        {/* ── Top Row: Resume Banner + Analytics ──────────────────────────── */}
+        <div className="flex flex-col lg:flex-row gap-6">
+
+          {/* Resume Banner */}
+          <div
+            className="flex-1 text-white rounded-3xl p-6 shadow-md relative overflow-hidden"
+            style={{ backgroundColor: "#005B60" }}
+          >
+            {resumeLesson && (
+              <div className="absolute top-6 right-6 z-20">
                 <button
                   onClick={() => router.push(`/activity/${resumeLesson.id}`)}
-                  className="bg-white text-[#005B60] hover:bg-zinc-100 transition-colors font-bold px-4 py-1.5 rounded-full shadow-sm text-xs ml-2"
+                  className="bg-white text-[#01696F] flex hover:bg-zinc-50 transition-all font-black px-3 py-2 rounded-2xl shadow-md text-md active:scale-95"
                 >
-                  Resume Learning →
+                  Resume Learning <ArrowRight size={22} className="ml-1" />
                 </button>
-              )}
+              </div>
+            )}
+
+            <div className="space-y-3 z-10 relative pr-32">
+              <h1 className="text-xl md:text-2xl font-black tracking-tight leading-tight">
+                {activeTopic?.name || "Core Concepts"} &middot;{" "}
+                {subtopicDetail?.name || "Enterprise value vs equity value"}
+              </h1>
+              <p className="text-[12px] opacity-90 font-bold uppercase tracking-wider">
+                {module.name} &nbsp;|&nbsp;{" "}
+                {activeTopic?.tags?.join(", ") || "3-Statement, Valuation, LBO"}
+              </p>
+              <div className="flex flex-wrap gap-3 pt-1">
+                <span className="bg-black/10 border border-white/20 px-3.5 py-1.5 rounded-full font-extrabold select-none">
+                  {Math.round(module.completionPercentage)}% Completed
+                </span>
+                <span className="bg-black/10 border border-white/20 px-3.5 py-1.5 rounded-full font-extrabold select-none">
+                  {totalCompletedLessons}/{totalTopicLessons} Lessons Covered
+                </span>
+              </div>
             </div>
+
+            {/* Decorative grid */}
+            <div className="absolute right-0 top-0 w-1/3 h-full opacity-5 bg-[linear-gradient(to_right,#808080_1px,transparent_1px),linear-gradient(to_bottom,#808080_1px,transparent_1px)] bg-[size:24px_24px] pointer-events-none" />
           </div>
 
-          {/* Progress metrics */}
-          <div className="bg-white/10 backdrop-blur-md rounded-2xl p-4 min-w-[220px] space-y-3 border border-white/10 z-10 shrink-0">
+          {/* Analytics metrics */}
+          <div className="w-full lg:w-80 shrink-0 bg-white border border-zinc-200 rounded-3xl p-5 shadow-sm flex flex-col justify-between gap-4">
             <MetricRow label="Concept Accuracy" value={module.conceptAccuracy} />
             <MetricRow label="Recall Strength" value={module.recallStrength} />
             <MetricRow label="Application Score" value={module.applicationScore} />
           </div>
-
-          {/* Decorative grid */}
-          <div className="absolute right-0 top-0 w-1/3 h-full opacity-5 bg-[linear-gradient(to_right,#808080_1px,transparent_1px),linear-gradient(to_bottom,#808080_1px,transparent_1px)] bg-[size:24px_24px] pointer-events-none" />
         </div>
 
-        {/* Main 2-column layout */}
+        {/* ── Bottom: Topic Sidebar + Subtopics/Lessons ───────────────────── */}
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* Left: Topic selector */}
-          <div className="bg-white rounded-3xl border border-zinc-200 p-4 shadow-sm h-fit">
-            <h3 className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest px-2 mb-3">
-              Topics
+
+          {/* Left Panel: Topic selector */}
+          <div className="bg-white rounded-3xl border border-zinc-200 p-4 shadow-sm flex flex-col">
+            <h3 className="text-[12px] font-black text-zinc-400 uppercase tracking-widest px-1 mb-4 select-none">
+              Select Topic
             </h3>
             {topics.length === 0 ? (
               <p className="text-xs text-zinc-400 px-2 py-4 text-center">No topics yet.</p>
             ) : (
-              <nav className="space-y-1">
+              <div className="pr-1 space-y-3">
                 {topics.map((topic) => {
                   const isSelected = topic.id === selectedTopicId;
                   return (
@@ -251,39 +263,47 @@ export default function ModulePage() {
                       key={topic.id}
                       onClick={() => setSelectedTopicId(topic.id)}
                       className={cn(
-                        "w-full text-left p-3 rounded-2xl transition-all duration-200 flex flex-col gap-0.5",
+                        "w-full text-left p-4 rounded-2xl border transition-all duration-200 flex flex-col gap-1 shadow-sm select-none group",
                         isSelected
-                          ? "bg-[#DFEAEA] border border-[#01696F]/30 text-[#01696F] font-bold shadow-sm"
-                          : "hover:bg-zinc-50 border border-transparent text-zinc-600 font-medium"
+                          ? "bg-[#E6F0F1] border-2 border-[#01696F] text-[#01696F] font-bold"
+                          : "bg-[#F5F3EE] hover:bg-zinc-100 border-transparent text-zinc-700 font-medium"
                       )}
                     >
-                      <span className="text-sm font-bold leading-snug">{topic.name}</span>
-                      {topic.subtitle && (
-                        <span className="text-[10px] opacity-60 line-clamp-1">{topic.subtitle}</span>
-                      )}
-                      {topic.completionPercentage > 0 && (
-                        <div className="mt-1.5">
-                          <ProgressBar value={topic.completionPercentage} size="sm" colorClass="bg-[#01696F]" />
-                        </div>
+                      <div className="flex justify-between items-start gap-2">
+                        <span className="text-sm font-extrabold leading-snug group-hover:text-[#01696F] transition-colors">
+                          {topic.name}
+                        </span>
+                        {topic.completionPercentage >= 100 ? (
+                          <span className="bg-green-500 text-white rounded-full p-0.5 shadow-sm shrink-0">
+                            <CheckCircle2 size={12} />
+                          </span>
+                        ) : topic.completionPercentage > 0 ? (
+                          <span className="bg-[#01696F]/10 text-[#01696F] text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0">
+                            {Math.round(topic.completionPercentage)}%
+                          </span>
+                        ) : null}
+                      </div>
+                      {topic.description && (
+                        <span className="text-[11px] text-zinc-500 font-semibold line-clamp-2 leading-relaxed">
+                          {topic.description}
+                        </span>
                       )}
                     </button>
                   );
                 })}
-              </nav>
+              </div>
             )}
           </div>
 
-          {/* Right panel */}
-          <div className="lg:col-span-3 space-y-6">
-            {/* Subtopics grid */}
-            <div className="bg-white border border-zinc-200 rounded-3xl p-6 shadow-sm">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-base font-bold text-zinc-800">
-                  {activeTopic?.name || "Select a topic"} &mdash; Subtopics
+          {/* Right Panel: Subtopics grid + Lessons */}
+          <div className="lg:col-span-3 flex flex-col gap-4">
+
+            {/* Subtopics Grid */}
+            <div className="bg-white border border-zinc-200 rounded-3xl p-4 shadow-sm flex flex-col">
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="text-base font-extrabold text-zinc-800 tracking-tight">
+                  {activeTopic?.name || "Core Concepts"} Topics
                 </h2>
-                <span className="text-xs text-zinc-400 font-medium">
-                  {subtopics.length} subtopic{subtopics.length !== 1 ? "s" : ""}
-                </span>
               </div>
 
               {loadingSubtopics ? (
@@ -299,39 +319,49 @@ export default function ModulePage() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {subtopics.map((sub) => {
                     const isSelected = sub.id === selectedSubtopicId;
-                    const isTopic = sub.type === "topic";
+                    const isTopic = sub.type.toLowerCase() === "topic";
                     return (
                       <button
                         key={sub.id}
                         onClick={() => setSelectedSubtopicId(sub.id)}
                         className={cn(
-                          "text-left p-4 rounded-2xl border transition-all duration-200 flex flex-col justify-between min-h-[110px] shadow-sm group",
+                          "text-left p-3 rounded-2xl border transition-all duration-200 flex flex-col min-h-[120px] shadow-sm select-none justify-between group",
                           isSelected
-                            ? "border-[#01696F] ring-2 ring-[#01696F]/20 bg-white"
-                            : "border-zinc-200 hover:border-zinc-300 bg-white hover:shadow-md"
+                            ? "border-2 border-[#01696F] bg-[#E6F0F1] ring-1 ring-[#01696F]/10"
+                            : "border-transparent bg-[#F5F3EE] hover:bg-zinc-100 hover:shadow-md"
                         )}
                       >
-                        <div className="space-y-1.5">
-                          <span
-                            className={cn(
-                              "text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full w-fit inline-block",
-                              isTopic
-                                ? "bg-[#E6F0F1] text-[#01696F]"
-                                : "bg-[#FDF4D5] text-[#A67C00]"
-                            )}
-                          >
-                            {sub.type}
-                          </span>
-                          <h4 className="font-bold text-zinc-800 text-sm leading-snug group-hover:text-[#01696F] transition-colors line-clamp-2">
+                        <div className="space-y-2">
+                          <div className="flex items-start justify-between">
+                            <span
+                              className={cn(
+                                "text-[10px] font-black uppercase tracking-widest px-2 rounded-lg w-fit inline-block border",
+                                isTopic
+                                  ? "bg-[#E6F0F1] text-[#01696F] border-[#01696F]/10"
+                                  : "bg-[#FFF9E6] text-[#A67C00] border-[#A67C00]/10"
+                              )}
+                            >
+                              {sub.type}
+                            </span>
+                            {sub.completionPercentage >= 100 ? (
+                              <span className="bg-green-500 text-white rounded-full p-0.5 shadow-sm">
+                                <CheckCircle2 size={14} />
+                              </span>
+                            ) : sub.completionPercentage > 0 ? (
+                              <span className="bg-[#01696F]/10 text-[#01696F] text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                                {Math.round(sub.completionPercentage)}%
+                              </span>
+                            ) : null}
+                          </div>
+                          <h4 className="font-semibold text-zinc-800 text-lg leading-snug group-hover:text-[#01696F] transition-colors line-clamp-2">
                             {sub.name}
                           </h4>
                         </div>
-                        <div className="mt-2">
+                        <div className="w-full">
                           {sub.description && (
-                            <p className="text-[11px] text-zinc-500 line-clamp-2 mb-2">{sub.description}</p>
-                          )}
-                          {sub.completionPercentage > 0 && (
-                            <ProgressBar value={sub.completionPercentage} size="sm" colorClass="bg-[#01696F]" />
+                            <p className="text-[12px] text-zinc-500 line-clamp-2 leading-relaxed font-semibold mb-2">
+                              {sub.description}
+                            </p>
                           )}
                         </div>
                       </button>
@@ -341,26 +371,125 @@ export default function ModulePage() {
               )}
             </div>
 
-            {/* Lessons panel */}
+            {/* Lessons Panel */}
             {selectedSubtopicId && (
-              <div className="bg-white border border-zinc-200 rounded-3xl p-6 shadow-sm space-y-4">
-                {/* Tabs */}
-                <div className="flex border-b border-zinc-200 pb-2">
-                  <TabBtn label="Topic Lessons" active={activeLessonTab === "lessons"} onClick={() => setActiveLessonTab("lessons")} />
-                  <TabBtn label="Lessons History" active={activeLessonTab === "history"} onClick={() => setActiveLessonTab("history")} />
+              <div className="bg-white border border-zinc-200 rounded-3xl p-4 shadow-sm flex flex-col gap-3">
+
+                {/* Tab switcher */}
+                <div className="bg-[#F5F3EE] p-2 rounded-full flex gap-1 w-fit border border-zinc-200 select-none">
+                  <button
+                    onClick={() => setActiveLessonTab("lessons")}
+                    className={cn(
+                      "px-4 py-1 rounded-full text-sm transition-all duration-200",
+                      activeLessonTab === "lessons"
+                        ? "bg-[#01696F] text-white shadow-sm"
+                        : "text-zinc-600 hover:text-zinc-900"
+                    )}
+                  >
+                    Topic Lessons
+                  </button>
+                  <button
+                    onClick={() => setActiveLessonTab("history")}
+                    className={cn(
+                      "px-4 py-1 rounded-full text-sm transition-all duration-200",
+                      activeLessonTab === "history"
+                        ? "bg-[#01696F] text-white shadow-sm"
+                        : "text-zinc-600 hover:text-zinc-900"
+                    )}
+                  >
+                    Lessons History
+                  </button>
                 </div>
 
+                {/* Subtitle */}
+                <p className="text-xs text-zinc-600 leading-relaxed font-semibold">
+                  <strong className="text-zinc-800 font-extrabold">
+                    {subtopicDetail?.name || "Enterprise value vs equity value"}
+                  </strong>{" "}
+                  — lessons ordered from learn to apply.
+                </p>
+
+                {/* Lessons content */}
                 {loadingLessons ? (
                   <div className="flex justify-center py-8">
                     <Loader2 className="w-6 h-6 animate-spin text-[#01696F]" />
                   </div>
                 ) : activeLessonTab === "lessons" ? (
-                  <LessonsList
-                    lessons={subtopicDetail?.lessons || []}
-                    onLessonClick={(id) => router.push(`/activity/${id}`)}
-                  />
+                  <div className="space-y-3">
+                    {(subtopicDetail?.lessons || []).length === 0 ? (
+                      <div className="text-center py-8 text-zinc-400 text-sm font-medium">
+                        No lessons assigned to this subtopic yet.
+                      </div>
+                    ) : (
+                      (subtopicDetail?.lessons || []).map((lesson, idx) => {
+                        const totalActivities = lesson.activityTypes?.length || 1;
+                        console.log(lesson)
+                        const completedCount = Math.round(((lesson.lessonCompletionPct || 0) / 100) * totalActivities);
+                        const isAllDone = lesson.status === "completed" || completedCount === totalActivities;
+                        return (
+                          <div
+                            key={lesson.id}
+                            onClick={() => router.push(`/activity/${lesson.id}`)}
+                            className="flex items-center justify-between p-4 bg-[#F5F3EE] border border-transparent rounded-2xl hover:border-[#01696F]/30 hover:bg-white transition-all cursor-pointer shadow-sm group select-none"
+                          >
+                            <div className="space-y-1.5 flex-1 min-w-0 pr-4">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-xs font-extrabold text-[#01696F] block tracking-tight">
+                                  Lesson {idx + 1} &middot; {lesson.name}
+                                </span>
+                                {isAllDone ? (
+                                  <span className="bg-emerald-100 text-emerald-700 text-[9px] font-extrabold px-2 py-0.5 rounded-full border border-emerald-200 select-none">
+                                    Completed ({completedCount}/{totalActivities} Activities)
+                                  </span>
+                                ) : (
+                                  <span className="bg-[#E6F0F1] text-[#01696F] text-[9px] font-extrabold px-2 py-0.5 rounded-full border border-[#01696F]/10 select-none">
+                                    {completedCount}/{totalActivities} Activities Completed
+                                  </span>
+                                )}
+                              </div>
+                              {lesson.description && (
+                                <p className="text-[11px] text-zinc-500 font-semibold line-clamp-1">
+                                  {lesson.description}
+                                </p>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-3 shrink-0">
+                              <DiffBadge difficulty={lesson.difficulty} />
+                              <ChevronRight className="w-5 h-5 text-zinc-400 group-hover:text-[#01696F] transition-colors" />
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
                 ) : (
-                  <LessonsHistory lessons={completedLessons} />
+                  <div className="space-y-3">
+                    {completedLessons.length === 0 ? (
+                      <div className="text-center py-8 text-zinc-400 text-sm font-medium">
+                        No completed lessons yet. Finish lessons to see history here.
+                      </div>
+                    ) : (
+                      completedLessons.map((lesson) => (
+                        <div
+                          key={lesson.id}
+                          className="flex items-center justify-between p-4 bg-[#F5F3EE] border border-transparent rounded-2xl shadow-sm"
+                        >
+                          <div className="space-y-1 flex-1 min-w-0 pr-4">
+                            <span className="text-xs font-extrabold text-[#01696F] block tracking-tight">
+                              {lesson.name}
+                            </span>
+                            <p className="text-[11px] text-zinc-500 font-semibold">Completed</p>
+                          </div>
+                          <div className="flex items-center gap-3 shrink-0">
+                            <DiffBadge difficulty={lesson.difficulty} />
+                            <span className="text-xs font-extrabold text-emerald-600">
+                              {lesson.lessonCompletionPct}%
+                            </span>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
                 )}
               </div>
             )}
@@ -371,103 +500,40 @@ export default function ModulePage() {
   );
 }
 
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
 function MetricRow({ label, value }: { label: string; value: number }) {
   return (
-    <div className="space-y-1">
-      <div className="flex justify-between text-xs font-bold">
-        <span>{label}</span>
-        <span className="text-[#4FD1C5]">{Math.round(value)}%</span>
+    <div className="space-y-1.5 flex-1 flex flex-col justify-center">
+      <div className="flex justify-between items-center text-xs font-bold text-zinc-700">
+        <span className="tracking-tight">{label}</span>
+        <span className="text-[#01696F] text-xs font-extrabold">{Math.round(value)}%</span>
       </div>
-      <ProgressBar value={value} size="sm" colorClass="bg-[#4FD1C5]" />
+      <div className="w-full bg-[#E6F0F1] h-2 rounded-full overflow-hidden">
+        <div
+          className="bg-[#01696F] h-full rounded-full transition-all duration-500"
+          style={{ width: `${value}%` }}
+        />
+      </div>
     </div>
   );
 }
 
-function TabBtn({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+function DiffBadge({ difficulty }: { difficulty: string }) {
+  const isEasy = difficulty.toLowerCase() === "easy";
+  const isMed = difficulty.toLowerCase() === "medium";
   return (
-    <button
-      onClick={onClick}
+    <span
       className={cn(
-        "px-4 py-2 font-bold text-sm border-b-2 transition-all mr-4",
-        active ? "border-[#01696F] text-[#01696F]" : "border-transparent text-zinc-400 hover:text-zinc-600"
+        "text-[10px] font-black px-3 py-1 rounded-lg border tracking-wide uppercase select-none",
+        isEasy
+          ? "bg-[#E6F0F1] text-[#01696F] border-[#01696F]/20"
+          : isMed
+            ? "bg-amber-50 text-amber-700 border-amber-500/20"
+            : "bg-red-50 text-red-700 border-red-500/20"
       )}
     >
-      {label}
-    </button>
-  );
-}
-
-function LessonsList({ lessons, onLessonClick }: { lessons: Lesson[]; onLessonClick: (id: string) => void }) {
-  if (lessons.length === 0) {
-    return (
-      <div className="text-center py-8 text-zinc-400 text-sm font-medium">
-        No lessons assigned to this subtopic yet.
-      </div>
-    );
-  }
-  return (
-    <div className="space-y-3">
-      {lessons.map((lesson, idx) => {
-        const completedCount = Math.round(((lesson.lessonCompletionPct || 0) / 100) * 3);
-        return (
-          <div
-            key={lesson.id}
-            onClick={() => onLessonClick(lesson.id)}
-            className="flex items-center justify-between p-4 bg-[#FDFCFA] border border-zinc-100 rounded-2xl hover:border-[#01696F]/30 hover:bg-white transition-all cursor-pointer shadow-sm group animate-fade-in"
-          >
-            <div className="space-y-1 flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-bold text-[#01696F]">
-                  Lesson {idx + 1} &middot; {lesson.name}
-                </span>
-                <DifficultyBadge difficulty={lesson.difficulty} />
-                {lesson.status === "completed" || completedCount === 3 ? (
-                  <span className="bg-emerald-100 text-emerald-700 text-[9px] font-extrabold px-2 py-0.5 rounded-full">
-                    Completed (3/3)
-                  </span>
-                ) : (
-                  <span className="bg-[#DFEAEA] text-[#01696F] text-[9px] font-extrabold px-2 py-0.5 rounded-full">
-                    {completedCount}/3 Activities Completed
-                  </span>
-                )}
-              </div>
-              {lesson.description && (
-                <p className="text-xs text-zinc-500 line-clamp-1">{lesson.description}</p>
-              )}
-            </div>
-            <ChevronRight className="w-5 h-5 text-zinc-400 group-hover:text-[#01696F] transition-colors shrink-0 ml-2" />
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function LessonsHistory({ lessons }: { lessons: Lesson[] }) {
-  if (lessons.length === 0) {
-    return (
-      <div className="text-center py-8 text-zinc-400 text-sm font-medium">
-        No completed lessons yet. Finish lessons to see history here.
-      </div>
-    );
-  }
-  return (
-    <div className="space-y-3">
-      {lessons.map((lesson) => (
-        <div
-          key={lesson.id}
-          className="flex items-center justify-between p-4 bg-[#FDFCFA] border border-zinc-100 rounded-2xl shadow-sm"
-        >
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-emerald-600">{lesson.name}</span>
-              <DifficultyBadge difficulty={lesson.difficulty} />
-            </div>
-            <p className="text-xs text-zinc-500">Completed</p>
-          </div>
-          <span className="text-xs font-bold text-emerald-600">{lesson.lessonCompletionPct}%</span>
-        </div>
-      ))}
-    </div>
+      {difficulty}
+    </span>
   );
 }

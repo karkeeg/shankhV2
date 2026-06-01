@@ -24,7 +24,7 @@ export const MainLayout = ({
         {showSidebar && (sidebar || <Sidebar />)}
 
         {/* Content wrapper with consistent padding and radii */}
-        <div className={cn("flex-1 flex overflow-hidden gap-3", showSidebar ? "p-3" : "p-0")}>
+        <div className={cn("flex-1 flex overflow-y-auto gap-3", showSidebar ? "p-3" : "p-0")}>
           <main
             className={cn(
               "flex-1 overflow-y-auto bg-[#F0EDE7]",

@@ -1,7 +1,100 @@
 @import "tailwindcss";
 
+/* SF Pro Font Declarations */
+@font-face {
+  font-family: 'SF ProSemibold Body';
+  font-style: normal;
+  font-weight: 600;
+  src: local('SF Pro Semibold'), local('SF Pro Display Semibold'), local('SF Pro Text Semibold'),
+       url('https://fonts.cdnfonts.com/s/59278/SFPRODISPLAYSEMIBOLD.woff') format('woff');
+}
+
+@font-face {
+  font-family: 'SF ProSemibold Body';
+  font-style: normal;
+  font-weight: 400;
+  src: local('SF Pro Regular'), local('SF Pro Display Regular'), local('SF Pro Text Regular'),
+       url('https://fonts.cdnfonts.com/s/59278/SFPRODISPLAYREGULAR.woff') format('woff');
+}
+
+@font-face {
+  font-family: 'b1 Body Semibold';
+  font-style: normal;
+  font-weight: 600;
+  src: local('SF Pro Semibold'), local('SF Pro Display Semibold'), local('SF Pro Text Semibold'),
+       url('https://fonts.cdnfonts.com/s/59278/SFPRODISPLAYSEMIBOLD.woff') format('woff');
+}
+
+@font-face {
+  font-family: 'b1 Body Semibold';
+  font-style: normal;
+  font-weight: 400;
+  src: local('SF Pro Regular'), local('SF Pro Display Regular'), local('SF Pro Text Regular'),
+       url('https://fonts.cdnfonts.com/s/59278/SFPRODISPLAYREGULAR.woff') format('woff');
+}
+
+@font-face {
+  font-family: 'SF Pro';
+  font-style: normal;
+  font-weight: 400;
+  src: local('SF Pro Regular'), local('SF Pro Display Regular'), local('SF Pro Text Regular'),
+       url('https://fonts.cdnfonts.com/s/59278/SFPRODISPLAYREGULAR.woff') format('woff');
+}
+
+@font-face {
+  font-family: 'SF Pro';
+  font-style: normal;
+  font-weight: 500;
+  src: local('SF Pro Medium'), local('SF Pro Display Medium'), local('SF Pro Text Medium'),
+       url('https://fonts.cdnfonts.com/s/59278/SFPRODISPLAYMEDIUM.woff') format('woff');
+}
+
+@font-face {
+  font-family: 'SF Pro';
+  font-style: normal;
+  font-weight: 600;
+  src: local('SF Pro Semibold'), local('SF Pro Display Semibold'), local('SF Pro Text Semibold'),
+       url('https://fonts.cdnfonts.com/s/59278/SFPRODISPLAYSEMIBOLD.woff') format('woff');
+}
+
+@font-face {
+  font-family: 'SF Pro';
+  font-style: normal;
+  font-weight: 700;
+  src: local('SF Pro Bold'), local('SF Pro Display Bold'), local('SF Pro Text Bold'),
+       url('https://fonts.cdnfonts.com/s/59278/SFPRODISPLAYBOLD.woff') format('woff');
+}
+
+@font-face {
+  font-family: 'SF Pro Display';
+  font-style: normal;
+  font-weight: 400;
+  src: local('SF Pro Display Regular'), url('https://fonts.cdnfonts.com/s/59278/SFPRODISPLAYREGULAR.woff') format('woff');
+}
+
+@font-face {
+  font-family: 'SF Pro Display';
+  font-style: normal;
+  font-weight: 500;
+  src: local('SF Pro Display Medium'), url('https://fonts.cdnfonts.com/s/59278/SFPRODISPLAYMEDIUM.woff') format('woff');
+}
+
+@font-face {
+  font-family: 'SF Pro Display';
+  font-style: normal;
+  font-weight: 600;
+  src: local('SF Pro Display Semibold'), url('https://fonts.cdnfonts.com/s/59278/SFPRODISPLAYSEMIBOLD.woff') format('woff');
+}
+
+@font-face {
+  font-family: 'SF Pro Display';
+  font-style: normal;
+  font-weight: 700;
+  src: local('SF Pro Display Bold'), url('https://fonts.cdnfonts.com/s/59278/SFPRODISPLAYBOLD.woff') format('woff');
+}
+
 @theme {
-  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-sans: "SF ProSemibold Body", "b1 Body Semibold", "SF Pro", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --font-mono: "JetBrains Mono", monospace;
 
   --color-primary: #01696F;

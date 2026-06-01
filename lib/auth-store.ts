@@ -16,7 +16,7 @@ interface AuthState {
   error: string | null;
   setAuth: (user: User, token: string) => void;
   login: (email: string, password: string) => Promise<void>;
-  signup: (name: string, email: string, password: string) => Promise<void>;
+  signup: (name: string, email: string, password: string, role?: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -59,14 +59,14 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      signup: async (name, email, password) => {
+      signup: async (name, email, password, role) => {
         set({ isLoading: true, error: null });
         try {
           const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "";
           const res = await fetch(`${backendUrl}/api/v1/auth/signup`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name, email, password }),
+            body: JSON.stringify({ name, email, password, role }),
           });
 
           const data = await res.json();

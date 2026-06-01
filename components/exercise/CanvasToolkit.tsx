@@ -60,7 +60,7 @@ export const CanvasToolkit = ({ draggableElements }: CanvasToolkitProps) => {
             </div>
             
             <div className="grid grid-cols-1 gap-2">
-              {category.items.map((item) => (
+              {category?.items?.map((item) => (
                 <div
                   key={item.id}
                   draggable

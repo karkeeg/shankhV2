@@ -15,6 +15,7 @@ export default function SignupPage() {
   const [password, setPassword] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+  const [role, setRole] = useState("learner");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   
@@ -34,9 +35,14 @@ export default function SignupPage() {
     setError("");
 
     try {
-      await signup(`${firstName} ${lastName}`.trim(), email, password);
+      await signup(`${firstName} ${lastName}`.trim(), email, password, role);
       await login(email, password); // Auto login
-      router.push("/");
+      const user = useAuthStore.getState().user;
+      if (user?.role === "admin") {
+        router.push("/admin");
+      } else {
+        router.push("/");
+      }
     } catch (err: any) {
       setError(err.message || "Signup failed");
     } finally {
@@ -110,6 +116,22 @@ export default function SignupPage() {
                   className="w-full bg-[#F3F1ED] border-none rounded-xl p-3.5 text-[#1a1a1a] placeholder:text-zinc-400 focus:ring-2 focus:ring-[#01696F] outline-none transition-all"
                   placeholder="************"
                 />
+              </div>
+
+              <div className="flex items-center justify-between p-3.5 bg-zinc-50 rounded-xl border border-zinc-150 mt-1">
+                <div className="flex flex-col">
+                  <span className="text-sm font-semibold text-zinc-800">Sign Up as Admin</span>
+                  <span className="text-[10px] text-zinc-500">Access and manage the curriculum dashboard</span>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={role === "admin"}
+                    onChange={(e) => setRole(e.target.checked ? "admin" : "learner")}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-zinc-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#01696F]"></div>
+                </label>
               </div>
 
               <div className="flex items-center gap-4 py-1">

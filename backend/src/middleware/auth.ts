@@ -31,6 +31,17 @@ export const requireAdmin = async (req: Request, res: Response, next: NextFuncti
   next();
 };
 
+export const optionalAuth = (req: Request, res: Response, next: NextFunction) => {
+  const authHeader = req.headers.authorization || req.headers["x-access-token"] || "";
+  const token = String(authHeader).replace(/^Bearer\s+/i, "").trim();
+
+  const userId = verifyJwtToken(token);
+  if (userId) {
+    req.userId = userId;
+  }
+  next();
+};
+
 export const getUserIdFromRequest = async (req: Request) => {
   const authHeader = req.headers.authorization || req.headers["x-access-token"] || "";
   const token = String(authHeader).replace(/^Bearer\s+/i, "").trim();

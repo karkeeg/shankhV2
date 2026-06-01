@@ -23,7 +23,7 @@ export const login = async (req: Request, res: Response) => {
 };
 
 export const signup = async (req: Request, res: Response) => {
-  const { name, email, password } = req.body;
+  const { name, email, password, role } = req.body;
   if (!name || !email || !password) {
     return res.status(400).json({ error: "Name, email, and password are required" });
   }
@@ -34,7 +34,8 @@ export const signup = async (req: Request, res: Response) => {
   }
 
   const passwordHash = await hashPassword(password);
-  const user = await prisma.user.create({ data: { name, email, passwordHash, role: "learner" } });
+  const finalRole = role === "admin" ? "admin" : "learner";
+  const user = await prisma.user.create({ data: { name, email, passwordHash, role: finalRole } });
   const token = createJwtToken(user.id);
 
   return res.status(201).json({ data: { user: serializeUser(user), token } });

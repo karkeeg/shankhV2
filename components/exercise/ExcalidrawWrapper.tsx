@@ -2,35 +2,17 @@
 
 import React, { useEffect, useState } from "react";
 import "@excalidraw/excalidraw/index.css";
+import { ExcalidrawApi, ExcalidrawSceneElement } from "./CanvasExercise";
 
 interface ExcalidrawWrapperProps {
-  excalidrawRef: React.MutableRefObject<ExcalidrawApi | null>;
-  initialData?: ExcalidrawInitialData;
+  excalidrawRef: React.RefObject<ExcalidrawApi | null>;
+  initialData?: {
+    elements: readonly ExcalidrawSceneElement[];
+    appState: Record<string, unknown>;
+  };
   onChange?: (elements: readonly ExcalidrawSceneElement[]) => void;
   onDrop?: (event: React.DragEvent) => void;
 }
-
-interface ExcalidrawApi {
-  getAppState: () => {
-    scrollX: number;
-    scrollY: number;
-    zoom: { value: number };
-  };
-  getSceneElements: () => readonly ExcalidrawSceneElement[];
-  updateScene: (scene: {
-    elements: readonly ExcalidrawSceneElement[];
-    appState: Record<string, unknown>;
-  }) => void;
-}
-
-interface ExcalidrawInitialData {
-  elements: readonly ExcalidrawSceneElement[];
-  appState: Record<string, unknown>;
-}
-
-type ExcalidrawSceneElement = Record<string, unknown> & {
-  customData?: { originalId?: string };
-};
 
 const ExcalidrawWrapper = ({ 
   excalidrawRef, 
@@ -55,6 +37,13 @@ const ExcalidrawWrapper = ({
     );
   }
 
+  // Typecast external API callback safely to allow assigning to the RefObject
+  const handleApiRef = (api: any) => {
+    if (excalidrawRef) {
+      (excalidrawRef as any).current = api;
+    }
+  };
+
   return (
     <div 
       className="w-full h-full relative" 
@@ -62,11 +51,7 @@ const ExcalidrawWrapper = ({
       onDragOver={(e) => e.preventDefault()}
     >
       <Excalidraw
-        excalidrawAPI={(api: ExcalidrawApi) => {
-          if (excalidrawRef) {
-            excalidrawRef.current = api;
-          }
-        }}
+        excalidrawAPI={handleApiRef}
         initialData={initialData || { elements: [], appState: { theme: 'light' } }}
         onChange={onChange}
         theme="light"

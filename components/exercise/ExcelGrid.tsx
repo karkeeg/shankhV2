@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import {
   ChevronDown,
@@ -16,6 +16,9 @@ import {
   Strikethrough,
   Menu,
   ChevronUp,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
 } from "lucide-react";
 
 /* ── Toolbar Helpers ────────────────────────────────────────────── */
@@ -30,6 +33,203 @@ function ToolbarBtn({ icon }: { icon: React.ReactNode }) {
 
 function ToolbarDivider() {
   return <div className="w-px h-5 bg-zinc-200 mx-0.5 shrink-0" />;
+}
+
+/* ── Formula Evaluation Engine ───────────────────────────────────── */
+
+export function parseCellRef(ref: string): { row: number; col: number } | null {
+  const match = ref.match(/^([A-Za-z]+)([0-9]+)$/);
+  if (!match) return null;
+  const colStr = match[1].toUpperCase();
+  const rowStr = match[2];
+  
+  let col = 0;
+  for (let i = 0; i < colStr.length; i++) {
+    col = col * 26 + (colStr.charCodeAt(i) - 65 + 1);
+  }
+  col -= 1;
+  
+  const row = parseInt(rowStr, 10) - 1;
+  return { row, col };
+}
+
+export function parseRange(rangeStr: string): { startRow: number; startCol: number; endRow: number; endCol: number } | null {
+  const parts = rangeStr.split(":");
+  if (parts.length !== 2) return null;
+  const start = parseCellRef(parts[0]);
+  const end = parseCellRef(parts[1]);
+  if (!start || !end) return null;
+  return {
+    startRow: Math.min(start.row, end.row),
+    startCol: Math.min(start.col, end.col),
+    endRow: Math.max(start.row, end.row),
+    endCol: Math.max(start.col, end.col),
+  };
+}
+
+export function getRowIndexFromKey(key: string, table: (string | number | null)[][]): number {
+  const lowerKey = key.toLowerCase();
+  for (let r = 0; r < table.length; r++) {
+    const cellVal = table[r]?.[0];
+    if (typeof cellVal === "string") {
+      const lowerCell = cellVal.toLowerCase();
+      if (lowerKey === "base_val" && (lowerCell.includes("base") || lowerCell.includes("parameter"))) {
+        return r;
+      }
+      if (lowerKey === "growth_rate" && (lowerCell.includes("growth") || lowerCell.includes("rate"))) {
+        return r;
+      }
+      if (lowerKey === "forecast_val" && (lowerCell.includes("forecast") || lowerCell.includes("value"))) {
+        return r;
+      }
+    }
+  }
+  if (lowerKey === "base_val") return 0;
+  if (lowerKey === "growth_rate") return 1;
+  if (lowerKey === "forecast_val") return 2;
+  return -1;
+}
+
+export function evaluateSumOrAverage(
+  funcName: "SUM" | "AVERAGE",
+  argsStr: string,
+  grid: Record<string, string>,
+  table: (string | number | null)[][],
+  getCellKeyFn: (row: number, col: number) => string,
+  visited: Set<string>
+): number {
+  const parts = argsStr.split(",");
+  let sum = 0;
+  let count = 0;
+  for (const part of parts) {
+    const trimmed = part.trim();
+    if (trimmed.includes(":")) {
+      const range = parseRange(trimmed);
+      if (range) {
+        for (let r = range.startRow; r <= range.endRow; r++) {
+          for (let c = range.startCol; c <= range.endCol; c++) {
+            const cellKey = getCellKeyFn(r, c);
+            if (!visited.has(cellKey)) {
+              sum += getCellValue(r, c, grid, table, getCellKeyFn, visited);
+              count++;
+            }
+          }
+        }
+      }
+    } else {
+      const cell = parseCellRef(trimmed);
+      if (cell) {
+        const cellKey = getCellKeyFn(cell.row, cell.col);
+        if (!visited.has(cellKey)) {
+          sum += getCellValue(cell.row, cell.col, grid, table, getCellKeyFn, visited);
+          count++;
+        }
+      } else {
+        const val = parseFloat(trimmed);
+        if (!isNaN(val)) {
+          sum += val;
+          count++;
+        }
+      }
+    }
+  }
+  return funcName === "SUM" ? sum : (count > 0 ? sum / count : 0);
+}
+
+export function getCellValue(
+  row: number,
+  col: number,
+  grid: Record<string, string>,
+  table: (string | number | null)[][],
+  getCellKeyFn: (row: number, col: number) => string,
+  visited: Set<string>
+): number {
+  const key = getCellKeyFn(row, col);
+  const newVisited = new Set(visited);
+  newVisited.add(key);
+
+  let cellVal = grid[key];
+  if (cellVal === undefined) {
+    const tableVal = table[row]?.[col];
+    cellVal = tableVal !== undefined && tableVal !== null ? String(tableVal) : "";
+  }
+
+  const trimmed = cellVal.trim();
+  if (!trimmed) return 0;
+
+  if (trimmed.startsWith("=") || trimmed.includes("[") || /[A-Za-z]+[0-9]+/.test(trimmed)) {
+    return evaluateExcelFormula(trimmed, grid, table, getCellKeyFn, newVisited);
+  }
+
+  const cleanStr = trimmed.replace(/[$,₹]/g, "").replace(/,/g, "");
+  const num = parseFloat(cleanStr);
+  if (isNaN(num)) return 0;
+  if (cleanStr.endsWith("%")) {
+    return num / 100;
+  }
+  return num;
+}
+
+export function evaluateExcelFormula(
+  expression: string,
+  grid: Record<string, string>,
+  table: (string | number | null)[][],
+  getCellKeyFn: (row: number, col: number) => string,
+  visited: Set<string> = new Set()
+): number {
+  let expr = expression.trim();
+  if (expr.startsWith("=")) {
+    expr = expr.substring(1).trim();
+  }
+
+  // Handle SUM
+  while (true) {
+    const sumMatch = expr.match(/SUM\(([^)]+)\)/i);
+    if (!sumMatch) break;
+    const val = evaluateSumOrAverage("SUM", sumMatch[1], grid, table, getCellKeyFn, visited);
+    expr = expr.replace(sumMatch[0], String(val));
+  }
+
+  // Handle AVERAGE
+  while (true) {
+    const avgMatch = expr.match(/AVERAGE\(([^)]+)\)/i);
+    if (!avgMatch) break;
+    const val = evaluateSumOrAverage("AVERAGE", avgMatch[1], grid, table, getCellKeyFn, visited);
+    expr = expr.replace(avgMatch[0], String(val));
+  }
+
+  // Replace DB references e.g. base_val[1]
+  expr = expr.replace(/([a-zA-Z_0-9]+)\[([0-9]+)\]/g, (match, rowKey, colStr) => {
+    const col = parseInt(colStr, 10);
+    const row = getRowIndexFromKey(rowKey, table);
+    if (row === -1) return "0";
+    const cellKey = getCellKeyFn(row, col);
+    if (visited.has(cellKey)) return "0";
+    return String(getCellValue(row, col, grid, table, getCellKeyFn, visited));
+  });
+
+  // Replace standard Excel cell references e.g. B1, C2
+  expr = expr.replace(/\b([A-Za-z]+)([0-9]+)\b/g, (match) => {
+    if (["SUM", "AVERAGE"].includes(match.toUpperCase())) return match;
+    const cell = parseCellRef(match);
+    if (!cell) return match;
+    const cellKey = getCellKeyFn(cell.row, cell.col);
+    if (visited.has(cellKey)) return "0";
+    return String(getCellValue(cell.row, cell.col, grid, table, getCellKeyFn, visited));
+  });
+
+  // Safely evaluate pure math expression
+  const sanitized = expr.replace(/[^0-9+\-*/().\s]/g, "");
+  if (!sanitized.trim()) return 0;
+  try {
+    // eslint-disable-next-line no-new-func
+    const result = new Function(`return (${sanitized});`)();
+    const num = parseFloat(result);
+    return isFinite(num) ? num : 0;
+  } catch (e) {
+    console.error("Error evaluating math expression:", expr, e);
+    return 0;
+  }
 }
 
 /* ── ExcelGrid Component ────────────────────────────────────────── */
@@ -64,7 +264,28 @@ interface ExcelGridProps {
   sheetTabName?: string;
   colLabels?: string[];
   rowLabels?: string[];
+  /** External selection synchronization (e.g. for admin builder) */
+  selectedCell?: { row: number; col: number } | null;
+  onSelectCell?: (cell: { row: number; col: number } | null) => void;
 }
+
+interface CellStyle {
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  strikethrough?: boolean;
+  align?: "left" | "center" | "right";
+  bg?: string;
+}
+
+const FORMULA_COLORS = [
+  "outline outline-2 outline-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)] z-10",
+  "outline outline-2 outline-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)] z-10",
+  "outline outline-2 outline-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)] z-10",
+  "outline outline-2 outline-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)] z-10",
+  "outline outline-2 outline-violet-500 shadow-[0_0_8px_rgba(139,92,246,0.5)] z-10",
+  "outline outline-2 outline-cyan-500 shadow-[0_0_8px_rgba(6,182,212,0.5)] z-10",
+];
 
 export const ExcelGrid = ({
   table,
@@ -81,11 +302,42 @@ export const ExcelGrid = ({
   showToolbar = false,
   colLabels,
   rowLabels,
+  selectedCell,
+  onSelectCell,
 }: ExcelGridProps) => {
-  const [selectedCell, setSelectedCell] = useState<{
+  // Sync selection state locally or lift up
+  const [internalSelectedCell, setInternalSelectedCell] = useState<{
     row: number;
     col: number;
-  } | null>({ row: 1, col: 1 });
+  } | null>({ row: 0, col: 0 });
+
+  const activeSelectedCell = selectedCell !== undefined ? selectedCell : internalSelectedCell;
+  
+  const setActiveSelectedCell = (cell: { row: number; col: number } | null) => {
+    if (onSelectCell) {
+      onSelectCell(cell);
+    } else {
+      setInternalSelectedCell(cell);
+    }
+  };
+
+  // Selection vs Edit modes
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState("");
+  const [cellStyles, setCellStyles] = useState<Record<string, CellStyle>>({});
+
+  // Reset edit mode when selection changes (inline during render to avoid useEffect warning)
+  const [prevSelected, setPrevSelected] = useState<{ row: number; col: number } | null>(activeSelectedCell);
+  const selectedChanged = 
+    (activeSelectedCell === null && prevSelected !== null) ||
+    (activeSelectedCell !== null && prevSelected === null) ||
+    (activeSelectedCell !== null && prevSelected !== null && 
+     (activeSelectedCell.row !== prevSelected.row || activeSelectedCell.col !== prevSelected.col));
+
+  if (selectedChanged) {
+    setPrevSelected(activeSelectedCell);
+    setIsEditing(false);
+  }
 
   const handleInputChange = (row: number, col: number, value: string) => {
     if (isValidated) return;
@@ -97,16 +349,235 @@ export const ExcelGrid = ({
   };
 
   const getCellKey = (row: number, col: number) => {
-    const rLabel = rowLabels?.[row] !== undefined ? String(rowLabels[row]) : String(row + 1);
-    const cLabel = colLabels?.[col] !== undefined ? String(colLabels[col]) : String.fromCharCode(65 + col);
-    return `${rLabel}-${cLabel}`;
+    if (rowLabels && colLabels) {
+      const rLabel = rowLabels[row] !== undefined ? String(rowLabels[row]) : String(row);
+      const cLabel = colLabels[col] !== undefined ? String(colLabels[col]) : String(col);
+      return `${rLabel}-${cLabel}`;
+    }
+    if (tabNames && tabNames.length > 0) {
+      return `${activeTabIndex}-${row}-${col}`;
+    }
+    return `${row}-${col}`;
   };
 
-  const currentFormulaValue = selectedCell
-    ? userInputs[getCellKey(selectedCell.row, selectedCell.col)] ||
-    table[selectedCell.row]?.[selectedCell.col]?.toString() ||
-    ""
+  const getRawValue = (row: number, col: number) => {
+    const key = getCellKey(row, col);
+    if (userInputs[key] !== undefined) {
+      return userInputs[key];
+    }
+    const tableVal = table[row]?.[col];
+    return tableVal !== undefined && tableVal !== null ? String(tableVal) : "";
+  };
+
+  const getDisplayValue = (r: number, c: number) => {
+    const key = getCellKey(r, c);
+    let val = userInputs[key];
+    if (val === undefined) {
+      const tableVal = table[r]?.[c];
+      val = tableVal !== undefined && tableVal !== null ? String(tableVal) : "";
+    }
+    
+    const trimmed = val.trim();
+    if (!trimmed) return "";
+    
+    // If it's a formula, evaluate it
+    if (trimmed.startsWith("=") || trimmed.includes("[") || /[A-Za-z]+[0-9]+/.test(trimmed)) {
+      try {
+        const evaluated = evaluateExcelFormula(trimmed, userInputs, table, getCellKey);
+        return String(Number(evaluated.toFixed(4)));
+      } catch {
+        return "#VALUE!";
+      }
+    }
+    
+    return val;
+  };
+
+  const currentFormulaValue = activeSelectedCell
+    ? getRawValue(activeSelectedCell.row, activeSelectedCell.col)
     : "";
+
+  // Dynamic formula reference parsing
+  const activeFormula = isEditing && activeSelectedCell
+    ? editValue
+    : (activeSelectedCell ? getRawValue(activeSelectedCell.row, activeSelectedCell.col) : "");
+
+  const referencedCells = useMemo(() => {
+    if (!activeFormula || !activeFormula.trim().startsWith("=")) return [];
+    const refs: { row: number; col: number; ref: string }[] = [];
+    
+    // Standard references A1, B2, etc.
+    const matches = Array.from(activeFormula.matchAll(/\b([A-Za-z]+)([0-9]+)\b/g));
+    for (const match of matches) {
+      const matchStr = match[0];
+      if (["SUM", "AVERAGE"].includes(matchStr.toUpperCase())) continue;
+      const parsed = parseCellRef(matchStr);
+      if (parsed) {
+        refs.push({ row: parsed.row, col: parsed.col, ref: matchStr });
+      }
+    }
+    
+    // DB key references like revenue[2]
+    const dbMatches = Array.from(activeFormula.matchAll(/([a-zA-Z_0-9]+)\[([0-9]+)\]/g));
+    for (const match of dbMatches) {
+      const rowKey = match[1];
+      const col = parseInt(match[2], 10);
+      const row = getRowIndexFromKey(rowKey, table);
+      if (row !== -1) {
+        refs.push({ row, col, ref: match[0] });
+      }
+    }
+    
+    return refs;
+  }, [activeFormula, table]);
+
+  // Edit Mode actions
+  const startEditing = (row: number, col: number, initialChar?: string) => {
+    if (isValidated) return;
+    const inputConfig = inputs.find((i) => i.row === row && i.col === col);
+    if (!inputConfig) return; // Only allow editing if registered in editable inputs list
+    
+    setIsEditing(true);
+    setEditValue(initialChar !== undefined ? initialChar : getRawValue(row, col));
+  };
+
+  const commitEdit = (row: number, col: number, value: string) => {
+    handleInputChange(row, col, value);
+    setIsEditing(false);
+  };
+
+  const cancelEdit = () => {
+    setIsEditing(false);
+  };
+
+  // Keyboard navigation handler
+  const handleGridKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!activeSelectedCell) return;
+    const { row, col } = activeSelectedCell;
+    const numRows = table.length;
+    const numCols = table[0]?.length || 0;
+
+    // Formatting Hotkeys
+    if ((e.ctrlKey || e.metaKey) && !isEditing) {
+      if (e.key.toLowerCase() === "b") {
+        e.preventDefault();
+        toggleStyle("bold");
+        return;
+      }
+      if (e.key.toLowerCase() === "i") {
+        e.preventDefault();
+        toggleStyle("italic");
+        return;
+      }
+      if (e.key.toLowerCase() === "u") {
+        e.preventDefault();
+        toggleStyle("underline");
+        return;
+      }
+    }
+
+    if (isEditing) {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        commitEdit(row, col, editValue);
+        if (row + 1 < numRows) {
+          setActiveSelectedCell({ row: row + 1, col });
+        }
+      } else if (e.key === "Tab") {
+        e.preventDefault();
+        commitEdit(row, col, editValue);
+        if (e.shiftKey) {
+          if (col - 1 >= 0) setActiveSelectedCell({ row, col: col - 1 });
+        } else {
+          if (col + 1 < numCols) setActiveSelectedCell({ row, col: col + 1 });
+        }
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        cancelEdit();
+      }
+      return;
+    }
+
+    // Selection mode navigation
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      if (row - 1 >= 0) setActiveSelectedCell({ row: row - 1, col });
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (row + 1 < numRows) setActiveSelectedCell({ row: row + 1, col });
+    } else if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      if (col - 1 >= 0) setActiveSelectedCell({ row, col: col - 1 });
+    } else if (e.key === "ArrowRight") {
+      e.preventDefault();
+      if (col + 1 < numCols) setActiveSelectedCell({ row, col: col + 1 });
+    } else if (e.key === "Tab") {
+      e.preventDefault();
+      if (e.shiftKey) {
+        if (col - 1 >= 0) setActiveSelectedCell({ row, col: col - 1 });
+      } else {
+        if (col + 1 < numCols) setActiveSelectedCell({ row, col: col + 1 });
+      }
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (e.shiftKey) {
+        if (row - 1 >= 0) setActiveSelectedCell({ row: row - 1, col });
+      } else {
+        startEditing(row, col);
+      }
+    } else if (e.key === "Backspace" || e.key === "Delete") {
+      e.preventDefault();
+      const inputConfig = inputs.find((i) => i.row === row && i.col === col);
+      if (inputConfig && !isValidated) {
+        handleInputChange(row, col, "");
+      }
+    } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      const inputConfig = inputs.find((i) => i.row === row && i.col === col);
+      if (inputConfig && !isValidated) {
+        e.preventDefault();
+        startEditing(row, col, e.key);
+      }
+    }
+  };
+
+  // Formatting togglers
+  const toggleStyle = (styleKey: keyof Omit<CellStyle, "align" | "bg">) => {
+    if (!activeSelectedCell) return;
+    const key = getCellKey(activeSelectedCell.row, activeSelectedCell.col);
+    setCellStyles((prev) => {
+      const current = prev[key] || {};
+      return {
+        ...prev,
+        [key]: { ...current, [styleKey]: !current[styleKey] },
+      };
+    });
+  };
+
+  const setAlign = (alignment: "left" | "center" | "right") => {
+    if (!activeSelectedCell) return;
+    const key = getCellKey(activeSelectedCell.row, activeSelectedCell.col);
+    setCellStyles((prev) => {
+      const current = prev[key] || {};
+      return {
+        ...prev,
+        [key]: { ...current, align: alignment },
+      };
+    });
+  };
+
+  const toggleBgColor = () => {
+    if (!activeSelectedCell) return;
+    const key = getCellKey(activeSelectedCell.row, activeSelectedCell.col);
+    const currentStyle = cellStyles[key] || {};
+    setCellStyles((prev) => ({
+      ...prev,
+      [key]: { ...currentStyle, bg: currentStyle.bg === "#FEF3C7" ? "" : "#FEF3C7" },
+    }));
+  };
+
+  const currentCellStyles = activeSelectedCell
+    ? cellStyles[getCellKey(activeSelectedCell.row, activeSelectedCell.col)] || {}
+    : {};
 
   // Generate Column Headers (A, B, C...)
   const colHeaders = colLabels || Array.from({ length: table[0]?.length || 0 }, (_, i) =>
@@ -114,13 +585,13 @@ export const ExcelGrid = ({
   );
 
   // Compute cell address label (e.g. "E5")
-  const cellAddress = selectedCell
-    ? `${String.fromCharCode(65 + selectedCell.col)}${selectedCell.row + 1}`
+  const cellAddress = activeSelectedCell
+    ? `${String.fromCharCode(65 + activeSelectedCell.col)}${activeSelectedCell.row + 1}`
     : "";
 
   return (
     <div className="flex flex-col h-full bg-white border border-zinc-200 shadow-xl overflow-hidden font-sans ring-1 ring-zinc-200">
-      {/* Rich Toolbar (shown for canvas-style exercises) */}
+      {/* Rich Toolbar (shown for canvas-style exercises or admin editing) */}
       {showToolbar && (
         <div className="flex items-center gap-1 px-4 py-1.5 m-3 rounded-3xl bg-[#EDF2FA] border-b border-zinc-300 shrink-0 overflow-x-auto h-10 shadow-sm">
           {/* Utility icons */}
@@ -128,7 +599,17 @@ export const ExcelGrid = ({
           <ToolbarBtn icon={<Undo2 size={16} />} />
           <ToolbarBtn icon={<Redo2 size={16} />} />
           <ToolbarBtn icon={<Printer size={16} />} />
-          <ToolbarBtn icon={<PaintBucket size={16} />} />
+          
+          <button
+            onClick={toggleBgColor}
+            className={cn(
+              "p-1.5 rounded hover:bg-zinc-200/70 text-zinc-500 hover:text-zinc-700 transition-colors shrink-0",
+              currentCellStyles.bg && "bg-amber-100 text-amber-700 hover:bg-amber-100"
+            )}
+            title="Highlight Cell background"
+          >
+            <PaintBucket size={16} />
+          </button>
 
           <ToolbarDivider />
 
@@ -165,12 +646,74 @@ export const ExcelGrid = ({
 
           {/* Text formatting */}
           <div className="flex items-center gap-0.5">
-            <ToolbarBtn icon={<Bold size={16} />} />
-            <ToolbarBtn icon={<Italic size={16} />} />
-            <ToolbarBtn icon={<Strikethrough size={16} />} />
-            <button className="flex items-center gap-0.5 p-1.5 rounded hover:bg-zinc-200/70 text-zinc-500 transition-colors">
+            <button
+              onClick={() => toggleStyle("bold")}
+              className={cn(
+                "p-1.5 rounded hover:bg-zinc-200/70 text-zinc-500 hover:text-zinc-700 transition-colors shrink-0",
+                currentCellStyles.bold && "bg-zinc-300 text-zinc-900 hover:bg-zinc-300"
+              )}
+            >
+              <Bold size={16} />
+            </button>
+            <button
+              onClick={() => toggleStyle("italic")}
+              className={cn(
+                "p-1.5 rounded hover:bg-zinc-200/70 text-zinc-500 hover:text-zinc-700 transition-colors shrink-0",
+                currentCellStyles.italic && "bg-zinc-300 text-zinc-900 hover:bg-zinc-300"
+              )}
+            >
+              <Italic size={16} />
+            </button>
+            <button
+              onClick={() => toggleStyle("strikethrough")}
+              className={cn(
+                "p-1.5 rounded hover:bg-zinc-200/70 text-zinc-500 hover:text-zinc-700 transition-colors shrink-0",
+                currentCellStyles.strikethrough && "bg-zinc-300 text-zinc-900 hover:bg-zinc-300"
+              )}
+            >
+              <Strikethrough size={16} />
+            </button>
+            <button
+              onClick={() => toggleStyle("underline")}
+              className={cn(
+                "p-1.5 rounded hover:bg-zinc-200/70 text-zinc-500 hover:text-zinc-700 transition-colors shrink-0",
+                currentCellStyles.underline && "bg-[#dbeafe] text-blue-700 font-bold"
+              )}
+            >
               <span className="text-xs font-bold underline decoration-2 decoration-zinc-400 underline-offset-2">A</span>
-              <ChevronDown size={8} />
+            </button>
+          </div>
+
+          <ToolbarDivider />
+
+          {/* Alignment */}
+          <div className="flex items-center gap-0.5">
+            <button
+              onClick={() => setAlign("left")}
+              className={cn(
+                "p-1.5 rounded hover:bg-zinc-200/70 text-zinc-500 hover:text-zinc-700 transition-colors shrink-0",
+                currentCellStyles.align === "left" && "bg-zinc-300 text-zinc-900"
+              )}
+            >
+              <AlignLeft size={16} />
+            </button>
+            <button
+              onClick={() => setAlign("center")}
+              className={cn(
+                "p-1.5 rounded hover:bg-zinc-200/70 text-zinc-500 hover:text-zinc-700 transition-colors shrink-0",
+                currentCellStyles.align === "center" && "bg-zinc-300 text-zinc-900"
+              )}
+            >
+              <AlignCenter size={16} />
+            </button>
+            <button
+              onClick={() => setAlign("right")}
+              className={cn(
+                "p-1.5 rounded hover:bg-zinc-200/70 text-zinc-500 hover:text-zinc-700 transition-colors shrink-0",
+                currentCellStyles.align === "right" && "bg-zinc-300 text-zinc-900"
+              )}
+            >
+              <AlignRight size={16} />
             </button>
           </div>
 
@@ -201,31 +744,56 @@ export const ExcelGrid = ({
         {/* Formula bar */}
         <input
           type="text"
-          readOnly
-          value={currentFormulaValue}
-          className="flex-1 px-4 py-1 border-none outline-none text-sm text-zinc-800 font-bold tracking-tight"
-          placeholder=""
+          value={isEditing ? editValue : currentFormulaValue}
+          onChange={(e) => {
+            if (activeSelectedCell && !isValidated) {
+              if (!isEditing) {
+                setIsEditing(true);
+              }
+              setEditValue(e.target.value);
+            }
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && activeSelectedCell) {
+              e.preventDefault();
+              commitEdit(activeSelectedCell.row, activeSelectedCell.col, editValue);
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              cancelEdit();
+            }
+          }}
+          disabled={isValidated}
+          className="flex-1 px-4 py-1 border-none outline-none text-sm text-zinc-800 font-bold tracking-tight bg-white animate-fade-in"
+          placeholder="Enter value or formula (e.g. =B1*(1+C2))"
         />
       </div>
 
       {/* Spreadsheet Main Area */}
-      <div className="flex-1 overflow-auto bg-zinc-50 relative">
+      <div 
+        tabIndex={0}
+        onKeyDown={handleGridKeyDown}
+        className="flex-1 overflow-auto bg-zinc-50 relative focus:outline-none"
+      >
         <table className="border-collapse table-fixed w-full">
           <thead>
             <tr>
               {/* Top-Left Empty Corner */}
               <th className="w-10 h-6 bg-zinc-100 border border-zinc-200 sticky top-0 left-0 z-20"></th>
-              {colHeaders.map((header, idx) => (
-                <th
-                  key={idx}
-                  className={cn(
-                    "h-6 bg-zinc-100 border border-zinc-200 text-zinc-500 font-normal text-[10px] uppercase sticky top-0 z-10",
-                    idx === 0 ? "w-80" : "w-40"
-                  )}
-                >
-                  {header}
-                </th>
-              ))}
+              {colHeaders.map((header, idx) => {
+                const isActiveCol = activeSelectedCell?.col === idx;
+                return (
+                  <th
+                    key={idx}
+                    className={cn(
+                      "h-6 bg-zinc-100 border border-zinc-200 text-zinc-500 font-normal text-[10px] uppercase sticky top-0 z-10 transition-colors",
+                      isActiveCol && "bg-zinc-200/90 text-[#7C5DFA] font-bold border-b border-[#7C5DFA]",
+                      idx === 0 ? "w-80" : "w-40"
+                    )}
+                  >
+                    {header}
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
@@ -244,14 +812,17 @@ export const ExcelGrid = ({
                 return (
                   <tr key={rowIndex}>
                     {/* Row Headers (1, 2, 3...) */}
-                    <td className="w-10 h-8 bg-zinc-100 border border-zinc-200 text-zinc-400 text-center text-[10px] font-bold sticky left-0 z-10">
+                    <td className={cn(
+                      "w-10 h-8 bg-zinc-100 border border-zinc-200 text-zinc-400 text-center text-[10px] font-bold sticky left-0 z-10 transition-colors",
+                      activeSelectedCell?.row === rowIndex && "bg-zinc-200/90 text-[#7C5DFA] font-bold border-r border-[#7C5DFA]"
+                    )}>
                       {rowIndex + 1}
                     </td>
                     {row.map((cell, colIndex) => (
                       <td
                         key={colIndex}
                         className={cn(
-                          "h-8 border border-zinc-100 bg-[#7C5DFA]/15 px-2 py-1 text-[13px]",
+                          "h-8 border border-zinc-200 bg-[#7C5DFA]/15 px-2 py-1 text-[13px]",
                           colIndex === 0
                             ? "text-[#312e81] font-bold"
                             : "text-[#312e81] font-semibold text-center"
@@ -264,11 +835,13 @@ export const ExcelGrid = ({
                 );
               }
 
-
               return (
                 <tr key={rowIndex}>
                   {/* Row Headers (1, 2, 3...) */}
-                  <td className="w-10 h-8 bg-zinc-100 border border-zinc-200 text-zinc-400 text-center text-[10px] font-bold sticky left-0 z-10">
+                  <td className={cn(
+                    "w-10 h-8 bg-zinc-100 border border-zinc-200 text-zinc-400 text-center text-[10px] font-bold sticky left-0 z-10 transition-colors",
+                    activeSelectedCell?.row === rowIndex && "bg-zinc-200/90 text-[#7C5DFA] font-bold border-r border-[#7C5DFA]"
+                  )}>
                     {rowIndex + 1}
                   </td>
 
@@ -280,25 +853,45 @@ export const ExcelGrid = ({
                       (d) => d.row === rowIndex && d.col === colIndex,
                     );
                     const isSelected =
-                      selectedCell?.row === rowIndex &&
-                      selectedCell?.col === colIndex;
+                      activeSelectedCell?.row === rowIndex &&
+                      activeSelectedCell?.col === colIndex;
                     const key = getCellKey(rowIndex, colIndex);
+
+                    // Check if cell is referenced in currently viewed formula
+                    const refIndex = referencedCells.findIndex(r => r.row === rowIndex && r.col === colIndex);
+                    const isReferenced = refIndex !== -1;
+                    const referencedColorClass = isReferenced ? FORMULA_COLORS[refIndex % FORMULA_COLORS.length] : "";
 
                     const rowStyle = isSubHeaderRow
                       ? "bg-zinc-100 text-zinc-500 font-semibold"
                       : "";
 
+                    const cellStyle = cellStyles[key] || {};
+                    const customStyle: React.CSSProperties = {
+                      fontWeight: cellStyle.bold ? "bold" : undefined,
+                      fontStyle: cellStyle.italic ? "italic" : undefined,
+                      textDecoration: cn(
+                        cellStyle.underline && "underline",
+                        cellStyle.strikethrough && "line-through"
+                      ) || undefined,
+                      textAlign: cellStyle.align || undefined,
+                      backgroundColor: cellStyle.bg || undefined,
+                    };
+
                     return (
                       <td
                         key={colIndex}
-                        onClick={() =>
-                          setSelectedCell({ row: rowIndex, col: colIndex })
-                        }
+                        onClick={() => {
+                          setActiveSelectedCell({ row: rowIndex, col: colIndex });
+                          setIsEditing(false);
+                        }}
+                        onDoubleClick={() => startEditing(rowIndex, colIndex)}
                         className={cn(
-                          "h-8 border border-zinc-100 bg-white relative p-0 transition-all",
+                          "h-8 border border-zinc-200 bg-white relative p-0 transition-all cursor-pointer",
                           rowStyle,
                           isSelected &&
                           "outline outline-2 outline-[#7C5DFA] z-[5] shadow-inner",
+                          isReferenced && !isSelected && referencedColorClass,
                           (inputConfig || dropdownConfig) &&
                           !isValidated &&
                           "bg-blue-50/20",
@@ -309,36 +902,56 @@ export const ExcelGrid = ({
                           feedback[key] === false &&
                           "bg-rose-50 text-rose-700",
                         )}
+                        style={{
+                          backgroundColor: cellStyle.bg || undefined,
+                        }}
                         title={inputConfig?.formula ? `Formula: ${inputConfig.formula}` : undefined}
                       >
                         {inputConfig ? (
-                          <div className="w-full h-full relative group/input">
-                            <input
-                              type="text"
-                              placeholder={inputConfig.placeholder || ""}
-                              className="w-full h-full px-2 py-1 bg-transparent border-none outline-none text-[13px] text-zinc-800 font-semibold text-center"
-                              value={userInputs[key] || ""}
-                              onChange={(e) =>
-                                handleInputChange(
-                                  rowIndex,
-                                  colIndex,
-                                  e.target.value,
-                                )
-                              }
-                              disabled={isValidated && feedback[key]}
-                              autoFocus={isSelected}
-                            />
+                          <div className="w-full h-full relative group/input" style={customStyle}>
+                            {isSelected && isEditing ? (
+                              <input
+                                type="text"
+                                placeholder={inputConfig.placeholder || ""}
+                                className="w-full h-full px-2 py-1 bg-transparent border-none outline-none text-[13px] text-[#7C5DFA] font-bold text-center"
+                                style={customStyle}
+                                value={editValue}
+                                onChange={(e) => setEditValue(e.target.value)}
+                                onBlur={() => commitEdit(rowIndex, colIndex, editValue)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter" || e.key === "Tab" || e.key === "Escape") {
+                                    // Bubble up to table wrapper listener
+                                  } else {
+                                    e.stopPropagation();
+                                  }
+                                }}
+                                disabled={isValidated && feedback[key]}
+                                autoFocus
+                              />
+                            ) : (
+                              <div 
+                                className="w-full h-full px-2 py-1 text-[13px] text-zinc-800 font-semibold text-center flex items-center justify-center cursor-pointer"
+                                style={customStyle}
+                              >
+                                {getDisplayValue(rowIndex, colIndex)}
+                              </div>
+                            )}
                             {inputConfig.formula && (
-                              <div className="absolute top-0 right-0 p-0.5 opacity-0 group-hover/input:opacity-100 transition-opacity">
+                              <div className="absolute top-0 right-0 p-0.5 opacity-0 group-hover/input:opacity-100 transition-opacity pointer-events-none">
                                 <span className="text-[8px] font-black text-blue-500 bg-blue-50 px-1 rounded border border-blue-100">fx</span>
+                              </div>
+                            )}
+                            {isValidated && feedback[key] === false && inputConfig.correctValue && (
+                              <div className="absolute -top-6 left-1/2 -translate-x-1/2 z-50 bg-rose-600 text-white text-[10px] font-bold px-2 py-0.5 rounded opacity-0 group-hover/input:opacity-100 whitespace-nowrap shadow-md pointer-events-none transition-opacity">
+                                Expected: {inputConfig.correctValue}
                               </div>
                             )}
                           </div>
                         ) : dropdownConfig ? (
-
-                          <div className="w-full h-full relative group">
+                          <div className="w-full h-full relative group" style={customStyle}>
                             <select
                               className="w-full h-full px-2 py-1 bg-transparent border-none outline-none text-[13px] text-zinc-800 font-semibold appearance-none cursor-pointer text-center"
+                              style={customStyle}
                               value={userInputs[key] || ""}
                               onChange={(e) =>
                                 handleInputChange(
@@ -369,9 +982,18 @@ export const ExcelGrid = ({
                                 ? "text-zinc-400 font-bold uppercase text-[10px]"
                                 : "text-zinc-700",
                             )}
+                            style={customStyle}
                           >
                             {cell}
                           </div>
+                        )}
+
+                        {/* Selection border fill handle */}
+                        {isSelected && !isEditing && !isValidated && (
+                          <div 
+                            className="absolute w-2 h-2 bg-[#7C5DFA] border border-white bottom-[-4px] right-[-4px] cursor-crosshair z-[10] shadow-sm"
+                            title="Drag fill"
+                          />
                         )}
 
                         {/* Selection Highlighting */}
@@ -394,7 +1016,7 @@ export const ExcelGrid = ({
                   {colHeaders.map((_, idx) => (
                     <td
                       key={idx}
-                      className="h-8 border border-zinc-100 bg-white"
+                      className="h-8 border border-zinc-200 bg-white"
                     ></td>
                   ))}
                 </tr>

@@ -123,3 +123,234 @@ export const trackTelemetry = async (req: Request, res: Response) => {
   console.log("Telemetry event:", req.body);
   return res.status(201).json({ data: { success: true } });
 };
+
+const summaryCache = new Map<string, any>();
+
+export const invalidateProgressSummaryCache = (userId: string) => {
+  summaryCache.delete(userId);
+};
+
+export const getLearningProgressSummary = async (req: Request, res: Response) => {
+  const userId = req.userId!;
+  if (summaryCache.has(userId)) {
+    return res.json({ data: summaryCache.get(userId) });
+  }
+
+  const modules = await prisma.module.findMany({
+    where: { deletedAt: null, isActive: true },
+    orderBy: { orderIndex: "asc" },
+    include: {
+      topics: {
+        where: { deletedAt: null, isActive: true },
+        orderBy: { orderIndex: "asc" },
+        include: {
+          subtopics: {
+            where: { deletedAt: null, isActive: true },
+            orderBy: { orderIndex: "asc" },
+            include: {
+              lessons: {
+                where: { deletedAt: null, isActive: true },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const lessonProgresses = await prisma.userLessonProgress.findMany({
+    where: { userId },
+  });
+
+  const completedLessonIds = new Set(
+    lessonProgresses
+      .filter((lp) => lp.status === "completed" || lp.lessonCompletionPct === 100)
+      .map((lp) => lp.lessonId)
+  );
+
+  const result = modules.map((module) => {
+    let moduleCompleted = 0;
+    let moduleTotal = 0;
+
+    const topicsData = module.topics.map((topic) => {
+      let topicCompleted = 0;
+      let topicTotal = 0;
+
+      const subtopicsData = topic.subtopics.map((subtopic) => {
+        const subtopicTotal = subtopic.lessons.length;
+        const subtopicCompleted = subtopic.lessons.filter((l) => completedLessonIds.has(l.id)).length;
+        const subtopicPct = subtopicTotal > 0 ? Math.round((subtopicCompleted / subtopicTotal) * 100) : 0;
+
+        topicTotal += subtopicTotal;
+        topicCompleted += subtopicCompleted;
+
+        return {
+          id: subtopic.id,
+          name: subtopic.name,
+          description: subtopic.description,
+          completion_pct: subtopicPct,
+          lessons_completed: subtopicCompleted,
+          lessons_total: subtopicTotal,
+        };
+      });
+
+      const topicPct = topicTotal > 0 ? Math.round((topicCompleted / topicTotal) * 100) : 0;
+
+      moduleTotal += topicTotal;
+      moduleCompleted += topicCompleted;
+
+      return {
+        id: topic.id,
+        name: topic.name,
+        description: topic.description,
+        completion_pct: topicPct,
+        lessons_completed: topicCompleted,
+        lessons_total: topicTotal,
+        subtopics: subtopicsData,
+      };
+    });
+
+    const modulePct = moduleTotal > 0 ? Math.round((moduleCompleted / moduleTotal) * 100) : 0;
+
+    return {
+      id: module.id,
+      slug: module.slug,
+      name: module.name,
+      description: module.description,
+      completion_pct: modulePct,
+      lessons_completed: moduleCompleted,
+      lessons_total: moduleTotal,
+      topics: topicsData,
+    };
+  });
+
+  summaryCache.set(userId, result);
+  return res.json({ data: result });
+};
+
+export const getDashboardData = async (req: Request, res: Response) => {
+  const userId = req.userId!;
+
+  try {
+    const { calculateUserStreak } = require("../services/progressService");
+    const streak = await calculateUserStreak(userId);
+
+    // Simulations: completed lessons count
+    const simulations = await prisma.userLessonProgress.count({
+      where: { userId, status: "completed" }
+    });
+
+    // Completed dates (formatted YYYY-MM-DD strings)
+    const streaksList = await prisma.userStreak.findMany({
+      where: { userId },
+      select: { date: true }
+    });
+    const completedDates = streaksList.map(s => {
+      const d = new Date(s.date);
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, "0");
+      const dd = String(d.getDate()).padStart(2, "0");
+      return `${yyyy}-${mm}-${dd}`;
+    });
+
+    // Modules Progress
+    const modules = await prisma.module.findMany({
+      where: { deletedAt: null, isActive: true },
+      orderBy: { orderIndex: "asc" },
+      include: {
+        userModuleProgresses: {
+          where: { userId }
+        }
+      }
+    });
+
+    const modulesProgress = modules.map(m => ({
+      id: m.id,
+      name: m.name,
+      slug: m.slug,
+      completionPct: m.userModuleProgresses[0]?.moduleCompletionPct || 0,
+      accentColor: m.accentColor
+    }));
+
+    // Calculate overall curriculum progress percentage
+    const totalModules = modulesProgress.length;
+    const overallProgressPct = totalModules > 0 
+      ? Math.round(modulesProgress.reduce((sum, m) => sum + m.completionPct, 0) / totalModules)
+      : 0;
+
+    // Retrieve resume lesson details (DB Fallback)
+    let resumeLesson = null;
+    const inProgress = await prisma.userLessonProgress.findFirst({
+      where: { userId, status: "in_progress" },
+      include: { lesson: { include: { subtopic: { include: { topic: { include: { module: true } } } } } } }
+    });
+
+    if (inProgress) {
+      resumeLesson = {
+        id: inProgress.lesson.id,
+        title: inProgress.lesson.name,
+        moduleName: inProgress.lesson.subtopic.topic.module.name,
+        moduleSlug: inProgress.lesson.subtopic.topic.module.slug,
+        subtopicName: inProgress.lesson.subtopic.name
+      };
+    } else {
+      // Find the first lesson in the curriculum
+      const firstModule = await prisma.module.findFirst({
+        where: { deletedAt: null, isActive: true },
+        orderBy: { orderIndex: "asc" },
+        include: {
+          topics: {
+            where: { deletedAt: null, isActive: true },
+            orderBy: { orderIndex: "asc" },
+            include: {
+              subtopics: {
+                where: { deletedAt: null, isActive: true },
+                orderBy: { orderIndex: "asc" },
+                include: {
+                  lessons: {
+                    where: { deletedAt: null, isActive: true },
+                    orderBy: { orderIndex: "asc" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      });
+
+      if (firstModule) {
+        const firstTopic = firstModule.topics[0];
+        if (firstTopic) {
+          const firstSubtopic = firstTopic.subtopics[0];
+          if (firstSubtopic) {
+            const firstLesson = firstSubtopic.lessons[0];
+            if (firstLesson) {
+              resumeLesson = {
+                id: firstLesson.id,
+                title: firstLesson.name,
+                moduleName: firstModule.name,
+                moduleSlug: firstModule.slug,
+                subtopicName: firstSubtopic.name
+              };
+            }
+          }
+        }
+      }
+    }
+
+    return res.json({
+      data: {
+        streak,
+        simulations,
+        completedDates,
+        modulesProgress,
+        overallProgressPct,
+        resumeLesson
+      }
+    });
+  } catch (error) {
+    console.error("Error loading dashboard data:", error);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+

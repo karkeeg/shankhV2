@@ -14,6 +14,7 @@ import {
   PieChart,
   LogOut,
   ChevronDown,
+  Settings,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -31,6 +32,9 @@ export const Sidebar = () => {
 
   const handleLogout = () => {
     logout();
+    if (typeof window !== "undefined") {
+      window.sessionStorage.clear();
+    }
     router.push("/login");
   };
 
@@ -50,7 +54,12 @@ export const Sidebar = () => {
 
   const menuGroups: SidebarGroup[] = [
     {
-      items: [{ name: "Dashboard", icon: LayoutGrid, href: "/" }],
+      items: [
+        { name: "Dashboard", icon: LayoutGrid, href: "/" },
+        ...(user?.role === "admin"
+          ? [{ name: "Admin Panel", icon: Settings, href: "/admin" }]
+          : []),
+      ],
     },
     {
       label: "Learning",
@@ -165,7 +174,7 @@ export const Sidebar = () => {
             </div>
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold text-[#1a1a1a] truncate">{user?.name || "Andrew Smith"}</p>
+            <p className="text-sm font-bold text-[#1a1a1a] truncate">{user?.name || ""}</p>
             <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider mt-0.5">Free Plan</p>
           </div>
           <button

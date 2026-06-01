@@ -1,21 +1,34 @@
 "use client";
 
-import React, { useRef, useMemo } from "react";
+import React, { useRef, useMemo, useEffect } from "react";
 import ExcalidrawWrapper from "./ExcalidrawWrapper";
 import { DragItem } from "@/types/exercise";
-
 
 export interface CanvasExerciseProps {
   canvasBackgroundText?: string;
   onElementsChange?: (elements: ExcalidrawSceneElement[]) => void;
   initialElements?: ExcalidrawSceneElement[];
+  assemblyMode?: "sequence" | "graph";
 }
 
-type ExcalidrawSceneElement = Record<string, unknown> & {
-  customData?: { originalId?: string };
+export type ExcalidrawSceneElement = Record<string, unknown> & {
+  id: string;
+  type: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  strokeColor?: string;
+  backgroundColor?: string;
+  customData?: {
+    originalId?: string;
+    isZone?: boolean;
+    zoneId?: string;
+    zoneKey?: string;
+  };
 };
 
-interface ExcalidrawApi {
+export interface ExcalidrawApi {
   getAppState: () => {
     scrollX: number;
     scrollY: number;
@@ -28,32 +41,80 @@ interface ExcalidrawApi {
   }) => void;
 }
 
-export const CanvasExercise = ({ canvasBackgroundText, onElementsChange, initialElements }: CanvasExerciseProps) => {
+export const CanvasExercise = ({
+  canvasBackgroundText,
+  onElementsChange,
+  initialElements,
+  assemblyMode = "sequence",
+}: CanvasExerciseProps) => {
   const excalidrawRef = useRef<ExcalidrawApi | null>(null);
-  const lastUpdateRef = useRef<number>(0);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const generateId = () => Math.random().toString(36).substr(2, 9);
 
   // Memoize initialData so it remains stable across re-renders. 
-  // It will only change when the component remounts (triggered by key change in parent).
-  const initialData = useMemo(() => ({
-    elements: initialElements || [],
-    appState: { theme: 'light', viewBackgroundColor: '#ffffff' }
-  }), [initialElements]);
+  const initialData = useMemo(() => {
+    const elements = [...(initialElements || [])];
+    
+    // For sequence mode, add a subtle guide line to hint at left-to-right ordering
+    if (assemblyMode === "sequence" && elements.length === 0) {
+      elements.push({
+        id: "guide-line",
+        type: "line",
+        x: 80,
+        y: 280,
+        width: 800,
+        height: 0,
+        strokeColor: "#d4d4d8",
+        backgroundColor: "transparent",
+        fillStyle: "solid",
+        strokeWidth: 1,
+        strokeStyle: "dashed",
+        roughness: 0,
+        opacity: 40,
+        seed: 9999,
+        version: 1,
+        versionNonce: 9999,
+        isDeleted: false,
+        groupIds: [],
+        boundElements: null,
+        updated: Date.now(),
+        link: null,
+        locked: true,
+        angle: 0,
+        points: [[0, 0], [800, 0]],
+      } as unknown as ExcalidrawSceneElement);
+    }
+    
+    return {
+      elements,
+      appState: { theme: 'light', viewBackgroundColor: '#ffffff', gridSize: 20 }
+    };
+  }, [initialElements, assemblyMode]);
 
   const handleChange = (elements: readonly ExcalidrawSceneElement[]) => {
-    const now = Date.now();
-    // Throttle/Debounce updates to parent to prevent infinite loops and lag
-    if (now - lastUpdateRef.current > 500) {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+    timeoutRef.current = setTimeout(() => {
       if (onElementsChange) {
         onElementsChange([...elements]);
       }
-      lastUpdateRef.current = now;
-    }
+    }, 300);
   };
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
+    e.stopPropagation();
+    
     const data = e.dataTransfer.getData("application/vnd.excalidraw.item");
     if (!data || !excalidrawRef.current) return;
 
@@ -150,7 +211,7 @@ export const CanvasExercise = ({ canvasBackgroundText, onElementsChange, initial
         groupIds: [groupId],
         originalText: item.content,
         lineHeight: 1.2,
-      };
+      } as unknown as ExcalidrawSceneElement;
 
       api.updateScene({
         elements: [...api.getSceneElements(), newElement, textElement],
@@ -163,14 +224,15 @@ export const CanvasExercise = ({ canvasBackgroundText, onElementsChange, initial
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
+    e.stopPropagation();
   };
 
   return (
     <div className="flex-1 w-full h-full relative overflow-hidden flex bg-white">
       <div
         className="flex-1 relative bg-white z-0"
-        onDragOver={handleDragOver}
-        onDrop={handleDrop}
+        onDragOverCapture={handleDragOver}
+        onDropCapture={handleDrop}
       >
         <ExcalidrawWrapper
           excalidrawRef={excalidrawRef}
