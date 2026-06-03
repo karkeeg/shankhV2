@@ -31,6 +31,9 @@ CREATE TYPE "SessionStatus" AS ENUM ('active', 'completed', 'abandoned');
 -- CreateEnum
 CREATE TYPE "PlanTier" AS ENUM ('free', 'pro', 'enterprise');
 
+-- CreateEnum
+CREATE TYPE "TestSessionStatus" AS ENUM ('in_progress', 'completed', 'expired');
+
 -- CreateTable
 CREATE TABLE "Module" (
     "id" TEXT NOT NULL,
@@ -55,8 +58,6 @@ CREATE TABLE "Topic" (
     "name" TEXT NOT NULL,
     "subtitle" TEXT,
     "description" TEXT,
-    "level" TEXT,
-    "durationWeeks" DECIMAL(4,1),
     "tags" TEXT[] DEFAULT ARRAY[]::TEXT[],
     "orderIndex" INTEGER NOT NULL DEFAULT 0,
     "type" "TopicType" NOT NULL DEFAULT 'topic',
@@ -158,6 +159,7 @@ CREATE TABLE "QuantusActivity" (
     "context" TEXT,
     "referenceUrl" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "QuantusActivity_pkey" PRIMARY KEY ("id")
 );
@@ -219,6 +221,7 @@ CREATE TABLE "CanvasActivity" (
     "penaltyWeight" DOUBLE PRECISION NOT NULL DEFAULT 0.5,
     "passThreshold" DOUBLE PRECISION NOT NULL DEFAULT 70,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "CanvasActivity_pkey" PRIMARY KEY ("id")
 );
@@ -447,20 +450,13 @@ CREATE TABLE "UserHintUsage" (
 );
 
 -- CreateTable
-CREATE TABLE "SkillSection" (
+CREATE TABLE "UserStreak" (
     "id" TEXT NOT NULL,
-    "slug" TEXT NOT NULL,
-    "name" TEXT NOT NULL,
-    "description" TEXT,
-    "activityType" "ActivityType",
-    "tabLabel" TEXT,
-    "iconKey" TEXT,
-    "orderIndex" INTEGER NOT NULL DEFAULT 0,
-    "isActive" BOOLEAN NOT NULL DEFAULT true,
+    "userId" TEXT NOT NULL,
+    "date" DATE NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    CONSTRAINT "SkillSection_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "UserStreak_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -473,225 +469,88 @@ CREATE TABLE "Profession" (
     "orderIndex" INTEGER NOT NULL DEFAULT 0,
     "isActive" BOOLEAN NOT NULL DEFAULT true,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "Profession_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
-CREATE TABLE "SkillBundle" (
-    "id" TEXT NOT NULL,
-    "sectionId" TEXT NOT NULL,
-    "name" TEXT NOT NULL,
-    "description" TEXT,
-    "level" TEXT NOT NULL,
-    "durationWeeks" DOUBLE PRECISION NOT NULL,
-    "bundleGroup" TEXT NOT NULL DEFAULT 'profession_based',
-    "orderIndex" INTEGER NOT NULL DEFAULT 0,
-    "isActive" BOOLEAN NOT NULL DEFAULT true,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "SkillBundle_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "SkillBundleProfession" (
-    "id" TEXT NOT NULL,
-    "bundleId" TEXT NOT NULL,
-    "professionId" TEXT NOT NULL,
-
-    CONSTRAINT "SkillBundleProfession_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "SkillBundleItem" (
-    "id" TEXT NOT NULL,
-    "bundleId" TEXT NOT NULL,
-    "lessonId" TEXT NOT NULL,
-    "activityType" "ActivityType" NOT NULL,
-    "label" TEXT NOT NULL,
-    "description" TEXT,
-    "orderIndex" INTEGER NOT NULL DEFAULT 0,
-
-    CONSTRAINT "SkillBundleItem_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "UserSkillBundleProgress" (
-    "id" TEXT NOT NULL,
-    "userId" TEXT NOT NULL,
-    "bundleId" TEXT NOT NULL,
-    "itemsCompleted" INTEGER NOT NULL DEFAULT 0,
-    "itemsTotal" INTEGER NOT NULL DEFAULT 0,
-    "completionPct" DOUBLE PRECISION NOT NULL DEFAULT 0,
-    "recallStrength" DOUBLE PRECISION NOT NULL DEFAULT 0,
-    "conceptAccuracy" DOUBLE PRECISION NOT NULL DEFAULT 0,
-    "applicationScore" DOUBLE PRECISION NOT NULL DEFAULT 0,
-    "startedAt" TIMESTAMP(3),
-    "completedAt" TIMESTAMP(3),
-    "lastAccessedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "UserSkillBundleProgress_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "UserSkillItemProgress" (
-    "id" TEXT NOT NULL,
-    "userId" TEXT NOT NULL,
-    "bundleItemId" TEXT NOT NULL,
-    "bestScorePct" DOUBLE PRECISION,
-    "isCompleted" BOOLEAN NOT NULL DEFAULT false,
-    "hintsUsed" INTEGER NOT NULL DEFAULT 0,
-    "attempts" INTEGER NOT NULL DEFAULT 0,
-    "completedAt" TIMESTAMP(3),
-    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "UserSkillItemProgress_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
 CREATE TABLE "SubtopicProfessionTag" (
-    "id" TEXT NOT NULL,
     "subtopicId" TEXT NOT NULL,
     "professionId" TEXT NOT NULL,
 
-    CONSTRAINT "SubtopicProfessionTag_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "SubtopicProfessionTag_pkey" PRIMARY KEY ("subtopicId","professionId")
 );
 
 -- CreateTable
-CREATE TABLE "SkillTopic" (
+CREATE TABLE "SkillTest" (
     "id" TEXT NOT NULL,
     "professionId" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "description" TEXT,
-    "level" TEXT,
-    "durationWeeks" DECIMAL(4,1),
-    "orderIndex" INTEGER NOT NULL DEFAULT 0,
     "isActive" BOOLEAN NOT NULL DEFAULT true,
+    "orderIndex" INTEGER NOT NULL DEFAULT 0,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
-    CONSTRAINT "SkillTopic_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "SkillTest_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
-CREATE TABLE "SkillLesson" (
+CREATE TABLE "SkillTestTypeConfig" (
     "id" TEXT NOT NULL,
-    "skillTopicId" TEXT NOT NULL,
-    "lessonId" TEXT,
-    "name" TEXT NOT NULL,
-    "description" TEXT,
-    "difficulty" "Difficulty" NOT NULL DEFAULT 'easy',
-    "orderIndex" INTEGER NOT NULL DEFAULT 0,
-    "estimatedMins" INTEGER,
-    "isActive" BOOLEAN NOT NULL DEFAULT true,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "testId" TEXT NOT NULL,
+    "activityType" "ActivityType" NOT NULL,
+    "timeLimitMins" INTEGER NOT NULL,
 
-    CONSTRAINT "SkillLesson_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "SkillTestTypeConfig_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
-CREATE TABLE "SkillMcqSession" (
+CREATE TABLE "SkillTestItem" (
+    "id" TEXT NOT NULL,
+    "testId" TEXT NOT NULL,
+    "lessonId" TEXT NOT NULL,
+    "activityType" "ActivityType" NOT NULL,
+    "activityId" TEXT NOT NULL,
+    "orderIndex" INTEGER NOT NULL DEFAULT 0,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "SkillTestItem_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "UserSkillTestSession" (
     "id" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
-    "activityId" TEXT NOT NULL,
-    "topicId" TEXT NOT NULL,
-    "score" INTEGER NOT NULL,
-    "total" INTEGER NOT NULL,
+    "testId" TEXT NOT NULL,
+    "activityType" "ActivityType" NOT NULL,
+    "timeLimitMins" INTEGER NOT NULL,
+    "timeSpentSecs" INTEGER NOT NULL DEFAULT 0,
+    "totalItems" INTEGER NOT NULL,
+    "completedItems" INTEGER NOT NULL DEFAULT 0,
     "scorePct" DOUBLE PRECISION,
-    "hintsUsed" INTEGER NOT NULL DEFAULT 0,
-    "completedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "status" "TestSessionStatus" NOT NULL DEFAULT 'in_progress',
+    "startedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "lastActiveAt" TIMESTAMP(3),
+    "completedAt" TIMESTAMP(3),
 
-    CONSTRAINT "SkillMcqSession_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "UserSkillTestSession_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
-CREATE TABLE "SkillMcqAnswer" (
+CREATE TABLE "UserSkillTestResponse" (
     "id" TEXT NOT NULL,
     "sessionId" TEXT NOT NULL,
-    "questionId" TEXT NOT NULL,
-    "selectedOptionId" TEXT NOT NULL,
-    "isCorrect" BOOLEAN NOT NULL,
-
-    CONSTRAINT "SkillMcqAnswer_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "SkillCanvasSession" (
-    "id" TEXT NOT NULL,
-    "userId" TEXT NOT NULL,
-    "activityId" TEXT NOT NULL,
-    "topicId" TEXT NOT NULL,
-    "score" INTEGER,
-    "total" INTEGER,
+    "testItemId" TEXT NOT NULL,
+    "activityType" "ActivityType" NOT NULL,
+    "mcqSessionId" TEXT,
+    "canvasSessionId" TEXT,
+    "quantusSessionId" TEXT,
     "scorePct" DOUBLE PRECISION,
-    "canvasData" JSONB,
-    "hintsUsed" INTEGER NOT NULL DEFAULT 0,
-    "completedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "submittedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    CONSTRAINT "SkillCanvasSession_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "SkillQuantusSession" (
-    "id" TEXT NOT NULL,
-    "userId" TEXT NOT NULL,
-    "activityId" TEXT NOT NULL,
-    "topicId" TEXT NOT NULL,
-    "inputSnapshot" JSONB NOT NULL,
-    "score" INTEGER NOT NULL DEFAULT 0,
-    "total" INTEGER NOT NULL DEFAULT 0,
-    "scorePct" DOUBLE PRECISION,
-    "hintsUsed" INTEGER NOT NULL DEFAULT 0,
-    "completedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "SkillQuantusSession_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "UserSkillLessonProgress" (
-    "id" TEXT NOT NULL,
-    "userId" TEXT NOT NULL,
-    "skillLessonId" TEXT NOT NULL,
-    "lessonCompletionPct" DOUBLE PRECISION NOT NULL DEFAULT 0,
-    "mcqBestScore" DOUBLE PRECISION,
-    "canvasBestScore" DOUBLE PRECISION,
-    "quantusAttempted" BOOLEAN NOT NULL DEFAULT false,
-    "status" "LessonStatus" NOT NULL DEFAULT 'not_started',
-    "hintsUsed" INTEGER NOT NULL DEFAULT 0,
-    "startedAt" TIMESTAMP(3),
-    "completedAt" TIMESTAMP(3),
-    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "UserSkillLessonProgress_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "UserSkillTopicProgress" (
-    "id" TEXT NOT NULL,
-    "userId" TEXT NOT NULL,
-    "skillTopicId" TEXT NOT NULL,
-    "lessonsCompleted" INTEGER NOT NULL DEFAULT 0,
-    "lessonsTotal" INTEGER NOT NULL DEFAULT 0,
-    "completionPct" DOUBLE PRECISION NOT NULL DEFAULT 0,
-    "startedAt" TIMESTAMP(3),
-    "lastAccessedAt" TIMESTAMP(3),
-    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "UserSkillTopicProgress_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "UserStreak" (
-    "id" TEXT NOT NULL,
-    "userId" TEXT NOT NULL,
-    "date" TIMESTAMP(3) NOT NULL,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "UserStreak_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "UserSkillTestResponse_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateIndex
@@ -749,7 +608,7 @@ CREATE UNIQUE INDEX "uq_user_lesson_session" ON "UserLessonSession"("userId", "l
 CREATE UNIQUE INDEX "uq_draft" ON "UserActivityDraft"("userId", "activityId", "activityType");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "SkillSection_slug_key" ON "SkillSection"("slug");
+CREATE UNIQUE INDEX "uq_user_streak_date" ON "UserStreak"("userId", "date");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Profession_slug_key" ON "Profession"("slug");
@@ -758,28 +617,43 @@ CREATE UNIQUE INDEX "Profession_slug_key" ON "Profession"("slug");
 CREATE UNIQUE INDEX "Profession_name_key" ON "Profession"("name");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "uq_bundle_profession" ON "SkillBundleProfession"("bundleId", "professionId");
+CREATE INDEX "idx_spt_profession" ON "SubtopicProfessionTag"("professionId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "uq_bundle_item" ON "SkillBundleItem"("bundleId", "lessonId", "activityType");
+CREATE INDEX "idx_spt_subtopic" ON "SubtopicProfessionTag"("subtopicId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "uq_user_bundle_progress" ON "UserSkillBundleProgress"("userId", "bundleId");
+CREATE INDEX "idx_skill_test_profession" ON "SkillTest"("professionId", "isActive");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "uq_user_skill_item" ON "UserSkillItemProgress"("userId", "bundleItemId");
+CREATE UNIQUE INDEX "uq_test_type_config" ON "SkillTestTypeConfig"("testId", "activityType");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "uq_subtopic_profession" ON "SubtopicProfessionTag"("subtopicId", "professionId");
+CREATE INDEX "idx_test_items_type" ON "SkillTestItem"("testId", "activityType", "orderIndex");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "uq_skill_ulp" ON "UserSkillLessonProgress"("userId", "skillLessonId");
+CREATE INDEX "idx_test_item_lookup" ON "SkillTestItem"("activityId", "activityType");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "uq_user_skill_topic" ON "UserSkillTopicProgress"("userId", "skillTopicId");
+CREATE UNIQUE INDEX "uq_test_item_activity" ON "SkillTestItem"("activityId", "activityType");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "uq_user_streak_date" ON "UserStreak"("userId", "date");
+CREATE UNIQUE INDEX "uq_test_item_unique" ON "SkillTestItem"("testId", "activityId", "activityType");
+
+-- CreateIndex
+CREATE INDEX "idx_session_recent" ON "UserSkillTestSession"("userId", "lastActiveAt" DESC);
+
+-- CreateIndex
+CREATE INDEX "idx_session_test" ON "UserSkillTestSession"("testId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "uq_user_test_session" ON "UserSkillTestSession"("userId", "testId", "activityType");
+
+-- CreateIndex
+CREATE INDEX "idx_test_response_session" ON "UserSkillTestResponse"("sessionId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "uq_test_response" ON "UserSkillTestResponse"("sessionId", "testItemId");
 
 -- AddForeignKey
 ALTER TABLE "Topic" ADD CONSTRAINT "Topic_moduleId_fkey" FOREIGN KEY ("moduleId") REFERENCES "Module"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -896,31 +770,7 @@ ALTER TABLE "UserHintUsage" ADD CONSTRAINT "UserHintUsage_userId_fkey" FOREIGN K
 ALTER TABLE "UserHintUsage" ADD CONSTRAINT "UserHintUsage_hintId_fkey" FOREIGN KEY ("hintId") REFERENCES "ActivityHint"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "SkillBundle" ADD CONSTRAINT "SkillBundle_sectionId_fkey" FOREIGN KEY ("sectionId") REFERENCES "SkillSection"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "SkillBundleProfession" ADD CONSTRAINT "SkillBundleProfession_bundleId_fkey" FOREIGN KEY ("bundleId") REFERENCES "SkillBundle"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "SkillBundleProfession" ADD CONSTRAINT "SkillBundleProfession_professionId_fkey" FOREIGN KEY ("professionId") REFERENCES "Profession"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "SkillBundleItem" ADD CONSTRAINT "SkillBundleItem_bundleId_fkey" FOREIGN KEY ("bundleId") REFERENCES "SkillBundle"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "SkillBundleItem" ADD CONSTRAINT "SkillBundleItem_lessonId_fkey" FOREIGN KEY ("lessonId") REFERENCES "Lesson"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "UserSkillBundleProgress" ADD CONSTRAINT "UserSkillBundleProgress_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "UserSkillBundleProgress" ADD CONSTRAINT "UserSkillBundleProgress_bundleId_fkey" FOREIGN KEY ("bundleId") REFERENCES "SkillBundle"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "UserSkillItemProgress" ADD CONSTRAINT "UserSkillItemProgress_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "UserSkillItemProgress" ADD CONSTRAINT "UserSkillItemProgress_bundleItemId_fkey" FOREIGN KEY ("bundleItemId") REFERENCES "SkillBundleItem"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "UserStreak" ADD CONSTRAINT "UserStreak_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "SubtopicProfessionTag" ADD CONSTRAINT "SubtopicProfessionTag_subtopicId_fkey" FOREIGN KEY ("subtopicId") REFERENCES "Subtopic"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -929,52 +779,34 @@ ALTER TABLE "SubtopicProfessionTag" ADD CONSTRAINT "SubtopicProfessionTag_subtop
 ALTER TABLE "SubtopicProfessionTag" ADD CONSTRAINT "SubtopicProfessionTag_professionId_fkey" FOREIGN KEY ("professionId") REFERENCES "Profession"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "SkillTopic" ADD CONSTRAINT "SkillTopic_professionId_fkey" FOREIGN KEY ("professionId") REFERENCES "Profession"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "SkillTest" ADD CONSTRAINT "SkillTest_professionId_fkey" FOREIGN KEY ("professionId") REFERENCES "Profession"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "SkillLesson" ADD CONSTRAINT "SkillLesson_skillTopicId_fkey" FOREIGN KEY ("skillTopicId") REFERENCES "SkillTopic"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "SkillTestTypeConfig" ADD CONSTRAINT "SkillTestTypeConfig_testId_fkey" FOREIGN KEY ("testId") REFERENCES "SkillTest"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "SkillLesson" ADD CONSTRAINT "SkillLesson_lessonId_fkey" FOREIGN KEY ("lessonId") REFERENCES "Lesson"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "SkillTestItem" ADD CONSTRAINT "SkillTestItem_testId_fkey" FOREIGN KEY ("testId") REFERENCES "SkillTest"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "SkillMcqSession" ADD CONSTRAINT "SkillMcqSession_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "SkillTestItem" ADD CONSTRAINT "SkillTestItem_lessonId_fkey" FOREIGN KEY ("lessonId") REFERENCES "Lesson"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "SkillMcqSession" ADD CONSTRAINT "SkillMcqSession_activityId_fkey" FOREIGN KEY ("activityId") REFERENCES "McqActivity"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "UserSkillTestSession" ADD CONSTRAINT "UserSkillTestSession_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "SkillMcqAnswer" ADD CONSTRAINT "SkillMcqAnswer_sessionId_fkey" FOREIGN KEY ("sessionId") REFERENCES "SkillMcqSession"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "UserSkillTestSession" ADD CONSTRAINT "UserSkillTestSession_testId_fkey" FOREIGN KEY ("testId") REFERENCES "SkillTest"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "SkillMcqAnswer" ADD CONSTRAINT "SkillMcqAnswer_questionId_fkey" FOREIGN KEY ("questionId") REFERENCES "McqQuestion"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "UserSkillTestResponse" ADD CONSTRAINT "UserSkillTestResponse_sessionId_fkey" FOREIGN KEY ("sessionId") REFERENCES "UserSkillTestSession"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "SkillMcqAnswer" ADD CONSTRAINT "SkillMcqAnswer_selectedOptionId_fkey" FOREIGN KEY ("selectedOptionId") REFERENCES "McqOption"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "UserSkillTestResponse" ADD CONSTRAINT "UserSkillTestResponse_testItemId_fkey" FOREIGN KEY ("testItemId") REFERENCES "SkillTestItem"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "SkillCanvasSession" ADD CONSTRAINT "SkillCanvasSession_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "UserSkillTestResponse" ADD CONSTRAINT "UserSkillTestResponse_mcqSessionId_fkey" FOREIGN KEY ("mcqSessionId") REFERENCES "UserMcqSession"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "SkillCanvasSession" ADD CONSTRAINT "SkillCanvasSession_activityId_fkey" FOREIGN KEY ("activityId") REFERENCES "CanvasActivity"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "UserSkillTestResponse" ADD CONSTRAINT "UserSkillTestResponse_canvasSessionId_fkey" FOREIGN KEY ("canvasSessionId") REFERENCES "UserCanvasSession"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "SkillQuantusSession" ADD CONSTRAINT "SkillQuantusSession_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "SkillQuantusSession" ADD CONSTRAINT "SkillQuantusSession_activityId_fkey" FOREIGN KEY ("activityId") REFERENCES "QuantusActivity"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "UserSkillLessonProgress" ADD CONSTRAINT "UserSkillLessonProgress_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "UserSkillLessonProgress" ADD CONSTRAINT "UserSkillLessonProgress_skillLessonId_fkey" FOREIGN KEY ("skillLessonId") REFERENCES "SkillLesson"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "UserSkillTopicProgress" ADD CONSTRAINT "UserSkillTopicProgress_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "UserSkillTopicProgress" ADD CONSTRAINT "UserSkillTopicProgress_skillTopicId_fkey" FOREIGN KEY ("skillTopicId") REFERENCES "SkillTopic"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "UserStreak" ADD CONSTRAINT "UserStreak_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "UserSkillTestResponse" ADD CONSTRAINT "UserSkillTestResponse_quantusSessionId_fkey" FOREIGN KEY ("quantusSessionId") REFERENCES "UserQuantusSession"("id") ON DELETE SET NULL ON UPDATE CASCADE;

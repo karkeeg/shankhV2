@@ -234,7 +234,7 @@ export default function ProfessionsAdmin() {
   return (
     <MainLayout>
       <div className="flex flex-col h-full max-h-[calc(100vh-24px)] overflow-y-auto p-8 gap-8 animate-fade-in bg-gradient-to-br from-[#fcfcfb] to-[#f5f3ee]">
-        
+
         {/* Navigation & Header */}
         <div className="flex flex-col gap-4 shrink-0">
           <button
@@ -245,7 +245,7 @@ export default function ProfessionsAdmin() {
             <ArrowLeft size={14} className="group-hover:-translate-x-0.5 transition-transform" />
             Back to Dashboard
           </button>
-          
+
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-[#01696F]/10 pb-5">
             <div>
               <span className="text-[10px] font-black uppercase tracking-widest text-[#01696F]/60">
@@ -322,9 +322,8 @@ export default function ProfessionsAdmin() {
               return (
                 <div
                   key={p.id}
-                  className={`bg-white border transition-all rounded-3xl p-6 shadow-sm hover:shadow-md flex flex-col justify-between group min-h-[220px] ${
-                    p.isActive ? "border-zinc-200/80 hover:border-[#01696F]/30" : "border-zinc-200/50 opacity-75"
-                  }`}
+                  className={`bg-white border transition-all rounded-3xl p-6 shadow-sm hover:shadow-md flex flex-col justify-between group min-h-[220px] ${p.isActive ? "border-zinc-200/80 hover:border-[#01696F]/30" : "border-zinc-200/50 opacity-75"
+                    }`}
                 >
                   <div>
                     {/* Header: Icon and Actions */}
@@ -332,7 +331,7 @@ export default function ProfessionsAdmin() {
                       <div className="p-3.5 bg-[#E6F0F1] text-[#01696F] rounded-2xl group-hover:scale-105 transition-transform">
                         <IconComp size={22} />
                       </div>
-                      
+
                       <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button
                           onClick={() => handleOpenEdit(p)}
@@ -379,7 +378,7 @@ export default function ProfessionsAdmin() {
                     </span>
 
                     <button
-                      onClick={() => router.push(`/admin/professions/${p.id}/topics`)}
+                      onClick={() => router.push(`/admin/professions/${p.id}/tests`)}
                       className="flex items-center gap-1 px-3 py-1.5 bg-[#01696F]/10 hover:bg-[#01696F] text-[#01696F] hover:text-white text-xs font-bold rounded-xl transition-all"
                     >
                       Skill Topics
@@ -427,7 +426,7 @@ export default function ProfessionsAdmin() {
         {isModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-fade-in">
             <div className="bg-white border border-zinc-200 rounded-3xl shadow-2xl w-full max-w-lg mx-4 flex flex-col max-h-[85vh] overflow-hidden">
-              
+
               {/* Header */}
               <div className="flex items-center justify-between p-6 border-b border-zinc-100 shrink-0">
                 <h3 className="text-lg font-extrabold text-[#01696F] tracking-tight">

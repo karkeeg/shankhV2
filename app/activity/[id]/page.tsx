@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import logo from "@/public/ShankhFull.png";
 import {
@@ -88,7 +88,7 @@ function normalizeSteps(rawSteps: any[]): any[] {
             label: o.optionText,                     // answer text
             display: String.fromCharCode(65 + idx),  // A, B, C, D
           })),
-          completed: s.completedByUser === true,
+          completed: matchingAnswer ? matchingAnswer.isCorrect === true : false,
           submittedOptionId: matchingAnswer?.selectedOptionId || draftState?.selectedOptionId || null,
         };
       });
@@ -169,30 +169,66 @@ function ShuffleToast({ visible }: { visible: boolean }) {
   );
 }
 
-// Sits visually on the seam between a panel and the workspace.
 function PanelToggle({
-  open, onClick, side,
-}: { open: boolean; onClick: () => void; side: "left" | "right" }) {
+  open,
+  onClick,
+  side,
+}: {
+  open: boolean;
+  onClick: () => void;
+  side: "left" | "right";
+}) {
+  // 👇 hide toggle when panel is open
+  if (open) return null;
+
+  const isLeft = side === "left";
   return (
     <button
       onClick={onClick}
       aria-label={open ? "Collapse panel" : "Expand panel"}
       className={cn(
-        "self-center z-20 flex-shrink-0 flex items-center justify-center",
-        "w-5 h-14 rounded-full bg-white border border-zinc-200 shadow-md",
-        "hover:bg-[#E6F0F1] hover:border-[#01696F]/30 transition-all duration-200 active:scale-90",
-        "group"
+        "self-center z-20 flex-shrink-0",
+        "w-8 h-40 bg-white border border-zinc-200 shadow-md",
+        "rounded-full flex items-center justify-center",
+        "hover:bg-[#E6F0F1] hover:border-[#01696F]/30",
+        "transition-all duration-200 active:scale-95 group"
       )}
     >
-      {side === "left"
-        ? (open ? <ChevronLeft size={13} className="text-zinc-500 group-hover:text-[#01696F]" />
-          : <ChevronRight size={13} className="text-zinc-500 group-hover:text-[#01696F]" />)
-        : (open ? <ChevronRight size={13} className="text-zinc-500 group-hover:text-[#01696F]" />
-          : <ChevronLeft size={13} className="text-zinc-500 group-hover:text-[#01696F]" />)
-      }
+      {/* LEFT SIDE */}
+      {isLeft ? (
+        open ? (
+          // when OPEN → show collapse button
+          <ChevronLeft
+            size={14}
+            className="text-zinc-500 group-hover:text-[#01696F]"
+          />
+        ) : (
+          // when CLOSED → show expand button
+          <ChevronRight
+            size={14}
+            className="text-zinc-500 group-hover:text-[#01696F]"
+          />
+        )
+      ) : (
+        // RIGHT SIDE (AI Coach)
+        <div className="flex flex-col items-center justify-center gap-2">
+          <span className="text-[11px] font-bold text-[#01696F] uppercase tracking-widest [writing-mode:vertical-rl] rotate-180">
+            AI Coach
+          </span>
+
+          <Image
+            src="/AiAssistance.svg"
+            alt="AI Coach"
+            width={22}
+            height={22}
+            className="group-hover:scale-110 transition-transform duration-200"
+          />
+        </div>
+      )}
     </button>
   );
 }
+
 
 function BottomFeedback({
   feedback,
@@ -370,6 +406,8 @@ function HintsPopup({
 export default function UnifiedActivityPage() {
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
+  const fromSkill = searchParams?.get("from") === "skill";
   const id = (params?.id as string) || "les-1-1";
 
   const [activity, setActivity] = useState<any>(null);
@@ -669,7 +707,13 @@ export default function UnifiedActivityPage() {
   const handlePrevStep = () => { if (orderPosition > 0) setOrderPosition(p => p - 1); };
   const handleNextStep = () => { if (orderPosition < shuffledOrder.length - 1) setOrderPosition(p => p + 1); };
 
-  const handleClose = () => router.push(activity?.moduleSlug ? `/learning/${activity.moduleSlug}` : "/learning/finance");
+  const handleClose = () => {
+    if (fromSkill) {
+      router.back();
+    } else {
+      router.push(activity?.moduleSlug ? `/learning/${activity.moduleSlug}` : "/learning/finance");
+    }
+  };
   const handleNextLesson = () => {
     if (activity?.nextLessonId) router.push(`/activity/${activity.nextLessonId}`);
     else if (activity?.moduleSlug) router.push(`/learning/${activity.moduleSlug}`);
@@ -804,7 +848,7 @@ export default function UnifiedActivityPage() {
                 onClick={handleClose}
                 className="w-full py-1.5 bg-[#DFEAEA] text-[#01696F] hover:bg-[#D7E8E9] font-bold text-xs rounded-xl shadow-sm transition-all active:scale-95 flex items-center justify-center gap-1.5 border border-[#01696F]/10"
               >
-                ← Back to content
+                {fromSkill ? "← Back to Test" : "← Back to content"}
               </button>
             </div>
 
@@ -1115,72 +1159,71 @@ export default function UnifiedActivityPage() {
       </div>
 
       {/* ── Right panel toggle ── */}
-      <div className="absolute right-0 z-10">
-        <PanelToggle open={rightPanelOpen} onClick={() => setRightPanelOpen(o => !o)} side="right" />
-      </div>
+
+      <PanelToggle open={rightPanelOpen} onClick={() => setRightPanelOpen(o => !o)} side="right" />
+
 
       {/* ══════════════════════ RIGHT PANEL — AI COACH ══════════════════════ */}
-      <div className={cn(
-        "flex-shrink-0 transition-all duration-300 ease-in-out overflow-hidden",
-        rightPanelOpen ? "w-72 xl:w-80" : "w-0"
-      )}>
+      <div
+        className={cn(
+          "flex-shrink-0 transition-all duration-300 ease-in-out overflow-hidden",
+          rightPanelOpen ? "w-72 xl:w-80" : "w-0"
+        )}
+      >
         <div className="w-72 xl:w-80 h-full flex flex-col pl-2">
           <div className="bg-white flex flex-col h-full overflow-hidden rounded-2xl border border-zinc-100 shadow-sm">
 
-            {/* AI Coach header */}
+            {/* ───────────── Header ───────────── */}
             <div className="flex items-center gap-2.5 px-4 py-3 border-b border-zinc-200 flex-shrink-0 bg-[#FAF7F2]">
-              <Image src="/AiAssistance.svg" alt="" width={24} height={24} />
-              <h3 className="font-black text-zinc-800 text-base tracking-tight">AI Coach</h3>
-              <div className="ml-auto flex items-center gap-1.5">
-                <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">Active</span>
-              </div>
+
+              <Image
+                src="/AiAssistance.svg"
+                alt="AI Coach"
+                width={32}
+                height={32}
+              />
+
+              <h3 className="font-black text-zinc-800 text-base tracking-tight">
+                AI Coach
+              </h3>
+
+              {/* Close Button */}
+              <button
+                onClick={() => setRightPanelOpen(false)}
+                aria-label="Close AI Coach"
+                className="ml-auto w-7 h-7 flex items-center justify-center rounded-lg hover:bg-zinc-100 transition group"
+              >
+                <X
+                  size={16}
+                  className="text-zinc-500 group-hover:text-zinc-800 transition"
+                />
+              </button>
             </div>
 
-            {/* Coach body */}
+            {/* ───────────── Body ───────────── */}
             <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-3 bg-[#F0EDE7]">
+
+              {/* Default state */}
               {!feedback && (
                 <div className="bg-white rounded-2xl p-4 border border-zinc-100 shadow-sm">
                   <p className="text-xs text-zinc-500 font-medium leading-relaxed">
-                    Complete the activity and I'll give you instant feedback here. Use the <strong className="text-amber-600">Hint</strong> button above if you get stuck — hints appear right there so you can keep your eyes on the work.
+                    Complete the activity and I'll give you instant feedback here.
+                    Use the <strong className="text-amber-600">Hint</strong> button above
+                    if you get stuck — hints appear right there so you can keep your eyes on the work.
                   </p>
                 </div>
               )}
 
-              {feedback && (
-                <div className={cn(
-                  "rounded-2xl p-4 border animate-fade-in flex flex-col gap-2",
-                  feedback.isError ? "bg-rose-50 border-rose-100" : "bg-emerald-50 border-emerald-100"
-                )}>
-                  <div className="flex items-center gap-2">
-                    {feedback.isError
-                      ? <XCircle size={15} className="text-rose-500 flex-shrink-0" fill="currentColor" />
-                      : <CheckCircle2 size={15} className="text-emerald-600 flex-shrink-0" fill="currentColor" />}
-                    <p className={cn("text-xs font-bold", feedback.isError ? "text-rose-800" : "text-emerald-800")}>
-                      {feedback.message}
-                    </p>
-                  </div>
-                  {!feedback.isError && feedback.metrics?.conceptAccuracy !== undefined && (
-                    <div className="grid grid-cols-3 gap-1 mt-1">
-                      {[
-                        ["Accuracy", feedback.metrics.conceptAccuracy],
-                        ["Recall", feedback.metrics.recallStrength],
-                        ["Apply", feedback.metrics.applicationScore],
-                      ].map(([label, val]: any) => (
-                        <div key={label} className="bg-white rounded-xl p-2 text-center border border-emerald-100">
-                          <p className="text-[14px] font-black text-emerald-700">{Math.round(val)}%</p>
-                          <p className="text-[8px] font-bold text-zinc-400 uppercase tracking-wider">{label}</p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
 
+              {/* Case Notes */}
               {activity.caseNotes && (
                 <div className="bg-white rounded-2xl p-3 border border-zinc-100 shadow-sm">
-                  <h4 className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-1.5">Case Notes</h4>
-                  <p className="text-[11px] text-zinc-500 font-medium leading-relaxed">{activity.caseNotes}</p>
+                  <h4 className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-1.5">
+                    Case Notes
+                  </h4>
+                  <p className="text-[11px] text-zinc-500 font-medium leading-relaxed">
+                    {activity.caseNotes}
+                  </p>
                 </div>
               )}
             </div>

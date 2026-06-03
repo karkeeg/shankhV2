@@ -89,7 +89,7 @@ export default function Dashboard() {
         <DashboardHeader isAiOpen={isAiOpen} onOpenAi={() => setIsAiOpen(true)} />
 
         <ResumeLessonCard lesson={resumeLessonTarget} />
-        <ProgramInfoCard />
+        {/* <ProgramInfoCard /> */}
         <ProgressOverview modules={dashboardData.modulesProgress} />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

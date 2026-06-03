@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import { prisma } from "../prisma";
 import { ActivityType } from "@prisma/client";
-import { cascadeLessonProgress, updateSkillProgress, recordStreakDay } from "../services/progressService";
+import { cascadeLessonProgress, recordStreakDay, recalculateLessonProgress } from "../services/progressService";
 import { invalidateProgressSummaryCache } from "./progressController";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -104,14 +104,7 @@ export const getActivity = async (req: Request, res: Response) => {
   ]);
 
   // Best sessions per type (for completion state on reload)
-  const [mcqBest, canvasBest, quantusBest] = await Promise.all([
-    mcqActivity
-      ? prisma.userMcqSession.findFirst({
-          where: { userId, activityId: mcqActivity.id },
-          orderBy: { scorePct: "desc" },
-          include: { answers: true },
-        })
-      : null,
+  const [canvasBest, quantusBest] = await Promise.all([
     canvasActivity
       ? prisma.userCanvasSession.findFirst({
           where: { userId, activityId: canvasActivity.id },
@@ -125,6 +118,34 @@ export const getActivity = async (req: Request, res: Response) => {
         })
       : null,
   ]);
+
+  // Fetch all MCQ answers for this user & activity, ordered by completedAt descending
+  const mcqAnswers = mcqActivity
+    ? await prisma.userMcqAnswer.findMany({
+        where: {
+          session: { userId, activityId: mcqActivity.id },
+        },
+        orderBy: {
+          session: { completedAt: "desc" },
+        },
+      })
+    : [];
+
+  const mcqMergedAnswers: typeof mcqAnswers = [];
+  if (mcqActivity) {
+    for (const q of mcqActivity.questions) {
+      const qAnswers = mcqAnswers.filter((a) => a.questionId === q.id);
+      if (qAnswers.length > 0) {
+        // Prefer correct answer if exists, otherwise take latest
+        const correctAnswer = qAnswers.find((a) => a.isCorrect);
+        mcqMergedAnswers.push(correctAnswer || qAnswers[0]);
+      }
+    }
+  }
+
+  const allMcqCorrect = mcqActivity && mcqActivity.questions.length > 0
+    ? mcqMergedAnswers.filter((a) => a.isCorrect).length === mcqActivity.questions.length
+    : false;
 
   // Drafts per type (for keeping work in progress on reload)
   const [mcqDraft, canvasDraft, quantusDraft] = await Promise.all([
@@ -151,9 +172,9 @@ export const getActivity = async (req: Request, res: Response) => {
         type: "mcq",
         orderIndex: la.orderIndex,
         data: mcqActivity,
-        completedByUser: (mcqBest?.scorePct ?? 0) >= 70,
-        bestScore: mcqBest?.scorePct ?? 0,
-        submittedAnswers: mcqBest?.answers || null,
+        completedByUser: allMcqCorrect,
+        bestScore: mcqActivity.questions.length > 0 ? Math.round((mcqMergedAnswers.filter(a => a.isCorrect).length / mcqActivity.questions.length) * 100) : 0,
+        submittedAnswers: mcqMergedAnswers,
         draft: mcqDraft?.draftState || null,
       });
     } else if (la.activityType === "canvas" && canvasActivity) {
@@ -364,7 +385,7 @@ export const submitMcqSession = async (req: Request, res: Response) => {
     });
 
   // Persist session record with nested answers
-  await prisma.userMcqSession.create({
+  const newSession = await prisma.userMcqSession.create({
     data: {
       userId,
       activityId: activity.id,
@@ -386,33 +407,28 @@ export const submitMcqSession = async (req: Request, res: Response) => {
   await prisma.userLessonProgress.upsert({
     where: { userId_lessonId: { userId, lessonId } },
     update: {
-      status,
-      lessonCompletionPct: accuracy,
       mcqBestScore: accuracy,
-      completedAt: status === "completed" ? new Date() : undefined,
     },
     create: {
       userId,
       lessonId,
-      status,
-      lessonCompletionPct: accuracy,
       mcqBestScore: accuracy,
-      startedAt: new Date(),
-      completedAt: status === "completed" ? new Date() : undefined,
     },
   });
+
+  // Re-calculate the aggregated lesson completion and status across all activities
+  await recalculateLessonProgress(userId, lessonId);
 
   // Cascade progress up the hierarchy
   await cascadeLessonProgress(userId, lessonId);
 
-  // Bridge to skill progress (activity type enum is lowercase: "mcq")
-  await updateSkillProgress(userId, lessonId, "mcq", accuracy);
+
 
   // Record streak day
   await recordStreakDay(userId);
   invalidateProgressSummaryCache(userId);
 
-  return res.json({ data: { correct, total, accuracy, status } });
+  return res.json({ data: { correct, total, accuracy, status, id: newSession.id } });
 };
 
 /**
@@ -507,7 +523,7 @@ export const submitCanvasSession = async (req: Request, res: Response) => {
   const scorePct = Math.round(Math.max(0, Math.min(100, rawScore)));
 
   // ── 4. Persist session ──────────────────────────────────────────────────
-  await prisma.userCanvasSession.create({
+  const newSession = await prisma.userCanvasSession.create({
     data: {
       userId,
       activityId: activity.id,
@@ -530,24 +546,20 @@ export const submitCanvasSession = async (req: Request, res: Response) => {
   await prisma.userLessonProgress.upsert({
     where: { userId_lessonId: { userId, lessonId } },
     update: {
-      status,
-      lessonCompletionPct: scorePct,
       canvasBestScore: scorePct,
-      completedAt: status === "completed" ? new Date() : undefined,
     },
     create: {
       userId,
       lessonId,
-      status,
-      lessonCompletionPct: scorePct,
       canvasBestScore: scorePct,
-      startedAt: new Date(),
-      completedAt: status === "completed" ? new Date() : undefined,
     },
   });
 
+  // Re-calculate the aggregated lesson completion and status across all activities
+  await recalculateLessonProgress(userId, lessonId);
+
   await cascadeLessonProgress(userId, lessonId);
-  await updateSkillProgress(userId, lessonId, "canvas", scorePct);
+
   await recordStreakDay(userId);
   invalidateProgressSummaryCache(userId);
 
@@ -559,6 +571,7 @@ export const submitCanvasSession = async (req: Request, res: Response) => {
       scorePct,
       status,
       passed: scorePct >= passThreshold,
+      id: newSession.id,
     },
   });
 };
@@ -588,7 +601,7 @@ export const submitQuantusSession = async (req: Request, res: Response) => {
 
   const scorePct = total && total > 0 ? Math.round((score / total) * 100) : score;
 
-  await prisma.userQuantusSession.create({
+  const newSession = await prisma.userQuantusSession.create({
     data: {
       userId,
       activityId: activity.id,
@@ -609,26 +622,22 @@ export const submitQuantusSession = async (req: Request, res: Response) => {
   await prisma.userLessonProgress.upsert({
     where: { userId_lessonId: { userId, lessonId } },
     update: {
-      status,
-      lessonCompletionPct: scorePct,
       quantusAttempted: true,
-      completedAt: status === "completed" ? new Date() : undefined,
     },
     create: {
       userId,
       lessonId,
-      status,
-      lessonCompletionPct: scorePct,
       quantusAttempted: true,
-      startedAt: new Date(),
-      completedAt: status === "completed" ? new Date() : undefined,
     },
   });
 
+  // Re-calculate the aggregated lesson completion and status across all activities
+  await recalculateLessonProgress(userId, lessonId);
+
   await cascadeLessonProgress(userId, lessonId);
-  await updateSkillProgress(userId, lessonId, "quantus", scorePct);
+
   await recordStreakDay(userId);
   invalidateProgressSummaryCache(userId);
 
-  return res.json({ data: { score, total, scorePct, status } });
+  return res.json({ data: { score, total, scorePct, status, id: newSession.id } });
 };

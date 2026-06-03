@@ -13,6 +13,10 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────────────────────────
+
 enum ActivityType {
   mcq
   canvas
@@ -24,15 +28,14 @@ enum CanvasSubtype {
   freeform
 }
 
-// ── NEW: Canvas redesign enums ───────────────────────────────────────────────
 enum AssemblyMode {
-  sequence // user orders tokens left-to-right; adjacency edges auto-inferred
-  graph    // user draws arrows between dropped tokens explicitly
+  sequence
+  graph
 }
 
 enum ScoringMode {
-  partial // credit per matched edge, penalty for extras/distractors
-  exact   // all-or-nothing: every edge must match, no extras
+  partial
+  exact
 }
 
 enum CellType {
@@ -81,6 +84,17 @@ enum PlanTier {
   enterprise
 }
 
+enum TestSessionStatus {
+  in_progress
+  completed
+  expired
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LEARNING — CONTENT HIERARCHY
+// Module → Topic → Subtopic → Lesson → Activities
+// ─────────────────────────────────────────────────────────────────────────────
+
 model Module {
   id                   String               @id @default(uuid())
   slug                 String               @unique
@@ -104,10 +118,6 @@ model Topic {
   name                String
   subtitle            String?
   description         String?
-  // ── Skill Building display fields ──────────────────────────────────────────
-  level               String? // e.g. "Beginners / Intermediate"
-  durationWeeks       Decimal?            @db.Decimal(4, 1)
-  // ────────────────────────────────────────────────────────────────────────────
   tags                String[]            @default([])
   orderIndex          Int                 @default(0)
   type                TopicType           @default(topic)
@@ -156,8 +166,7 @@ model Lesson {
   quantusActivity      QuantusActivity?
   userLessonProgresses UserLessonProgress[]
   userLessonSessions   UserLessonSession[]
-  skillBundleItems     SkillBundleItem[]
-  skillLessons         SkillLesson[]
+  skillTestItems       SkillTestItem[]
 }
 
 model LessonActivity {
@@ -170,61 +179,62 @@ model LessonActivity {
   @@unique([lessonId, activityType], map: "uq_lesson_act")
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ACTIVITIES
+// ─────────────────────────────────────────────────────────────────────────────
+
 model McqActivity {
-  id            String            @id @default(uuid())
-  lessonId      String            @unique
-  lesson        Lesson            @relation(fields: [lessonId], references: [id], onDelete: Cascade)
-  title         String?
-  instructions  String
-  context       String?
-  createdAt     DateTime          @default(now())
-  updatedAt     DateTime          @updatedAt
-  questions     McqQuestion[]
-  sessions      UserMcqSession[]
-  skillSessions SkillMcqSession[]
+  id           String           @id @default(uuid())
+  lessonId     String           @unique
+  lesson       Lesson           @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  title        String?
+  instructions String
+  context      String?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  questions    McqQuestion[]
+  sessions     UserMcqSession[]
 }
 
 model McqQuestion {
-  id              String           @id @default(uuid())
-  activityId      String
-  activity        McqActivity      @relation(fields: [activityId], references: [id], onDelete: Cascade)
-  questionText    String
-  explanation     String
-  orderIndex      Int              @default(0)
-  createdAt       DateTime         @default(now())
-  options         McqOption[]
-  userMcqAnswers  UserMcqAnswer[]
-  skillMcqAnswers SkillMcqAnswer[]
+  id           String        @id @default(uuid())
+  activityId   String
+  activity     McqActivity   @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  questionText String
+  explanation  String
+  orderIndex   Int           @default(0)
+  createdAt    DateTime      @default(now())
+  options      McqOption[]
+  answers      UserMcqAnswer[]
 }
 
 model McqOption {
-  id              String           @id @default(uuid())
-  questionId      String
-  question        McqQuestion      @relation(fields: [questionId], references: [id], onDelete: Cascade)
-  optionText      String
-  isCorrect       Boolean          @default(false)
-  orderIndex      Int              @default(0)
-  createdAt       DateTime         @default(now())
-  userMcqAnswers  UserMcqAnswer[]
-  skillMcqAnswers SkillMcqAnswer[]
+  id         String          @id @default(uuid())
+  questionId String
+  question   McqQuestion     @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  optionText String
+  isCorrect  Boolean         @default(false)
+  orderIndex Int             @default(0)
+  createdAt  DateTime        @default(now())
+  answers    UserMcqAnswer[]
 
   @@index([questionId], map: "idx_mcq_options_question")
 }
 
 model QuantusActivity {
-  id            String                @id @default(uuid())
-  lessonId      String                @unique
-  lesson        Lesson                @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  id            String               @id @default(uuid())
+  lessonId      String               @unique
+  lesson        Lesson               @relation(fields: [lessonId], references: [id], onDelete: Cascade)
   title         String
   instructions  String
   context       String?
   referenceUrl  String?
-  createdAt     DateTime              @default(now())
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
   columnGroups  QuantusColumnGroup[]
   columns       QuantusColumn[]
   quantusCells  QuantusCell[]
   sessions      UserQuantusSession[]
-  skillSessions SkillQuantusSession[]
 }
 
 model QuantusColumnGroup {
@@ -270,14 +280,7 @@ model QuantusCell {
   @@unique([activityId, rowIndex, colIndex], map: "uq_quantus_cell")
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// CANVAS — token-edge graph model (REDESIGNED)
-// Position on the canvas is purely cosmetic and is NOT stored in the solution.
-// The "correct answer" is a set of slot-aware directed edges between tokens.
-// Validation is a structural set-comparison done SERVER-SIDE.
-// (Replaces the old CanvasPaletteItem / CanvasSolutionNode coordinate model.)
-// ═══════════════════════════════════════════════════════════════════════════
-
+// Canvas redesign — token-edge graph model
 model CanvasActivity {
   id            String               @id @default(uuid())
   lessonId      String               @unique
@@ -287,32 +290,28 @@ model CanvasActivity {
   context       String?
   assemblyMode  AssemblyMode         @default(graph)
   scoringMode   ScoringMode          @default(partial)
-  // penaltyWeight applied to extra/distractor edges in partial scoring.
-  // score = clamp(0,1, |matched|/|correct| - penaltyWeight*|extra|/|correct|)*100
   penaltyWeight Float                @default(0.5)
-  passThreshold Float                @default(70) // % needed to mark complete
+  passThreshold Float                @default(70)
   createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
   tokens        CanvasToken[]
   solutionEdges CanvasSolutionEdge[]
   sessions      UserCanvasSession[]
-  skillSessions SkillCanvasSession[]
 }
 
-// Sidebar tokens — the single source of draggable pieces.
 model CanvasToken {
   id           String               @id @default(uuid())
   activityId   String
   activity     CanvasActivity       @relation(fields: [activityId], references: [id], onDelete: Cascade)
-  displayText  String // "Revenue", "−", "Gross Profit", "="
-  tokenRole    String // operand | operator | relation | result
-  shape        String               @default("rect") // rect | diamond | ellipse | pill
-  isDistractor Boolean              @default(false) // appears in sidebar, in NO correct edge
+  displayText  String
+  tokenRole    String
+  shape        String               @default("rect")
+  isDistractor Boolean              @default(false)
   orderIndex   Int                  @default(0)
   edgesFrom    CanvasSolutionEdge[] @relation("TokenEdgesFrom")
   edgesTo      CanvasSolutionEdge[] @relation("TokenEdgesTo")
 }
 
-// Solution edges — token-to-token, slot-aware.
 model CanvasSolutionEdge {
   id            String         @id @default(uuid())
   activityId    String
@@ -321,10 +320,10 @@ model CanvasSolutionEdge {
   fromToken     CanvasToken    @relation("TokenEdgesFrom", fields: [fromTokenId], references: [id], onDelete: Cascade)
   toTokenId     String
   toToken       CanvasToken    @relation("TokenEdgesTo", fields: [toTokenId], references: [id], onDelete: Cascade)
-  operandSlot   String? // left | right (null for un-slotted relations)
-  isCommutative Boolean        @default(false) // accept either operand order on this edge
-  edgeRole      String // sequence | connection
-  edgeOrder     Int? // position in sequence mode; null for free graph edges
+  operandSlot   String?
+  isCommutative Boolean        @default(false)
+  edgeRole      String
+  edgeOrder     Int?
   edgeLabel     String?
 
   @@index([activityId], map: "idx_canvas_edge_activity")
@@ -343,37 +342,47 @@ model ActivityHint {
   @@index([activityId], map: "idx_activity_hint_activity")
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// USERS
+// ─────────────────────────────────────────────────────────────────────────────
+
 model User {
-  id                        String                    @id @default(uuid())
-  email                     String                    @unique
-  name                      String?
-  passwordHash              String
-  role                      String                    @default("learner")
-  planType                  PlanTier                  @default(free)
-  avatarUrl                 String?
-  timezone                  String?
-  createdAt                 DateTime                  @default(now())
-  lastActive                DateTime?
-  deletedAt                 DateTime?
-  userLessonProgresses      UserLessonProgress[]
-  userSubtopicProgresses    UserSubtopicProgress[]
-  userTopicProgresses       UserTopicProgress[]
-  userModuleProgresses      UserModuleProgress[]
-  userLessonSessions        UserLessonSession[]
-  userActivityDrafts        UserActivityDraft[]
-  mcqSessions               UserMcqSession[]
-  canvasSessions            UserCanvasSession[]
-  quantusSessions           UserQuantusSession[]
-  hintUsage                 UserHintUsage[]
-  userSkillBundleProgresses UserSkillBundleProgress[]
-  userSkillItemProgresses   UserSkillItemProgress[]
-  userSkillTopicProgresses  UserSkillTopicProgress[]
-  skillMcqSessions          SkillMcqSession[]
-  skillCanvasSessions       SkillCanvasSession[]
-  skillQuantusSessions      SkillQuantusSession[]
-  userSkillLessonProgresses UserSkillLessonProgress[]
-  userStreaks               UserStreak[]
+  id                     String                 @id @default(uuid())
+  email                  String                 @unique
+  name                   String?
+  passwordHash           String
+  role                   String                 @default("learner")
+  planType               PlanTier               @default(free)
+  avatarUrl              String?
+  timezone               String?
+  createdAt              DateTime               @default(now())
+  lastActive             DateTime?
+  deletedAt              DateTime?
+
+  // Learning progress
+  userLessonProgresses   UserLessonProgress[]
+  userSubtopicProgresses UserSubtopicProgress[]
+  userTopicProgresses    UserTopicProgress[]
+  userModuleProgresses   UserModuleProgress[]
+
+  // Learning sessions
+  userLessonSessions     UserLessonSession[]
+  userActivityDrafts     UserActivityDraft[]
+  mcqSessions            UserMcqSession[]
+  canvasSessions         UserCanvasSession[]
+  quantusSessions        UserQuantusSession[]
+  hintUsage              UserHintUsage[]
+
+  // Skill building — tests
+  skillTestSessions      UserSkillTestSession[]
+
+  // Streaks
+  userStreaks             UserStreak[]
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LEARNING — PROGRESS
+// ─────────────────────────────────────────────────────────────────────────────
 
 model UserLessonProgress {
   id                  String       @id @default(uuid())
@@ -450,6 +459,10 @@ model UserModuleProgress {
   @@unique([userId, moduleId], map: "uq_ump")
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// LEARNING — SESSIONS
+// ─────────────────────────────────────────────────────────────────────────────
+
 model UserLessonSession {
   id                  String        @id @default(uuid())
   userId              String
@@ -493,6 +506,9 @@ model UserMcqSession {
   hintsUsed   Int             @default(0)
   completedAt DateTime        @default(now())
   answers     UserMcqAnswer[]
+
+  // Link back from skill test responses
+  skillTestResponses UserSkillTestResponse[]
 }
 
 model UserMcqAnswer {
@@ -518,6 +534,8 @@ model UserCanvasSession {
   canvasData  Json?
   hintsUsed   Int            @default(0)
   completedAt DateTime       @default(now())
+
+  skillTestResponses UserSkillTestResponse[]
 }
 
 model UserQuantusSession {
@@ -532,6 +550,8 @@ model UserQuantusSession {
   scorePct      Float?
   hintsUsed     Int             @default(0)
   completedAt   DateTime        @default(now())
+
+  skillTestResponses UserSkillTestResponse[]
 }
 
 model UserHintUsage {
@@ -543,22 +563,24 @@ model UserHintUsage {
   revealedAt DateTime     @default(now())
 }
 
-// ─── SKILL BUILDING ──────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// STREAKS
+// ─────────────────────────────────────────────────────────────────────────────
 
-model SkillSection {
-  id           String        @id @default(uuid())
-  slug         String        @unique
-  name         String
-  description  String?
-  activityType ActivityType?
-  tabLabel     String?
-  iconKey      String?
-  orderIndex   Int           @default(0)
-  isActive     Boolean       @default(true)
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @default(now())
-  bundles      SkillBundle[]
+model UserStreak {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date      DateTime @db.Date
+  // @db.Date stores date only — no time component, prevents timezone duplicate rows
+  createdAt DateTime @default(now())
+
+  @@unique([userId, date], map: "uq_user_streak_date")
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SKILL BUILDING — PROFESSIONS
+// ─────────────────────────────────────────────────────────────────────────────
 
 model Profession {
   id           String                  @id @default(uuid())
@@ -569,234 +591,199 @@ model Profession {
   orderIndex   Int                     @default(0)
   isActive     Boolean                 @default(true)
   createdAt    DateTime                @default(now())
-  updatedAt    DateTime                @default(now())
-  bundleLinks  SkillBundleProfession[]
-  subtopicTags SubtopicProfessionTag[]
+  updatedAt    DateTime                @updatedAt
   skillTopics  SkillTopic[]
+
+  subtopicTags SubtopicProfessionTag[]
+  skillTests   SkillTest[]
 }
 
-// Legacy bundle tables — kept in DB, no longer written to by new code
-model SkillBundle {
-  id             String                    @id @default(uuid())
-  sectionId      String
-  section        SkillSection              @relation(fields: [sectionId], references: [id], onDelete: Cascade)
-  name           String
-  description    String?
-  level          String
-  durationWeeks  Float
-  bundleGroup    String                    @default("profession_based")
-  orderIndex     Int                       @default(0)
-  isActive       Boolean                   @default(true)
-  createdAt      DateTime                  @default(now())
-  updatedAt      DateTime                  @default(now())
-  professions    SkillBundleProfession[]
-  items          SkillBundleItem[]
-  userProgresses UserSkillBundleProgress[]
-}
-
-model SkillBundleProfession {
+model SkillTopic {
   id           String      @id @default(uuid())
-  bundleId     String
-  bundle       SkillBundle @relation(fields: [bundleId], references: [id], onDelete: Cascade)
   professionId String
   profession   Profession  @relation(fields: [professionId], references: [id], onDelete: Cascade)
+  name         String      @db.VarChar(200)
+  description  String?
+  orderIndex   Int         @default(0)
+  isActive     Boolean     @default(true)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
 
-  @@unique([bundleId, professionId], map: "uq_bundle_profession")
+  tests        SkillTest[]
+
+  @@index([professionId, orderIndex])
+  @@map("skill_topics")
 }
 
-model SkillBundleItem {
-  id                 String                  @id @default(uuid())
-  bundleId           String
-  bundle             SkillBundle             @relation(fields: [bundleId], references: [id], onDelete: Cascade)
-  lessonId           String
-  lesson             Lesson                  @relation(fields: [lessonId], references: [id], onDelete: Cascade)
-  activityType       ActivityType
-  label              String
-  description        String?
-  orderIndex         Int                     @default(0)
-  userItemProgresses UserSkillItemProgress[]
-
-  @@unique([bundleId, lessonId, activityType], map: "uq_bundle_item")
-}
-
-model UserSkillBundleProgress {
-  id               String      @id @default(uuid())
-  userId           String
-  user             User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  bundleId         String
-  bundle           SkillBundle @relation(fields: [bundleId], references: [id], onDelete: Cascade)
-  itemsCompleted   Int         @default(0)
-  itemsTotal       Int         @default(0)
-  completionPct    Float       @default(0)
-  recallStrength   Float       @default(0)
-  conceptAccuracy  Float       @default(0)
-  applicationScore Float       @default(0)
-  startedAt        DateTime?
-  completedAt      DateTime?
-  lastAccessedAt   DateTime    @default(now())
-  updatedAt        DateTime    @default(now())
-
-  @@unique([userId, bundleId], map: "uq_user_bundle_progress")
-}
-
-model UserSkillItemProgress {
-  id           String          @id @default(uuid())
-  userId       String
-  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  bundleItemId String
-  bundleItem   SkillBundleItem @relation(fields: [bundleItemId], references: [id], onDelete: Cascade)
-  bestScorePct Float?
-  isCompleted  Boolean         @default(false)
-  hintsUsed    Int             @default(0)
-  attempts     Int             @default(0)
-  completedAt  DateTime?
-  updatedAt    DateTime        @default(now())
-
-  @@unique([userId, bundleItemId], map: "uq_user_skill_item")
-}
-
+// Tags a subtopic to a profession.
+// This is the source of truth for which activities belong to which profession.
+// Admin uses this to populate the activity pool when creating a test.
 model SubtopicProfessionTag {
-  id           String     @id @default(uuid())
   subtopicId   String
   subtopic     Subtopic   @relation(fields: [subtopicId], references: [id], onDelete: Cascade)
   professionId String
   profession   Profession @relation(fields: [professionId], references: [id], onDelete: Cascade)
 
-  @@unique([subtopicId, professionId], map: "uq_subtopic_profession")
+  @@id([subtopicId, professionId])
+  @@index([professionId], map: "idx_spt_profession")
+  @@index([subtopicId],   map: "idx_spt_subtopic")
 }
 
-// ─── Decoupled Skill Building Models ──────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// SKILL BUILDING — TESTS
+// ─────────────────────────────────────────────────────────────────────────────
 
-model SkillTopic {
-  id             String                   @id @default(uuid())
-  professionId   String
-  profession     Profession               @relation(fields: [professionId], references: [id], onDelete: Cascade)
-  name           String
-  description    String?
-  level          String? // e.g. "Beginner" / "Intermediate"
-  durationWeeks  Decimal?                 @db.Decimal(4, 1)
-  orderIndex     Int                      @default(0)
-  isActive       Boolean                  @default(true)
-  createdAt      DateTime                 @default(now())
-  updatedAt      DateTime                 @updatedAt
-  lessons        SkillLesson[]
-  userProgresses UserSkillTopicProgress[]
+// A named test container belonging to one profession.
+// Contains activities of any type (MCQ / Canvas / Quantus).
+// On the frontend, tabs filter which activity type the user sees.
+model SkillTest {
+  id           String                @id @default(uuid())
+  professionId String
+  profession   Profession            @relation(fields: [professionId], references: [id], onDelete: Cascade)
+  topicId      String?
+  topic        SkillTopic?           @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  isPublished  Boolean               @default(false)
+  name         String
+  // e.g. "CA Foundation Set 1"
+  description  String?
+  isActive     Boolean               @default(true)
+  orderIndex   Int                   @default(0)
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+
+  typeConfigs  SkillTestTypeConfig[]
+  items        SkillTestItem[]
+  sessions     UserSkillTestSession[]
+
+  @@index([professionId, isActive], map: "idx_skill_test_profession")
 }
 
-model SkillLesson {
-  id             String                    @id @default(uuid())
-  skillTopicId   String
-  skillTopic     SkillTopic                @relation(fields: [skillTopicId], references: [id], onDelete: Cascade)
-  lessonId       String? // Reference to standard Learning Lesson if fetched
-  lesson         Lesson?                   @relation(fields: [lessonId], references: [id], onDelete: SetNull)
-  name           String
-  description    String?
-  difficulty     Difficulty                @default(easy)
-  orderIndex     Int                       @default(0)
-  estimatedMins  Int?
-  isActive       Boolean                   @default(true)
-  createdAt      DateTime                  @default(now())
-  updatedAt      DateTime                  @updatedAt
-  userProgresses UserSkillLessonProgress[]
+// One row per activity type present in the test.
+// Stores the admin-defined time limit for that activity type's session.
+// e.g. MCQ session = 20 min, Canvas session = 30 min, Quantus session = 45 min
+model SkillTestTypeConfig {
+  id            String       @id @default(uuid())
+  testId        String
+  test          SkillTest    @relation(fields: [testId], references: [id], onDelete: Cascade)
+  activityType  ActivityType
+  timeLimitMins Int
+  // Admin sets this when adding activities of that type to the test.
+
+  @@unique([testId, activityType], map: "uq_test_type_config")
 }
 
-model SkillMcqSession {
-  id          String           @id @default(uuid())
-  userId      String
-  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  activityId  String
-  activity    McqActivity      @relation(fields: [activityId], references: [id], onDelete: Cascade)
-  topicId     String // skillTopicId context
-  score       Int
-  total       Int
-  scorePct    Float?
-  hintsUsed   Int              @default(0)
-  completedAt DateTime         @default(now())
-  answers     SkillMcqAnswer[]
+// Individual activities inside a test.
+// activityId points to McqActivity.id / CanvasActivity.id / QuantusActivity.id
+// (polymorphic — enforced at application level, not FK level)
+//
+// UNIQUENESS RULES:
+//   uq_test_item_activity  — one activity can only ever be in ONE test globally
+//   uq_test_item_unique    — one activity appears only once within a test
+model SkillTestItem {
+  id           String       @id @default(uuid())
+  testId       String
+  test         SkillTest    @relation(fields: [testId], references: [id], onDelete: Cascade)
+  lessonId     String
+  lesson       Lesson       @relation(fields: [lessonId], references: [id])
+  activityType ActivityType
+  activityId   String
+  // Points to McqActivity / CanvasActivity / QuantusActivity
+  // No FK here because Prisma doesn't support polymorphic FKs.
+  // Application enforces referential integrity during creation.
+  orderIndex   Int          @default(0)
+  createdAt    DateTime     @default(now())
+
+  responses    UserSkillTestResponse[]
+
+  @@unique([activityId, activityType],        map: "uq_test_item_activity")
+  @@unique([testId, activityId, activityType], map: "uq_test_item_unique")
+  @@index([testId, activityType, orderIndex],  map: "idx_test_items_type")
+  @@index([activityId, activityType],          map: "idx_test_item_lookup")
 }
 
-model SkillMcqAnswer {
-  id               String          @id @default(uuid())
-  sessionId        String
-  session          SkillMcqSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  questionId       String
-  question         McqQuestion     @relation(fields: [questionId], references: [id], onDelete: Cascade)
-  selectedOptionId String
-  selectedOption   McqOption       @relation(fields: [selectedOptionId], references: [id], onDelete: Cascade)
-  isCorrect        Boolean
+// ─────────────────────────────────────────────────────────────────────────────
+// SKILL BUILDING — USER TEST SESSIONS & RESPONSES
+// ─────────────────────────────────────────────────────────────────────────────
+
+// One row per (user × test × activityType).
+// Each activity type within a test is an INDEPENDENT session.
+// @@unique enforces no retake at DB level — second insert rejected.
+//
+// TIMER MODEL:
+//   timeLimitMins  — copied from SkillTestTypeConfig at session start
+//   timeSpentSecs  — counts UP from 0; frontend sends updated value on pause + submit
+//   Remaining time = (timeLimitMins × 60) - timeSpentSecs
+//   Frontend enforces expiry: blocks input when remaining <= 0
+//   No server-side cron needed.
+//
+// PAUSE / RESUME:
+//   Frontend sends PATCH /skill/test-sessions/:id { timeSpentSecs } on pause.
+//   On resume, frontend reads timeSpentSecs from session and continues countdown.
+model UserSkillTestSession {
+  id             String            @id @default(uuid())
+  userId         String
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  testId         String
+  test           SkillTest         @relation(fields: [testId], references: [id])
+  activityType   ActivityType
+
+  // Timer
+  timeLimitMins  Int
+  timeSpentSecs  Int               @default(0)
+
+  // Progress
+  totalItems     Int
+  // Total items of this activityType in the test — set at session creation
+  completedItems Int               @default(0)
+
+  // Score — null until session submitted
+  scorePct       Float?
+
+  // State
+  status         TestSessionStatus @default(in_progress)
+
+  startedAt      DateTime          @default(now())
+  lastActiveAt   DateTime?
+  // Updated on every pause and resume
+  completedAt    DateTime?
+  // Set when status transitions to completed or expired
+
+  responses      UserSkillTestResponse[]
+
+  // No retake — DB rejects a second session for same (user, test, activityType)
+  @@unique([userId, testId, activityType], map: "uq_user_test_session")
+  @@index([userId, lastActiveAt(sort: Desc)], map: "idx_session_recent")
+  @@index([testId],                           map: "idx_session_test")
 }
 
-model SkillCanvasSession {
-  id          String         @id @default(uuid())
-  userId      String
-  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  activityId  String
-  activity    CanvasActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
-  topicId     String // skillTopicId context
-  score       Int?
-  total       Int?
-  scorePct    Float?
-  canvasData  Json?
-  hintsUsed   Int            @default(0)
-  completedAt DateTime       @default(now())
-}
+// One row per activity completed within a session.
+// Links back to the existing session tables — no duplicate scoring data.
+//
+// existingSessionId references:
+//   activityType = mcq     → UserMcqSession.id
+//   activityType = canvas  → UserCanvasSession.id
+//   activityType = quantus → UserQuantusSession.id
+// The correct relation is activated based on activityType (app-level logic).
+model UserSkillTestResponse {
+  id                   String               @id @default(uuid())
+  sessionId            String
+  session              UserSkillTestSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  testItemId           String
+  testItem             SkillTestItem        @relation(fields: [testItemId], references: [id])
+  activityType         ActivityType
 
-model SkillQuantusSession {
-  id            String          @id @default(uuid())
-  userId        String
-  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  activityId    String
-  activity      QuantusActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
-  topicId       String // skillTopicId context
-  inputSnapshot Json
-  score         Int             @default(0)
-  total         Int             @default(0)
-  scorePct      Float?
-  hintsUsed     Int             @default(0)
-  completedAt   DateTime        @default(now())
-}
+  // Back-reference to the existing scoring session
+  // Exactly one of these will be non-null depending on activityType
+  mcqSessionId         String?
+  mcqSession           UserMcqSession?      @relation(fields: [mcqSessionId], references: [id])
+  canvasSessionId      String?
+  canvasSession        UserCanvasSession?   @relation(fields: [canvasSessionId], references: [id])
+  quantusSessionId     String?
+  quantusSession       UserQuantusSession?  @relation(fields: [quantusSessionId], references: [id])
 
-model UserSkillLessonProgress {
-  id                  String       @id @default(uuid())
-  userId              String
-  user                User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  skillLessonId       String
-  skillLesson         SkillLesson  @relation(fields: [skillLessonId], references: [id], onDelete: Cascade)
-  lessonCompletionPct Float        @default(0)
-  mcqBestScore        Float?
-  canvasBestScore     Float?
-  quantusAttempted    Boolean      @default(false)
-  status              LessonStatus @default(not_started)
-  hintsUsed           Int          @default(0)
-  startedAt           DateTime?
-  completedAt         DateTime?
-  updatedAt           DateTime     @default(now())
+  scorePct             Float?
+  submittedAt          DateTime             @default(now())
 
-  @@unique([userId, skillLessonId], map: "uq_skill_ulp")
-}
-
-model UserSkillTopicProgress {
-  id               String     @id @default(uuid())
-  userId           String
-  user             User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  skillTopicId     String
-  skillTopic       SkillTopic @relation(fields: [skillTopicId], references: [id], onDelete: Cascade)
-  lessonsCompleted Int        @default(0)
-  lessonsTotal     Int        @default(0)
-  completionPct    Float      @default(0)
-  startedAt        DateTime?
-  lastAccessedAt   DateTime?
-  updatedAt        DateTime   @default(now())
-
-  @@unique([userId, skillTopicId], map: "uq_user_skill_topic")
-}
-
-model UserStreak {
-  id        String   @id @default(uuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  date      DateTime
-  createdAt DateTime @default(now())
-
-  @@unique([userId, date], map: "uq_user_streak_date")
+  @@unique([sessionId, testItemId], map: "uq_test_response")
+  @@index([sessionId],              map: "idx_test_response_session")
 }

@@ -178,11 +178,30 @@ export const getSubtopic = async (req: Request, res: Response) => {
   const lessons = await prisma.lesson.findMany({
     where: { subtopicId: subtopic.id, deletedAt: null, isActive: true },
     orderBy: { orderIndex: "asc" },
-    include: { lessonActivities: true },
+    include: {
+      lessonActivities: true,
+      mcqActivity: { include: { questions: { select: { id: true } } } },
+      canvasActivity: { select: { id: true } },
+      quantusActivity: { select: { id: true } },
+    },
   });
 
   const lessonProgresses = userId
     ? await prisma.userLessonProgress.findMany({ where: { userId, lessonId: { in: lessons.map((lesson) => lesson.id) } } })
+    : [];
+
+  // For MCQ completed steps, we need to check actual user sessions
+  const mcqActivityIds = lessons
+    .filter((l) => l.mcqActivity)
+    .map((l) => l.mcqActivity!.id);
+  const correctMcqAnswers = userId && mcqActivityIds.length > 0
+    ? await prisma.userMcqAnswer.findMany({
+        where: {
+          session: { userId, activityId: { in: mcqActivityIds } },
+          isCorrect: true,
+        },
+        select: { questionId: true, question: { select: { activityId: true } } },
+      })
     : [];
 
   return res.json({
@@ -196,6 +215,36 @@ export const getSubtopic = async (req: Request, res: Response) => {
       completionPercentage: progress?.subtopicCompletionPct || 0,
       lessons: lessons.map((lesson) => {
         const lessonProg = lessonProgresses.find((prog) => prog.lessonId === lesson.id);
+        const actTypes = lesson.lessonActivities.map((act) => act.activityType);
+
+        // Calculate totalSteps: MCQ questions count individually, canvas/quantus = 1 each
+        let totalSteps = 0;
+        let completedSteps = 0;
+
+        for (const type of actTypes) {
+          if (type === "mcq" && lesson.mcqActivity) {
+            const qCount = lesson.mcqActivity.questions.length;
+            totalSteps += qCount;
+
+            const correctCount = correctMcqAnswers.filter(
+              (ans) => ans.question.activityId === lesson.mcqActivity!.id
+            ).length;
+            completedSteps += correctCount;
+
+          } else if (type === "canvas") {
+            totalSteps += 1;
+            if (lessonProg?.canvasBestScore != null && lessonProg.canvasBestScore >= 70) {
+              completedSteps += 1;
+            }
+
+          } else if (type === "quantus") {
+            totalSteps += 1;
+            if (lessonProg?.quantusAttempted) {
+              completedSteps += 1;
+            }
+          }
+        }
+
         return {
           id: lesson.id,
           name: lesson.name,
@@ -203,7 +252,9 @@ export const getSubtopic = async (req: Request, res: Response) => {
           difficulty: lesson.difficulty,
           status: lessonProg?.status || "not_started",
           lessonCompletionPct: lessonProg?.lessonCompletionPct || 0,
-          activityTypes: lesson.lessonActivities.map((act) => act.activityType),
+          activityTypes: actTypes,
+          totalSteps,
+          completedSteps,
         };
       }),
     },
@@ -216,23 +267,68 @@ export const getSubtopicLessons = async (req: Request, res: Response) => {
   const lessons = await prisma.lesson.findMany({
     where: { subtopicId, deletedAt: null, isActive: true },
     orderBy: { orderIndex: "asc" },
-    include: { lessonActivities: true },
+    include: {
+      lessonActivities: true,
+      mcqActivity: { include: { questions: { select: { id: true } } } },
+      canvasActivity: { select: { id: true } },
+      quantusActivity: { select: { id: true } },
+    },
   });
 
   const lessonProgresses = userId
     ? await prisma.userLessonProgress.findMany({ where: { userId, lessonId: { in: lessons.map((lesson) => lesson.id) } } })
     : [];
 
+  const mcqActivityIds = lessons
+    .filter((l) => l.mcqActivity)
+    .map((l) => l.mcqActivity!.id);
+  const correctMcqAnswers = userId && mcqActivityIds.length > 0
+    ? await prisma.userMcqAnswer.findMany({
+        where: {
+          session: { userId, activityId: { in: mcqActivityIds } },
+          isCorrect: true,
+        },
+        select: { questionId: true, question: { select: { activityId: true } } },
+      })
+    : [];
+
   return res.json({
     data: lessons.map((lesson) => {
       const lessonProg = lessonProgresses.find((prog) => prog.lessonId === lesson.id);
+      const actTypes = lesson.lessonActivities.map((act) => act.activityType);
+
+      let totalSteps = 0;
+      let completedSteps = 0;
+
+      for (const type of actTypes) {
+        if (type === "mcq" && lesson.mcqActivity) {
+          totalSteps += lesson.mcqActivity.questions.length;
+          const correctCount = correctMcqAnswers.filter(
+            (ans) => ans.question.activityId === lesson.mcqActivity!.id
+          ).length;
+          completedSteps += correctCount;
+        } else if (type === "canvas") {
+          totalSteps += 1;
+          if (lessonProg?.canvasBestScore != null && lessonProg.canvasBestScore >= 70) {
+            completedSteps += 1;
+          }
+        } else if (type === "quantus") {
+          totalSteps += 1;
+          if (lessonProg?.quantusAttempted) {
+            completedSteps += 1;
+          }
+        }
+      }
+
       return {
         id: lesson.id,
         name: lesson.name,
         difficulty: lesson.difficulty,
         status: lessonProg?.status || "not_started",
         lessonCompletionPct: lessonProg?.lessonCompletionPct || 0,
-        activityTypes: lesson.lessonActivities.map((act) => act.activityType),
+        activityTypes: actTypes,
+        totalSteps,
+        completedSteps,
       };
     }),
   });

@@ -1,168 +1,153 @@
 "use client";
 
-import { SkillSection } from '@/lib/skillSections';
-import { useAuthStore } from '@/lib/auth-store';
-import Cookies from 'js-cookie';
+import { useCallback } from "react";
 
-export interface SkillSectionResponse extends SkillSection {}
-
-export const toUrlSlug = (slug: string) => slug.replace(/_/g, '-');
-export const toApiSlug = (slug: string) => slug.replace(/-/g, '_');
+const BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "";
 
 export default function useSkillData() {
-  const baseUrl = `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1`;
+  const getProfessions = useCallback(async (headers: HeadersInit) => {
+    const res = await fetch(`${BASE}/api/v1/skill/professions`, { headers });
+    if (!res.ok) throw new Error("Failed to fetch professions");
+    const json = await res.json();
+    return json.data ?? [];
+  }, []);
 
-  const getHeaders = (additionalHeaders: HeadersInit = {}): HeadersInit => {
-    const token = useAuthStore.getState().token || Cookies.get('shankh-token');
-    const headers: HeadersInit = { 'Content-Type': 'application/json', ...additionalHeaders };
-    if (token) (headers as any)['Authorization'] = `Bearer ${token}`;
-    return headers;
-  };
+  const getProfessionTests = useCallback(
+    async (slug: string, headers: HeadersInit) => {
+      const res = await fetch(
+        `${BASE}/api/v1/skill/professions/${slug}/tests`,
+        { headers }
+      );
+      if (!res.ok) throw new Error("Failed to fetch tests");
+      const json = await res.json();
+      return json.data ?? [];
+    },
+    []
+  );
 
-  // ─── Sections & Professions ────────────────────────────────────────────────
+  const getSingleTest = useCallback(
+    async (testId: string, headers: HeadersInit) => {
+      const res = await fetch(`${BASE}/api/v1/skill/tests/${testId}`, {
+        headers,
+      });
+      if (!res.ok) throw new Error("Failed to fetch test");
+      const json = await res.json();
+      return json.data;
+    },
+    []
+  );
 
-  const getSkillSections = async (headers: HeadersInit = {}): Promise<SkillSectionResponse[]> => {
-    const res = await fetch(`${baseUrl}/skill/sections`, { method: 'GET', headers: getHeaders(headers) });
-    if (!res.ok) throw new Error(`Failed to fetch skill sections: ${res.status}`);
-    const data = await res.json();
-    return data.data as SkillSectionResponse[];
-  };
+  const getSession = useCallback(
+    async (testId: string, activityType: string, headers: HeadersInit) => {
+      const res = await fetch(
+        `${BASE}/api/v1/skill/tests/${testId}/sessions/${activityType}`,
+        { headers }
+      );
+      if (res.status === 404) return null;
+      if (!res.ok) throw new Error("Failed to fetch session");
+      const json = await res.json();
+      return json.data;
+    },
+    []
+  );
 
-  /** @deprecated Use getSkillSectionTopics for the new topic-based page. */
-  const getSkillSectionBundles = async (slug: string, professionSlug?: string, headers: HeadersInit = {}): Promise<any> => {
-    const apiSlug = toApiSlug(slug);
-    const qp = professionSlug ? `?profession=${encodeURIComponent(toApiSlug(professionSlug))}` : '';
-    const res = await fetch(`${baseUrl}/skill/sections/${apiSlug}/bundles${qp}`, { method: 'GET', headers: getHeaders(headers) });
-    if (!res.ok) throw new Error(`Failed to fetch bundles for "${slug}": ${res.status}`);
-    const data = await res.json();
-    return data.data;
-  };
+  const startSession = useCallback(
+    async (testId: string, activityType: string, headers: HeadersInit) => {
+      const res = await fetch(
+        `${BASE}/api/v1/skill/tests/${testId}/sessions`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ activityType }),
+        }
+      );
+      if (!res.ok) throw new Error("Failed to start session");
+      const json = await res.json();
+      return json.data;
+    },
+    []
+  );
 
-  /**
-   * NEW — Fetches the full topic-based page for a skill section.
-   * Hits GET /skill/sections/:slug and returns:
-   *   { section, tabs, profession_groups, modeling_fountains }
-   */
-  const getSkillSectionTopics = async (slug: string, headers: HeadersInit = {}): Promise<any> => {
-    const apiSlug = toApiSlug(slug);
-    const res = await fetch(`${baseUrl}/skill/sections/${apiSlug}`, { method: 'GET', headers: getHeaders(headers) });
-    if (!res.ok) throw new Error(`Failed to fetch topics for section "${slug}": ${res.status}`);
-    const data = await res.json();
-    return data.data;
-  };
+  const pauseSession = useCallback(
+    async (
+      sessionId: string,
+      timeSpentSecs: number,
+      headers: HeadersInit
+    ) => {
+      await fetch(`${BASE}/api/v1/skill/sessions/${sessionId}`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ timeSpentSecs }),
+      });
+    },
+    []
+  );
 
-  const getProfessions = async (headers: HeadersInit = {}): Promise<any[]> => {
-    const res = await fetch(`${baseUrl}/skill/professions`, { method: 'GET', headers: getHeaders(headers) });
-    if (!res.ok) throw new Error(`Failed to fetch professions: ${res.status}`);
-    const data = await res.json();
-    return data.data as any[];
-  };
+  const submitActivity = useCallback(
+    async (
+      sessionId: string,
+      payload: {
+        testItemId: string;
+        activityType: string;
+        existingSessionId: string;
+        scorePct: number;
+      },
+      headers: HeadersInit
+    ) => {
+      const res = await fetch(
+        `${BASE}/api/v1/skill/sessions/${sessionId}/submit`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify(payload),
+        }
+      );
+      if (!res.ok) throw new Error("Failed to submit activity");
+      const json = await res.json();
+      return json.data;
+    },
+    []
+  );
 
-  // ─── Bundles (legacy) ──────────────────────────────────────────────────────
+  const completeSession = useCallback(
+    async (
+      sessionId: string,
+      timeSpentSecs: number,
+      headers: HeadersInit
+    ) => {
+      const res = await fetch(
+        `${BASE}/api/v1/skill/sessions/${sessionId}/complete`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ timeSpentSecs }),
+        }
+      );
+      if (!res.ok) throw new Error("Failed to complete session");
+      const json = await res.json();
+      return json.data;
+    },
+    []
+  );
 
-  const getSingleBundle = async (bundleId: string, headers: HeadersInit = {}): Promise<any> => {
-    const res = await fetch(`${baseUrl}/skill/bundles/${bundleId}`, { method: 'GET', headers: getHeaders(headers) });
-    if (!res.ok) throw new Error(`Failed to fetch bundle ${bundleId}: ${res.status}`);
-    const data = await res.json();
-    return data.data;
-  };
-
-  const startSkillBundle = async (bundleId: string, headers: HeadersInit = {}): Promise<any> => {
-    const res = await fetch(`${baseUrl}/skill/bundles/${bundleId}/start`, { method: 'POST', headers: getHeaders(headers) });
-    if (!res.ok) throw new Error(`Failed to start bundle ${bundleId}: ${res.status}`);
-    const data = await res.json();
-    return data.data;
-  };
-
-  const startBundleItem = async (bundleId: string, itemId: string, headers: HeadersInit = {}): Promise<any> => {
-    const res = await fetch(`${baseUrl}/skill/bundles/${bundleId}/items/${itemId}/start`, { method: 'POST', headers: getHeaders(headers) });
-    if (!res.ok) throw new Error(`Failed to start bundle item ${itemId}: ${res.status}`);
-    const data = await res.json();
-    return data.data;
-  };
-
-  const getSkillBundleProgress = async (bundleId: string, headers: HeadersInit = {}): Promise<any> => {
-    const res = await fetch(`${baseUrl}/skill/bundles/${bundleId}/progress`, { method: 'GET', headers: getHeaders(headers) });
-    if (!res.ok) throw new Error(`Failed to fetch bundle progress for ${bundleId}: ${res.status}`);
-    const data = await res.json();
-    return data.data;
-  };
-
-  // ─── Topics (NEW) ─────────────────────────────────────────────────────────
-
-  /**
-   * NEW — Start or resume a skill topic.
-   * Hits POST /skill/topics/:topicId/start with { activityType }.
-   * Returns { topicId, activityType, isResume, allComplete, nextLesson, navigateTo }.
-   */
-  const startSkillTopic = async (topicId: string, activityType: string, headers: HeadersInit = {}): Promise<any> => {
-    const res = await fetch(`${baseUrl}/skill/topics/${topicId}/start`, {
-      method:  'POST',
-      headers: getHeaders(headers),
-      body:    JSON.stringify({ activityType }),
+  const getRecentlyActive = useCallback(async (headers: HeadersInit) => {
+    const res = await fetch(`${BASE}/api/v1/skill/me/recently-active`, {
+      headers,
     });
-    if (!res.ok) throw new Error(`Failed to start topic ${topicId}: ${res.status}`);
-    const data = await res.json();
-    return data.data;
-  };
-
-  // ─── User progress ─────────────────────────────────────────────────────────
-
-  /** @deprecated Use getRecentlyActiveTopic for the new topic-based banner. */
-  const getRecentlyActive = async (headers: HeadersInit = {}): Promise<any> => {
-    const res = await fetch(`${baseUrl}/skill/me/recently-active`, { method: 'GET', headers: getHeaders(headers) });
-    if (!res.ok) throw new Error(`Failed to fetch recently active: ${res.status}`);
-    const data = await res.json();
-    return data.data;
-  };
-
-  /**
-   * NEW — Returns the most recently accessed topic (powers resume banner).
-   * Hits GET /skill/me/recently-active-topic
-   */
-  const getRecentlyActiveTopic = async (headers: HeadersInit = {}): Promise<any> => {
-    const res = await fetch(`${baseUrl}/skill/me/recently-active-topic`, { method: 'GET', headers: getHeaders(headers) });
-    if (!res.ok) throw new Error(`Failed to fetch recently active topic: ${res.status}`);
-    const data = await res.json();
-    return data.data;
-  };
-
-  const getMySkillProgress = async (headers: HeadersInit = {}): Promise<any> => {
-    const res = await fetch(`${baseUrl}/skill/me/progress`, { method: 'GET', headers: getHeaders(headers) });
-    if (!res.ok) throw new Error(`Failed to fetch my skill progress: ${res.status}`);
-    const data = await res.json();
-    return data.data;
-  };
-
-  // ─── Cross-promotion ───────────────────────────────────────────────────────
-
-  const getLessonSkillContext = async (lessonId: string, headers: HeadersInit = {}): Promise<any> => {
-    const res = await fetch(`${baseUrl}/skill/lessons/${lessonId}/skill-context`, { method: 'GET', headers: getHeaders(headers) });
-    if (!res.ok) throw new Error(`Failed to fetch lesson skill context for ${lessonId}: ${res.status}`);
-    const data = await res.json();
-    return data.data;
-  };
+    if (!res.ok) return null;
+    const json = await res.json();
+    return json.data;
+  }, []);
 
   return {
-    toUrlSlug,
-    toApiSlug,
-    // sections
-    getSkillSections,
-    getSkillSectionTopics,      // ← NEW (primary)
-    getSkillSectionBundles,     // legacy
     getProfessions,
-    // bundles (legacy)
-    getSingleBundle,
-    startSkillBundle,
-    startBundleItem,
-    getSkillBundleProgress,
-    // topics (NEW)
-    startSkillTopic,            // ← NEW
-    // progress
-    getRecentlyActiveTopic,     // ← NEW (primary)
-    getRecentlyActive,          // legacy
-    getMySkillProgress,
-    // cross-promotion
-    getLessonSkillContext,
+    getProfessionTests,
+    getSingleTest,
+    getSession,
+    startSession,
+    pauseSession,
+    submitActivity,
+    completeSession,
+    getRecentlyActive,
   };
 }

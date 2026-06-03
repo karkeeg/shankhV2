@@ -51,6 +51,8 @@ interface Lesson {
   status: string;
   lessonCompletionPct: number;
   activityTypes: string[];
+  totalSteps: number;
+  completedSteps: number;
 }
 
 interface SubtopicDetail extends Subtopic {
@@ -422,10 +424,10 @@ export default function ModulePage() {
                       </div>
                     ) : (
                       (subtopicDetail?.lessons || []).map((lesson, idx) => {
-                        const totalActivities = lesson.activityTypes?.length || 1;
-                        console.log(lesson)
-                        const completedCount = Math.round(((lesson.lessonCompletionPct || 0) / 100) * totalActivities);
-                        const isAllDone = lesson.status === "completed" || completedCount === totalActivities;
+                        const totalActivities = lesson.totalSteps || 1;
+                        const completedCount = lesson.completedSteps || 0;
+                        const isAllDone = lesson.status === "completed";
+                        const pct = totalActivities > 0 ? Math.round((completedCount / totalActivities) * 100) : 0;
                         return (
                           <div
                             key={lesson.id}
@@ -439,11 +441,11 @@ export default function ModulePage() {
                                 </span>
                                 {isAllDone ? (
                                   <span className="bg-emerald-100 text-emerald-700 text-[9px] font-extrabold px-2 py-0.5 rounded-full border border-emerald-200 select-none">
-                                    Completed ({completedCount}/{totalActivities} Activities)
+                                    ✓ Completed · {completedCount}/{totalActivities} Activities · {pct}%
                                   </span>
                                 ) : (
                                   <span className="bg-[#E6F0F1] text-[#01696F] text-[9px] font-extrabold px-2 py-0.5 rounded-full border border-[#01696F]/10 select-none">
-                                    {completedCount}/{totalActivities} Activities Completed
+                                    {completedCount}/{totalActivities} Activities · {pct}%
                                   </span>
                                 )}
                               </div>

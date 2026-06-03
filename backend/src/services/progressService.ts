@@ -34,7 +34,13 @@ export async function cascadeLessonProgress(userId: string, lessonId: string) {
   });
   const subtopicCompleted = subtopicLessonProgress.filter((p) => p.status === "completed").length;
   const subtopicTotal = subtopicLessons.length;
-  const subtopicCompletionPct = subtopicTotal > 0 ? Math.round((subtopicCompleted / subtopicTotal) * 100) : 0;
+  
+  // Calculate average completion percentage across all lessons in the subtopic
+  const totalCompletionPctSum = subtopicLessons.reduce((sum, lessonId) => {
+    const prog = subtopicLessonProgress.find((p) => p.lessonId === lessonId);
+    return sum + (prog?.lessonCompletionPct || 0);
+  }, 0);
+  const subtopicCompletionPct = subtopicTotal > 0 ? Math.round(totalCompletionPctSum / subtopicTotal) : 0;
 
   await prisma.userSubtopicProgress.upsert({
     where: { userId_subtopicId: { userId, subtopicId } },
@@ -125,74 +131,29 @@ export async function cascadeLessonProgress(userId: string, lessonId: string) {
  * Schema fields (UserSkillBundleProgress):
  *   bundleId, itemsCompleted, itemsTotal, completionPct
  */
-export async function updateSkillProgress(
-  userId: string,
-  lessonId: string,
-  activityType: string,
-  scorePct: number
-) {
-  // Find the related SkillBundleItem (if any)
-  const bundleItem = await prisma.skillBundleItem.findFirst({
-    where: { lessonId, activityType: activityType as ActivityType },
+/**
+ * Update a user's skill test session progress.
+ * Computes average scorePct across all completed responses in the session,
+ * and updates the completedItems count.
+ */
+export async function updateSkillTestSessionProgress(sessionId: string) {
+  const responses = await prisma.userSkillTestResponse.findMany({
+    where: { sessionId },
   });
 
-  if (!bundleItem) {
-    // No linked skill item – nothing to update.
-    return;
+  const completedItems = responses.length;
+  let avgScorePct = null;
+
+  if (completedItems > 0) {
+    const sum = responses.reduce((acc, r) => acc + (r.scorePct ?? 0), 0);
+    avgScorePct = Math.round(sum / completedItems);
   }
 
-  // Upsert the user's best score for this item (keep highest).
-  const existing = await prisma.userSkillItemProgress.findUnique({
-    where: { userId_bundleItemId: { userId, bundleItemId: bundleItem.id } },
-  });
-
-  const newBest = existing?.bestScorePct != null
-    ? Math.max(existing.bestScorePct, scorePct)
-    : scorePct;
-  const isCompleted = newBest >= 70;
-
-  await prisma.userSkillItemProgress.upsert({
-    where: { userId_bundleItemId: { userId, bundleItemId: bundleItem.id } },
-    update: {
-      bestScorePct: newBest,
-      isCompleted,
-      attempts: { increment: 1 },
-      completedAt: isCompleted ? new Date() : undefined,
-    },
-    create: {
-      userId,
-      bundleItemId: bundleItem.id,
-      bestScorePct: scorePct,
-      isCompleted,
-      attempts: 1,
-      completedAt: isCompleted ? new Date() : undefined,
-    },
-  });
-
-  // Recalculate the bundle progress.
-  const bundleItems = await prisma.skillBundleItem.findMany({
-    where: { bundleId: bundleItem.bundleId },
-    select: { id: true },
-  });
-  const itemIds = bundleItems.map((i) => i.id);
-  const userItemProgress = await prisma.userSkillItemProgress.findMany({
-    where: { userId, bundleItemId: { in: itemIds } },
-  });
-  const itemsCompleted = userItemProgress.filter((p) => p.isCompleted).length;
-  const itemsTotal = itemIds.length;
-  const completionPct = itemsTotal > 0 ? Math.round((itemsCompleted / itemsTotal) * 100) : 0;
-
-  await prisma.userSkillBundleProgress.upsert({
-    where: { userId_bundleId: { userId, bundleId: bundleItem.bundleId } },
-    update: { itemsCompleted, itemsTotal, completionPct, lastAccessedAt: new Date() },
-    create: {
-      userId,
-      bundleId: bundleItem.bundleId,
-      itemsCompleted,
-      itemsTotal,
-      completionPct,
-      startedAt: new Date(),
-      lastAccessedAt: new Date(),
+  return await prisma.userSkillTestSession.update({
+    where: { id: sessionId },
+    data: {
+      completedItems,
+      scorePct: avgScorePct,
     },
   });
 }
@@ -268,4 +229,97 @@ export async function recalculateAllUserProgress(userId: string) {
       continue;
     }
   }
+}
+
+/**
+ * Recalculate lesson progress (completion percentage and completion status) based on
+ * all registered activities in the lesson.
+ */
+export async function recalculateLessonProgress(userId: string, lessonId: string) {
+  const lesson = await prisma.lesson.findUnique({
+    where: { id: lessonId },
+    include: {
+      lessonActivities: true,
+      mcqActivity: { include: { questions: true } },
+      canvasActivity: true,
+      quantusActivity: true,
+    },
+  });
+
+  if (!lesson) return;
+
+  const activeTypes = lesson.lessonActivities.map((la) => la.activityType);
+  if (activeTypes.length === 0) return;
+
+  const progress = await prisma.userLessonProgress.findUnique({
+    where: { userId_lessonId: { userId, lessonId } },
+  });
+
+  let totalStepsCount = 0;
+  let completedStepsCount = 0;
+  let allActivitiesDone = true;
+
+  for (const type of activeTypes) {
+    if (type === "mcq" && lesson.mcqActivity) {
+      const qCount = lesson.mcqActivity.questions.length;
+      totalStepsCount += qCount;
+
+      const correctQuestions = await prisma.userMcqAnswer.groupBy({
+        by: ['questionId'],
+        where: {
+          session: { userId, activityId: lesson.mcqActivity.id },
+          isCorrect: true,
+        },
+      });
+
+      const correctCount = correctQuestions.length;
+      completedStepsCount += correctCount;
+
+      const isCompleted = correctCount === qCount;
+      if (!isCompleted) allActivitiesDone = false;
+
+    } else if (type === "canvas" && lesson.canvasActivity) {
+      totalStepsCount += 1;
+
+      const isCompleted = progress?.canvasBestScore != null && progress.canvasBestScore >= 70;
+      if (isCompleted) {
+        completedStepsCount += 1;
+      } else {
+        allActivitiesDone = false;
+      }
+
+    } else if (type === "quantus" && lesson.quantusActivity) {
+      totalStepsCount += 1;
+
+      const isCompleted = !!progress?.quantusAttempted;
+      if (isCompleted) {
+        completedStepsCount += 1;
+      } else {
+        allActivitiesDone = false;
+      }
+    }
+  }
+
+  const lessonCompletionPct = totalStepsCount > 0 
+    ? Math.round((completedStepsCount / totalStepsCount) * 100) 
+    : 0;
+
+  const status = allActivitiesDone ? "completed" : "in_progress";
+
+  await prisma.userLessonProgress.upsert({
+    where: { userId_lessonId: { userId, lessonId } },
+    update: {
+      status,
+      lessonCompletionPct,
+      completedAt: status === "completed" ? (progress?.completedAt || new Date()) : null,
+    },
+    create: {
+      userId,
+      lessonId,
+      status,
+      lessonCompletionPct,
+      startedAt: new Date(),
+      completedAt: status === "completed" ? new Date() : null,
+    },
+  });
 }
