@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { prisma } from "../prisma";
 import { getUserIdFromRequest } from "../middleware/auth";
+import { COMPLETION_THRESHOLD_PCT } from "../services/progressService";
 
 export const getModules = async (req: Request, res: Response) => {
   const userId = await getUserIdFromRequest(req);
@@ -36,6 +37,36 @@ export const getModules = async (req: Request, res: Response) => {
         applicationScore: progress?.applicationScore || 0,
       };
     }),
+  });
+};
+
+export const getModuleBySlug = async (req: Request, res: Response) => {
+  const { slug } = req.params;
+  const userId = await getUserIdFromRequest(req);
+
+  const module = await prisma.module.findFirst({
+    where: { slug, deletedAt: null, isActive: true },
+  });
+  if (!module) return res.status(404).json({ error: "Module not found" });
+
+  const progress = userId
+    ? await prisma.userModuleProgress.findUnique({ where: { userId_moduleId: { userId, moduleId: module.id } } })
+    : null;
+
+  return res.json({
+    data: {
+      id: module.id,
+      slug: module.slug,
+      name: module.name,
+      description: module.description,
+      accentColor: module.accentColor,
+      iconKey: module.iconKey,
+      orderIndex: module.orderIndex,
+      completionPercentage: progress?.moduleCompletionPct ?? 0,
+      conceptAccuracy:      progress?.conceptAccuracy ?? 0,
+      recallStrength:       progress?.recallStrength ?? 0,
+      applicationScore:     progress?.applicationScore ?? 0,
+    },
   });
 };
 
@@ -233,7 +264,7 @@ export const getSubtopic = async (req: Request, res: Response) => {
 
           } else if (type === "canvas") {
             totalSteps += 1;
-            if (lessonProg?.canvasBestScore != null && lessonProg.canvasBestScore >= 70) {
+            if (lessonProg?.canvasBestScore != null && lessonProg.canvasBestScore >= COMPLETION_THRESHOLD_PCT) {
               completedSteps += 1;
             }
 
@@ -309,7 +340,7 @@ export const getSubtopicLessons = async (req: Request, res: Response) => {
           completedSteps += correctCount;
         } else if (type === "canvas") {
           totalSteps += 1;
-          if (lessonProg?.canvasBestScore != null && lessonProg.canvasBestScore >= 70) {
+          if (lessonProg?.canvasBestScore != null && lessonProg.canvasBestScore >= COMPLETION_THRESHOLD_PCT) {
             completedSteps += 1;
           }
         } else if (type === "quantus") {

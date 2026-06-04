@@ -15,9 +15,9 @@ export const requireAuth = (req: Request, res: Response, next: NextFunction) => 
   if (!userId) {
     return res.status(401).json({ error: "Unauthorized" });
   }
-
   req.userId = userId;
   next();
+  
 };
 
 export const requireAdmin = async (req: Request, res: Response, next: NextFunction) => {

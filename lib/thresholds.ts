@@ -1,0 +1,2 @@
+export const PASS_THRESHOLD_PCT = 70;
+export const COMPLETION_THRESHOLD_PCT = 70;

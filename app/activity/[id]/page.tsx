@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import { PASS_THRESHOLD_PCT } from "@/lib/thresholds";
+import { saveQuantusDraft, loadQuantusDraft, clearQuantusDraft, saveCanvasDraft, loadCanvasDraft, clearCanvasDraft } from "@/lib/activityDraft";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import logo from "@/public/ShankhFull.png";
@@ -25,6 +27,9 @@ import { useAuthStore } from "@/lib/auth-store";
 import { CanvasExercise } from "@/components/exercise/CanvasExercise";
 import { ExcelGrid, evaluateExcelFormula } from "@/components/exercise/ExcelGrid";
 import { CanvasToolkit } from "@/components/exercise/CanvasToolkit";
+import { CanvasWorkspace, CanvasWorkspaceHandle } from "@/components/canvas/CanvasWorkspace";
+import { CanvasPalette, tokensToItems } from "@/components/canvas/CanvasPalette";
+import type { GradeResult, CanvasSnapshot, PaletteItem, SolutionSnapshot } from "@/components/canvas/types";
 
 // ─── Shuffle Utilities ────────────────────────────────────────────────────────
 
@@ -66,6 +71,85 @@ function savePersistedPosition(id: string, p: number) {
 // The API returns steps as { type, orderIndex, data: {...} }. MCQ steps hold
 // multiple questions. We flatten everything into a single flat list of cards
 // the UI renders against — one card per MCQ question, one per canvas/excel.
+
+function normalizeQuantusData(d: any) {
+  // If the backend has already provided the pre-built flat format, use it directly.
+  // cellHints may also be pre-built; if not, extract from quantusCells if present.
+  if (Array.isArray(d.gridRows) && Array.isArray(d.gridCols)) {
+    let cellHints: Record<string, string> = d.cellHints ?? {};
+    // Back-fill hints from quantusCells when the pre-built format doesn't include them
+    if (!d.cellHints && d.quantusCells && d.columns) {
+      const sortedCols = [...d.columns].sort((a: any, b: any) => a.colIndex - b.colIndex);
+      const colLabelMap: Record<number, string> = {};
+      sortedCols.forEach((c: any) => { colLabelMap[c.colIndex] = c.label; });
+      const firstColIdx: number = sortedCols[0]?.colIndex ?? 0;
+      const rowLabelMap: Record<number, string> = {};
+      (d.quantusCells as any[])
+        .filter((c) => c.colIndex === firstColIdx)
+        .forEach((c) => { rowLabelMap[c.rowIndex] = (c.displayValue || "").trim() || String(c.rowIndex); });
+      (d.quantusCells as any[]).forEach((c) => {
+        const hint = (c.hintText || c.formula || "").trim();
+        if (!hint) return;
+        const rowLabel = rowLabelMap[c.rowIndex] ?? String(c.rowIndex);
+        const colLabel = colLabelMap[c.colIndex] ?? String(c.colIndex);
+        cellHints[`${rowLabel}-${colLabel}`] = hint;
+      });
+    }
+    return {
+      gridRows: d.gridRows as string[],
+      gridCols: d.gridCols as string[],
+      gridValues: (d.gridValues ?? {}) as Record<string, string>,
+      correctAnswers: (d.correctAnswers ?? {}) as Record<string, string>,
+      cellHints,
+    };
+  }
+
+  // Legacy path: raw quantusCells + columns from the database model
+  if (d.quantusCells && d.columns) {
+    const sortedCols = [...d.columns].sort((a: any, b: any) => a.colIndex - b.colIndex);
+    const gridCols = sortedCols.map((c: any) => c.label as string);
+    const colLabelMap: Record<number, string> = {};
+    sortedCols.forEach((c: any) => { colLabelMap[c.colIndex] = c.label; });
+
+    const rowIndices: number[] = Array.from(
+      new Set((d.quantusCells as any[]).map((c) => c.rowIndex as number))
+    ).sort((a, b) => a - b);
+
+    // Row labels come from the first-column (colIndex === sortedCols[0].colIndex) cell values
+    const firstColIdx: number = sortedCols[0]?.colIndex ?? 0;
+    const rowLabelMap: Record<number, string> = {};
+    (d.quantusCells as any[])
+      .filter((c) => c.colIndex === firstColIdx)
+      .forEach((c) => {
+        rowLabelMap[c.rowIndex] = (c.displayValue || c.formula || "").trim() || String(c.rowIndex);
+      });
+
+    const gridRows = rowIndices.map((idx) => rowLabelMap[idx] ?? String(idx));
+
+    const gridValues: Record<string, string> = {};
+    const correctAnswers: Record<string, string> = {};
+    const cellHints: Record<string, string> = {};
+
+    (d.quantusCells as any[]).forEach((c) => {
+      const rowLabel = rowLabelMap[c.rowIndex] ?? String(c.rowIndex);
+      const colLabel = colLabelMap[c.colIndex] ?? String(c.colIndex);
+      const k = `${rowLabel}-${colLabel}`;
+      const exp = (c.expectedValue ?? "").toString().trim();
+      const val = (c.displayValue || c.formula || "").toString().trim();
+      if (exp !== "") {
+        correctAnswers[k] = exp;
+      } else if (val !== "") {
+        gridValues[k] = val;
+      }
+      const hint = (c.hintText || c.formula || "").toString().trim();
+      if (hint) cellHints[k] = hint;
+    });
+
+    return { gridRows, gridCols, gridValues, correctAnswers, cellHints };
+  }
+
+  return { gridRows: [], gridCols: [], gridValues: {}, correctAnswers: {} };
+}
 
 function normalizeSteps(rawSteps: any[]): any[] {
   return (rawSteps ?? []).flatMap((s: any) => {
@@ -115,17 +199,111 @@ function normalizeSteps(rawSteps: any[]): any[] {
     }
 
     if (s.type === "quantus") {
+      const qData = normalizeQuantusData(d);
       return [{
         type: "quantus",
         id: d.id,
         instructions: d.instructions,
         contextText: d.context,
-        gridRows: d.gridRows,
-        gridCols: d.gridCols,
-        gridValues: d.gridValues,
-        correctAnswers: d.correctAnswers,
+        gridRows: qData.gridRows,
+        gridCols: qData.gridCols,
+        gridValues: qData.gridValues,
+        correctAnswers: qData.correctAnswers,
+        cellHints: qData.cellHints ?? {},
         completed: s.completedByUser === true,
         submittedGrid: s.submittedGrid || s.draft || null,
+      }];
+    }
+
+    return [];
+  });
+}
+
+// ─── Case activity normalizer ────────────────────────────────────────────────
+// Converts CaseActivity[] (from /api/v1/cases/:id) into the same flat step
+// format as normalizeSteps so the rest of the page is source-agnostic.
+
+function normalizeCaseSteps(caseActivities: any[]): any[] {
+  return caseActivities.flatMap((activity: any) => {
+    const d = activity.activityData ?? {};
+    const response = activity.response ?? null;
+    const isCompleted = !!response;
+
+    if (activity.activityType === "mcq") {
+      return (d.questions ?? []).map((q: any, qi: number) => ({
+        type: "mcq",
+        id: q.id,
+        activityId: activity.id,
+        questionText: q.questionText,
+        instructions: d.instructions,
+        contextText: d.context,
+        explanation: q.explanation,
+        options: (q.options ?? []).map((o: any, oi: number) => ({
+          id: o.id,
+          label: o.optionText,
+          display: String.fromCharCode(65 + oi),
+        })),
+        completed: isCompleted,
+        submittedOptionId: null,
+        _isCaseActivity: true,
+        _caseActivityId: activity.id,
+        _isFirstQuestion: qi === 0,
+        _totalQuestions: (d.questions ?? []).length,
+        _questionIndex: qi,
+      }));
+    }
+
+    if (activity.activityType === "canvas") {
+      // Convert paletteItems → tokens + draggableElements so CanvasExercise
+      // and CanvasToolkit work identically to lesson canvas activities.
+      const palette = d.paletteItems ?? [];
+      const tokens = palette.map((p: any) => ({
+        id: p.id,
+        content: p.label,
+        type: p.shape ?? "rectangle",
+        tokenRole: "operand",
+      }));
+      const draggableElements = palette.length > 0 ? [{
+        category: "Nodes",
+        items: palette.map((p: any) => ({
+          id: p.id,
+          label: p.label,
+          content: p.label,
+          type: p.shape ?? "rectangle",
+        })),
+      }] : [];
+      return [{
+        type: "canvas",
+        id: activity.id,
+        instructions: d.instructions,
+        contextText: d.context,
+        questionText: d.title || "Framework",
+        assemblyMode: d.assemblyMode || "graph",
+        scoringMode: d.scoringMode || "partial",
+        tokens,
+        draggableElements,
+        completed: isCompleted,
+        submittedCanvasData: [],
+        _isCaseActivity: true,
+        _caseActivityId: activity.id,
+      }];
+    }
+
+    if (activity.activityType === "quantus") {
+      const qData = normalizeQuantusData(d);
+      return [{
+        type: "quantus",
+        id: activity.id,
+        instructions: d.instructions,
+        contextText: d.context,
+        gridRows: qData.gridRows,
+        gridCols: qData.gridCols,
+        gridValues: qData.gridValues,
+        correctAnswers: qData.correctAnswers,
+        completed: isCompleted,
+        submittedGrid: response?.responseData?.inputSnapshot ?? null,
+        _isCaseActivity: true,
+        _caseActivityId: activity.id,
       }];
     }
 
@@ -408,6 +586,7 @@ export default function UnifiedActivityPage() {
   const params = useParams();
   const searchParams = useSearchParams();
   const fromSkill = searchParams?.get("from") === "skill";
+  const fromCase = searchParams?.get("source") === "case";
   const id = (params?.id as string) || "les-1-1";
 
   const [activity, setActivity] = useState<any>(null);
@@ -436,7 +615,21 @@ export default function UnifiedActivityPage() {
   const [canvasElements, setCanvasElements] = useState<any[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
+  // ── Case mode: buffer MCQ answers until all questions in one activity are done
+  const [caseMcqBuffer, setCaseMcqBuffer] = useState<Record<string, string>>({});
+
+  // ── Canvas state ─────────────────────────────────────────────────────────────
+  const canvasRef = useRef<CanvasWorkspaceHandle>(null);
+  const [canvasPlacedIds, setCanvasPlacedIds] = useState<Set<string>>(new Set());
+  const [canvasGradeResult, setCanvasGradeResult] = useState<GradeResult | null>(null);
+  const [showCanvasBreakdown, setShowCanvasBreakdown] = useState(false);
+
   const token = useAuthStore((state) => state.token);
+  const user = useAuthStore((state) => state.user);
+
+  // ── Reactions ────────────────────────────────────────────────────────────────
+  const [reactionCounts, setReactionCounts] = useState({ likes: 0, dislikes: 0 });
+  const [userReaction, setUserReaction] = useState<"like" | "dislike" | null>(null);
 
   // ── Mobile: collapse panels by default on small screens ─────────────────────
   useEffect(() => {
@@ -448,13 +641,49 @@ export default function UnifiedActivityPage() {
 
   // ── Load activity ───────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!token) return; // wait for auth to hydrate
+    if (!token) return;
 
     const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "";
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     headers.Authorization = `Bearer ${token}`;
 
     setLoading(true);
+
+    // ── Case simulation mode ──────────────────────────────────────────────────
+    if (fromCase) {
+      Promise.all([
+        fetch(`${backendUrl}/api/v1/cases/${id}`, { headers }).then(r => r.json()),
+        fetch(`${backendUrl}/api/v1/cases/${id}/session`, { method: "POST", headers }).then(r => r.json()),
+      ])
+        .then(([detail]) => {
+          const raw = detail.data;
+          if (!raw) throw new Error("Case not found");
+          const steps = normalizeCaseSteps(raw.caseActivities ?? []);
+          const actData = {
+            id: raw.id,
+            title: raw.title,
+            difficulty: raw.difficulty,
+            moduleSlug: null,
+            caseNotes: raw.description,
+            hints: [],
+            steps,
+            _isCase: true,
+          };
+          setActivity(actData);
+          // Case activities preserve admin order — no shuffle
+          const order = steps.map((_: any, i: number) => i);
+          setShuffledOrder(order);
+          setOrderPosition(0);
+          setHintsUnlocked(1);
+          setSelectedOption(null);
+          setCaseMcqBuffer({});
+        })
+        .catch(err => console.error(err))
+        .finally(() => setLoading(false));
+      return;
+    }
+
+    // ── Lesson mode (existing) ─────────────────────────────────────────────────
     fetch(`${backendUrl}/api/v1/activities/${id}`, { headers })
       .then(async (r) => {
         if (!r.ok) {
@@ -503,12 +732,46 @@ export default function UnifiedActivityPage() {
       })
       .catch((err) => console.error(err))
       .finally(() => setLoading(false));
-  }, [id, token]);
+  }, [id, token, fromCase]);
 
   // Persist position as the user navigates.
   useEffect(() => {
     if (id && shuffledOrder.length > 0) savePersistedPosition(id, orderPosition);
   }, [id, orderPosition, shuffledOrder]);
+
+  // ── Fetch reactions for the current lesson ───────────────────────────────────
+  useEffect(() => {
+    if (!token || !id) return;
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "";
+    fetch(`${backendUrl}/api/v1/reactions/lessons/${id}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data?.data) {
+          setReactionCounts({ likes: data.data.likes, dislikes: data.data.dislikes });
+          setUserReaction(data.data.userReaction);
+        }
+      })
+      .catch(() => {});
+  }, [id, token]);
+
+  const handleReaction = async (reaction: "like" | "dislike") => {
+    if (!token) return;
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "";
+    try {
+      const res = await fetch(`${backendUrl}/api/v1/reactions/lessons/${id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ reaction }),
+      });
+      const data = await res.json();
+      if (data?.data) {
+        setReactionCounts({ likes: data.data.likes, dislikes: data.data.dislikes });
+        setUserReaction(data.data.userReaction);
+      }
+    } catch { }
+  };
 
   // ── Re-shuffle ──────────────────────────────────────────────────────────────
   const handleReshuffle = useCallback(() => {
@@ -529,7 +792,7 @@ export default function UnifiedActivityPage() {
   const excelTable = React.useMemo(() => {
     if (!step?.gridRows || !step?.gridCols) return [];
     return step.gridRows.map((row: string) =>
-      step.gridCols.map((col: string) => step.gridValues?.[`${row}-${col}`] || "")
+      step.gridCols.map((col: string) => step.gridValues?.[`${row}-${col}`] ?? "")
     );
   }, [step]);
 
@@ -537,8 +800,18 @@ export default function UnifiedActivityPage() {
     if (!step?.gridRows || !step?.gridCols) return [];
     const list: any[] = [];
     step.gridRows.forEach((row: string, rIdx: number) => {
-      step.gridCols.forEach((_: string, cIdx: number) => {
-        if (cIdx !== 0) list.push({ row: rIdx, col: cIdx, correctValue: step.correctAnswers?.[`${row}-${step.gridCols[cIdx]}`] || "", placeholder: "" });
+      step.gridCols.forEach((col: string, cIdx: number) => {
+        if (cIdx === 0) return;
+        const k = `${row}-${col}`;
+        if (step.correctAnswers?.[k] !== undefined) {
+          list.push({
+            row: rIdx,
+            col: cIdx,
+            correctValue: step.correctAnswers[k],
+            placeholder: "",
+            formula: step.cellHints?.[k] || undefined,
+          });
+        }
       });
     });
     return list;
@@ -547,30 +820,62 @@ export default function UnifiedActivityPage() {
   const excelFeedback = React.useMemo(() => {
     const map: Record<string, boolean> = {};
     if (feedback && step?.gridRows && step?.gridCols) {
-      step.gridRows.forEach((row: string) =>
-        step.gridCols.forEach((col: string) => {
+      step.gridRows.forEach((row: string, rIdx: number) =>
+        step.gridCols.forEach((col: string, cIdx: number) => {
+          // Use label-based key — must match ExcelGrid's getCellKey
           const k = `${row}-${col}`;
-          map[k] = (spreadsheetGrid[k]?.toString().trim() || "") === (step.correctAnswers?.[k]?.toString().trim() || "");
+          const userVal = spreadsheetGrid[k]?.toString().trim() ?? "";
+          const correctVal = step.correctAnswers?.[k]?.toString().trim() ?? "";
+          if (!correctVal) return; // skip non-answer cells
+          const numUser = Number(userVal);
+          const numCorrect = Number(correctVal);
+          const bothNumeric = !isNaN(numUser) && !isNaN(numCorrect) && correctVal !== "";
+          if (bothNumeric) {
+            const diff = Math.abs(numUser - numCorrect);
+            const tol = Math.abs(numCorrect) > 1 ? Math.abs(numCorrect) * 0.001 : 0.001;
+            map[k] = diff <= tol;
+          } else {
+            map[k] = userVal === correctVal;
+          }
         })
       );
     }
     return map;
   }, [feedback, step, spreadsheetGrid]);
 
-  // ── Sync when step changes ───────────────────────────────────────────────────
+  // ── Sync when step changes (load draft or fall back to server state) ──────────
   useEffect(() => {
     if (!step) return;
     setSelectedOption(null);
     setFeedback(null);
     if (step.type === "quantus") {
-      setSpreadsheetGrid(step.submittedGrid || step.gridValues || {});
+      const draft = !step.completed ? loadQuantusDraft(step.id) : null;
+      setSpreadsheetGrid(draft ?? step.submittedGrid ?? step.gridValues ?? {});
     } else if (step.type === "mcq") {
       if (step.submittedOptionId) setSelectedOption(step.submittedOptionId);
     } else if (step.type === "canvas") {
-      setCanvasElements(step.submittedCanvasData || []);
+      // Draft for canvas is loaded via initialElements — reset elements to trigger re-mount
+      const draft = !step.completed ? loadCanvasDraft(step.id) : null;
+      setCanvasElements(draft ? (draft as any) : (step.submittedCanvasData || []));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentStepIdx]);
+
+  // ── Save Quantus draft locally whenever grid changes ─────────────────────────
+  useEffect(() => {
+    if (!step || step.type !== "quantus" || step.completed) return;
+    if (Object.keys(spreadsheetGrid).length === 0) return;
+    const t = setTimeout(() => saveQuantusDraft(step.id, spreadsheetGrid), 600);
+    return () => clearTimeout(t);
+  }, [spreadsheetGrid, step]);
+
+  // ── Save Canvas draft locally whenever elements change ────────────────────────
+  useEffect(() => {
+    if (!step || step.type !== "canvas" || step.completed) return;
+    if (canvasElements.length === 0) return;
+    const t = setTimeout(() => saveCanvasDraft(step.id, canvasElements as any), 400);
+    return () => clearTimeout(t);
+  }, [canvasElements, step]);
 
   // ── Autosave to Database ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -609,15 +914,26 @@ export default function UnifiedActivityPage() {
   }, [spreadsheetGrid, canvasElements, selectedOption, step, token]);
 
   // ── Validation ────────────────────────────────────────────────────────────────
+  // Key function MUST match ExcelGrid's getCellKey — label-based when row/colLabels present
+  const excelKey = (r: number, c: number): string => {
+    if (step?.gridRows && step?.gridCols) {
+      return `${step.gridRows[r]}-${step.gridCols[c]}`;
+    }
+    return `${r}-${c}`;
+  };
+
   const validateExcel = () => {
     const result: Record<string, boolean> = {};
-    const key = (r: number, c: number) => `${r}-${c}`;
     excelInputs.forEach(({ row, col }) => {
-      const k = key(row, col);
+      const k = excelKey(row, col);
       let n = 0;
-      try { n = Number(evaluateExcelFormula(spreadsheetGrid[k] ?? "", spreadsheetGrid, [], key)); }
+      try { n = Number(evaluateExcelFormula(spreadsheetGrid[k] ?? "", spreadsheetGrid, [], excelKey)); }
       catch { n = Number(spreadsheetGrid[k]); }
-      result[k] = Math.abs(n - Number(step.correctAnswers?.[k])) < 0.0001;
+      const expected = Number(step.correctAnswers?.[k]);
+      // Relative tolerance for large numbers, absolute tolerance for small
+      const diff = Math.abs(n - expected);
+      const tol = Math.abs(expected) > 1 ? Math.abs(expected) * 0.001 : 0.001;
+      result[k] = diff <= tol;
     });
     return result;
   };
@@ -708,16 +1024,84 @@ export default function UnifiedActivityPage() {
   const handleNextStep = () => { if (orderPosition < shuffledOrder.length - 1) setOrderPosition(p => p + 1); };
 
   const handleClose = () => {
-    if (fromSkill) {
+    if (fromCase) {
+      router.push(`/case-simulations/${id}`);
+    } else if (fromSkill) {
       router.back();
     } else {
       router.push(activity?.moduleSlug ? `/learning/${activity.moduleSlug}` : "/learning/finance");
     }
   };
   const handleNextLesson = () => {
-    if (activity?.nextLessonId) router.push(`/activity/${activity.nextLessonId}`);
-    else if (activity?.moduleSlug) router.push(`/learning/${activity.moduleSlug}`);
-    else router.push("/learning/finance");
+    if (fromCase) {
+      router.push("/skill?section=case_simulations");
+    } else if (activity?.nextLessonId) {
+      router.push(`/activity/${activity.nextLessonId}`);
+    } else if (activity?.moduleSlug) {
+      router.push(`/learning/${activity.moduleSlug}`);
+    } else {
+      router.push("/learning/finance");
+    }
+  };
+
+  // ── Unified canvas submit (lesson + case) ─────────────────────────────────────
+  const handleCanvasSubmit = async (snapshot: CanvasSnapshot): Promise<GradeResult | null> => {
+    if (!step) return null;
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "";
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (token) headers.Authorization = `Bearer ${token}`;
+
+    if (step._isCaseActivity) {
+      try {
+        const res = await fetch(`${backendUrl}/api/v1/cases/${id}/activities/${step._caseActivityId}/submit`, {
+          method: "POST", headers,
+          body: JSON.stringify({ responseData: { edges: snapshot.edges.map(e => ({ sourceId: e.sourceId, targetId: e.targetId })) } }),
+        });
+        const rj = await res.json();
+        if (!res.ok) return null;
+        const { scorePct, gradeBreakdown, allComplete } = rj.data;
+        if (activity?.steps) {
+          const updated = [...activity.steps];
+          updated[currentStepIdx] = { ...updated[currentStepIdx], completed: scorePct >= 60 };
+          setActivity({ ...activity, steps: updated });
+        }
+        if (allComplete) setTimeout(() => router.push(`/case-simulations/${id}`), 2500);
+        return gradeBreakdown ?? { scorePct, correct: [], wrong: [], missing: [] };
+      } catch { return null; }
+    }
+
+    // Lesson canvas — POST to the standard session endpoint
+    try {
+      const res = await fetch(`${backendUrl}/api/v1/attempts/session/canvas`, {
+        method: "POST", headers,
+        body: JSON.stringify({
+          lessonId: id, activityType: "canvas",
+          canvasData: {
+            placedTokens: snapshot.nodes.map(n => n.id),
+            edges: snapshot.edges.map(e => ({ from: e.sourceId, to: e.targetId })),
+          },
+        }),
+      });
+      const rj = await res.json();
+      if (!res.ok) throw new Error(rj?.error || "Submission failed");
+      const accuracy: number = rj.data?.accuracy ?? rj.data?.scorePct ?? 100;
+      const isCorrect = accuracy >= PASS_THRESHOLD_PCT;
+      if (activity?.steps) {
+        const updated = [...activity.steps];
+        updated[currentStepIdx] = { ...updated[currentStepIdx], completed: isCorrect };
+        setActivity({ ...activity, steps: updated });
+      }
+      clearCanvasDraft(step?.id ?? "");
+      setFeedback({
+        isError: !isCorrect,
+        message: isCorrect ? "Excellent! Correct answer." : "Not quite — try again!",
+        metrics: rj.data || {},
+      });
+      return { scorePct: accuracy, correct: [], wrong: [], missing: [] };
+    } catch (e: any) {
+      setFeedback({ isError: true, message: e?.message || "Network error." });
+      return null;
+    }
   };
 
   // ── Check answer ──────────────────────────────────────────────────────────────
@@ -729,6 +1113,85 @@ export default function UnifiedActivityPage() {
     setSubmitting(true);
     setFeedback(null);
 
+    // ── Case activity submit path ────────────────────────────────────────────────
+    if (step._isCaseActivity) {
+      // Canvas is handled below via the unified path
+      if (step.type === "canvas") {
+        const snapshot = canvasRef.current?.getSnapshot();
+        if (!snapshot || snapshot.nodes.length === 0) {
+          setFeedback({ isError: true, message: "Place some nodes on the canvas first!" });
+          setSubmitting(false);
+          return;
+        }
+        const result = await handleCanvasSubmit(snapshot);
+        if (result) { setCanvasGradeResult(result); setShowCanvasBreakdown(false); }
+        setSubmitting(false);
+        return;
+      }
+
+      let responseData: any = {};
+
+      if (step.type === "mcq") {
+        if (!selectedOption) {
+          setFeedback({ isError: true, message: "Please select an option first!" });
+          setSubmitting(false);
+          return;
+        }
+        // Collect this answer into the buffer
+        const newBuffer = { ...caseMcqBuffer, [step.id]: selectedOption };
+        setCaseMcqBuffer(newBuffer);
+
+        // Check if next step belongs to the same case activity (more questions pending)
+        const nextOrderPos = orderPosition + 1;
+        const nextStepIdx = shuffledOrder[nextOrderPos] ?? -1;
+        const nextStep = nextStepIdx >= 0 ? activity?.steps?.[nextStepIdx] : null;
+        const moreQuestionsInActivity = nextStep?._caseActivityId === step._caseActivityId;
+
+        if (moreQuestionsInActivity) {
+          // Just advance — don't submit yet
+          setFeedback({ isError: false, message: `Question ${step._questionIndex + 1} recorded. Next →` });
+          setOrderPosition(p => p + 1);
+          setSelectedOption(null);
+          setSubmitting(false);
+          return;
+        }
+        // Last question of this MCQ activity — submit all collected answers
+        responseData = { answers: Object.entries(newBuffer).map(([questionId, selectedOptionId]) => ({ questionId, selectedOptionId })) };
+        setCaseMcqBuffer({});
+
+      } else if (step.type === "quantus") {
+        responseData = { inputSnapshot: spreadsheetGrid };
+      }
+
+      try {
+        const res = await fetch(`${backendUrl}/api/v1/cases/${id}/activities/${step._caseActivityId}/submit`, {
+          method: "POST", headers,
+          body: JSON.stringify({ responseData }),
+        });
+        const rj = await res.json();
+        if (!res.ok) throw new Error(rj?.error || "Submit failed");
+        const { scorePct, allComplete } = rj.data;
+        const isCorrect = (scorePct ?? 0) >= 60;
+        if (activity?.steps) {
+          const updated = [...activity.steps];
+          updated[currentStepIdx] = { ...updated[currentStepIdx], completed: isCorrect };
+          setActivity({ ...activity, steps: updated });
+        }
+        setFeedback({
+          isError: !isCorrect,
+          message: isCorrect ? `Correct! Score: ${Math.round(scorePct)}%` : `Score: ${Math.round(scorePct)}% — try again!`,
+          metrics: { conceptAccuracy: scorePct, recallStrength: scorePct, applicationScore: scorePct },
+        });
+        if (allComplete) setTimeout(() => router.push(`/case-simulations/${id}`), 2500);
+      } catch (e: any) {
+        setFeedback({ isError: true, message: e?.message || "Error submitting." });
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+
+    // ── Lesson submit path (existing) ────────────────────────────────────────────
     // Base payload — backend controllers require lessonId + activityType
     const payload: Record<string, unknown> = { lessonId: id, activityType: step.type };
 
@@ -756,13 +1219,48 @@ export default function UnifiedActivityPage() {
       payload.total = total;
 
     } else if (step.type === "canvas") {
-      // Extract structural graph from Excalidraw state — server does all grading
+      // extractCanvasGraph reads Excalidraw state for both lesson + case canvas
       const graph = extractCanvasGraph();
       if (graph.placedTokens.length === 0) {
         setFeedback({ isError: true, message: "Drag some tokens onto the canvas first!" });
         setSubmitting(false);
         return;
       }
+
+      if (step._isCaseActivity) {
+        // Post to case activity endpoint
+        try {
+          const res = await fetch(`${backendUrl}/api/v1/cases/${id}/activities/${step._caseActivityId}/submit`, {
+            method: "POST", headers,
+            body: JSON.stringify({ responseData: { canvasData: graph } }),
+          });
+          const rj = await res.json();
+          if (!res.ok) throw new Error(rj?.error || "Submit failed");
+          const { scorePct, allComplete } = rj.data;
+          const isCorrect = (scorePct ?? 0) >= 60;
+          if (activity?.steps) {
+            const updated = [...activity.steps];
+            updated[currentStepIdx] = {
+              ...updated[currentStepIdx], completed: isCorrect,
+              submittedCanvasData: canvasElements,
+            };
+            setActivity({ ...activity, steps: updated });
+          }
+          setFeedback({
+            isError: !isCorrect,
+            message: isCorrect ? "Excellent! Correct answer." : "Not quite — try again!",
+            metrics: rj.data || {},
+          });
+          if (allComplete) setTimeout(() => router.push(`/case-simulations/${id}`), 2500);
+        } catch (e: any) {
+          setFeedback({ isError: true, message: e?.message || "Error submitting." });
+        } finally {
+          setSubmitting(false);
+        }
+        return;
+      }
+
+      // Lesson canvas → standard session endpoint
       payload.canvasData = graph;
     }
 
@@ -778,7 +1276,7 @@ export default function UnifiedActivityPage() {
 
       // Mark the step completed locally (accuracy >= 70 is "correct" by backend rules)
       const accuracy: number = sj.data?.accuracy ?? sj.data?.scorePct ?? 100;
-      const isCorrect = accuracy >= 70;
+      const isCorrect = accuracy >= PASS_THRESHOLD_PCT;
 
       if (activity?.steps) {
         const updated = [...activity.steps];
@@ -791,6 +1289,10 @@ export default function UnifiedActivityPage() {
         };
         setActivity({ ...activity, steps: updated });
       }
+      // Clear local draft on any submit (pass or fail — user got feedback)
+      if (step.type === "quantus") clearQuantusDraft(step.id);
+      if (step.type === "canvas") clearCanvasDraft(step.id);
+
       setFeedback({
         isError: !isCorrect,
         message: isCorrect ? "Excellent! Correct answer." : "Not quite — try again!",
@@ -848,7 +1350,7 @@ export default function UnifiedActivityPage() {
                 onClick={handleClose}
                 className="w-full py-1.5 bg-[#DFEAEA] text-[#01696F] hover:bg-[#D7E8E9] font-bold text-xs rounded-xl shadow-sm transition-all active:scale-95 flex items-center justify-center gap-1.5 border border-[#01696F]/10"
               >
-                {fromSkill ? "← Back to Test" : "← Back to content"}
+                {fromCase ? "← Back to Case" : fromSkill ? "← Back to Test" : "← Back to content"}
               </button>
             </div>
 
@@ -868,7 +1370,7 @@ export default function UnifiedActivityPage() {
                     onClick={handleNextLesson}
                     className="w-full py-2 bg-[#01696F] hover:bg-[#01696F]/90 text-white font-black text-[11px] uppercase tracking-wider rounded-xl shadow transition-all active:scale-95 flex items-center justify-center gap-1.5"
                   >
-                    Next Lesson <ArrowRight size={13} />
+                    {fromCase ? "Finish Case" : "Next Lesson"} <ArrowRight size={13} />
                   </button>
                 </div>
               )}
@@ -913,6 +1415,7 @@ export default function UnifiedActivityPage() {
                   <p className="text-xs text-zinc-600 leading-relaxed font-medium whitespace-pre-line">{step.contextText}</p>
                 </div>
               )}
+              {/* Canvas toolkit for ALL canvas activities (lesson + case) */}
               {step.type === "canvas" && (
                 <CanvasToolkit draggableElements={step.draggableElements || []} />
               )}
@@ -922,17 +1425,35 @@ export default function UnifiedActivityPage() {
           {/* User profile card */}
           <div className="bg-[#DFEAEA] border border-[#01696F]/10 rounded-2xl p-2.5 flex items-center gap-2 flex-shrink-0">
             <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-[#01696F] font-bold shadow-sm flex-shrink-0 border border-zinc-200 text-xs">
-              A
+              {user?.name?.[0]?.toUpperCase() ?? "?"}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-extrabold text-zinc-800 truncate">Andrew Smith</p>
+              <p className="text-xs font-extrabold text-zinc-800 truncate">{user?.name ?? "Guest"}</p>
               <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">Free Plan</p>
             </div>
-            <div className="text-right flex-shrink-0">
-              <div className="flex items-center gap-1 text-[10px] font-bold text-zinc-500 justify-end">
-                <ThumbsUp size={9} /> 4 <ThumbsDown size={9} /> 2
-              </div>
-              <p className="text-[9px] text-[#01696F] font-extrabold uppercase tracking-tight mt-0.5">53.47%</p>
+            <div className="flex items-center gap-1 flex-shrink-0">
+              <button
+                onClick={() => handleReaction("like")}
+                className={cn(
+                  "flex items-center gap-0.5 px-1.5 py-1 rounded-lg text-[10px] font-bold transition-all active:scale-95",
+                  userReaction === "like"
+                    ? "bg-[#01696F] text-white"
+                    : "text-zinc-500 hover:bg-white/60"
+                )}
+              >
+                <ThumbsUp size={10} /> {reactionCounts.likes}
+              </button>
+              <button
+                onClick={() => handleReaction("dislike")}
+                className={cn(
+                  "flex items-center gap-0.5 px-1.5 py-1 rounded-lg text-[10px] font-bold transition-all active:scale-95",
+                  userReaction === "dislike"
+                    ? "bg-rose-500 text-white"
+                    : "text-zinc-500 hover:bg-white/60"
+                )}
+              >
+                <ThumbsDown size={10} /> {reactionCounts.dislikes}
+              </button>
             </div>
           </div>
         </div>
@@ -987,13 +1508,15 @@ export default function UnifiedActivityPage() {
               </button>
             )}
 
-            <button
-              onClick={handleReshuffle}
-              className="px-2.5 py-1.5 text-[#01696F] hover:bg-[#E6F0F1] font-bold text-xs rounded-xl transition-all flex items-center gap-1 active:scale-95 border border-[#01696F]/20 flex-shrink-0"
-              title="Re-shuffle activities"
-            >
-              <Shuffle size={12} /> <span className="hidden md:inline">Shuffle</span>
-            </button>
+            {!fromCase && (
+              <button
+                onClick={handleReshuffle}
+                className="px-2.5 py-1.5 text-[#01696F] hover:bg-[#E6F0F1] font-bold text-xs rounded-xl transition-all flex items-center gap-1 active:scale-95 border border-[#01696F]/20 flex-shrink-0"
+                title="Re-shuffle activities"
+              >
+                <Shuffle size={12} /> <span className="hidden md:inline">Shuffle</span>
+              </button>
+            )}
           </div>
 
           {/* Right controls */}
@@ -1067,13 +1590,15 @@ export default function UnifiedActivityPage() {
           <div className="flex items-center justify-between gap-3 px-4 py-2 bg-emerald-600 border-b border-emerald-700 shrink-0 animate-fade-in">
             <div className="flex items-center gap-2">
               <CheckCircle2 size={14} className="text-white shrink-0" fill="currentColor" />
-              <span className="text-xs font-bold text-white">🎉 Lesson complete — you've finished all activities!</span>
+              <span className="text-xs font-bold text-white">
+                {fromCase ? "🎉 Case complete — all activities done!" : "🎉 Lesson complete — you've finished all activities!"}
+              </span>
             </div>
             <button
               onClick={handleNextLesson}
               className="px-4 py-1.5 bg-white text-emerald-700 hover:bg-emerald-50 font-black text-[11px] uppercase tracking-wider rounded-xl transition-all active:scale-95 flex items-center gap-1.5 shadow-sm flex-shrink-0"
             >
-              Next Lesson <ArrowRight size={11} />
+              {fromCase ? "Finish Case" : "Next Lesson"} <ArrowRight size={11} />
             </button>
           </div>
         )}
@@ -1094,10 +1619,12 @@ export default function UnifiedActivityPage() {
                 showToolbar={true}
                 colLabels={step.gridCols}
                 rowLabels={step.gridRows}
+                showProgress={!step.completed}
               />
             </div>
           )}
 
+          {/* ── Canvas: same Excalidraw drag-and-drop for ALL canvas activities ── */}
           {step.type === "canvas" && (
             <div className="absolute inset-0 flex flex-col">
               <CanvasExercise

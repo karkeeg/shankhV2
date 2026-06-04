@@ -1,7 +1,9 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import { saveQuantusDraft, loadQuantusDraft, clearQuantusDraft, saveCanvasDraft, loadCanvasDraft, clearCanvasDraft } from "@/lib/activityDraft";
 import { useParams, useRouter } from "next/navigation";
+import Image from "next/image";
 import {
   Loader2,
   ArrowRight,
@@ -9,7 +11,13 @@ import {
   XCircle,
   Pause,
   ChevronLeft,
+  ChevronRight,
   Trophy,
+  X,
+  Lightbulb,
+  ArrowLeft,
+  ThumbsUp,
+  ThumbsDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/lib/auth-store";
@@ -68,11 +76,68 @@ function normalizeStep(rawStep: any, activityType: string): any[] {
         gridCols: d.gridCols,
         gridValues: d.gridValues,
         correctAnswers: d.correctAnswers,
+        cellHints: d.cellHints ?? {},
       },
     ];
   }
 
   return [];
+}
+
+// ─── Type meta ────────────────────────────────────────────────────────────────
+
+const TYPE_META: Record<string, { label: string; color: string }> = {
+  quantus: { label: "Spreadsheet", color: "bg-sky-100 text-sky-700 border-sky-200" },
+  mcq: { label: "Multiple Choice", color: "bg-violet-100 text-violet-700 border-violet-200" },
+  canvas: { label: "Framework Drill", color: "bg-amber-100 text-amber-700 border-amber-200" },
+};
+
+function ActivityTypePill({ type }: { type: string }) {
+  const m = TYPE_META[type] ?? { label: type, color: "bg-zinc-100 text-zinc-600 border-zinc-200" };
+  return (
+    <span className={cn("px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest border", m.color)}>
+      {m.label}
+    </span>
+  );
+}
+
+// ─── Panel Toggle ─────────────────────────────────────────────────────────────
+
+function PanelToggle({
+  open,
+  onClick,
+  side,
+}: {
+  open: boolean;
+  onClick: () => void;
+  side: "left" | "right";
+}) {
+  if (open) return null;
+  const isLeft = side === "left";
+  return (
+    <button
+      onClick={onClick}
+      aria-label={open ? "Collapse panel" : "Expand panel"}
+      className={cn(
+        "self-center z-20 flex-shrink-0",
+        "w-8 h-40 bg-white border border-zinc-200 shadow-md",
+        "rounded-full flex items-center justify-center",
+        "hover:bg-[#E6F0F1] hover:border-[#01696F]/30",
+        "transition-all duration-200 active:scale-95 group"
+      )}
+    >
+      {isLeft ? (
+        <ChevronRight size={14} className="text-zinc-500 group-hover:text-[#01696F]" />
+      ) : (
+        <div className="flex flex-col items-center justify-center gap-2">
+          <span className="text-[11px] font-bold text-[#01696F] uppercase tracking-widest [writing-mode:vertical-rl] rotate-180">
+            Session
+          </span>
+          <Trophy size={14} className="text-[#01696F] group-hover:scale-110 transition-transform duration-200" />
+        </div>
+      )}
+    </button>
+  );
 }
 
 // ─── Confirm overlay ──────────────────────────────────────────────────────────
@@ -91,31 +156,21 @@ function ConfirmSubmitOverlay({
   isSubmitting: boolean;
 }) {
   return (
-    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm rounded-3xl">
+    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm rounded-2xl">
       <div className="bg-white rounded-3xl p-8 flex flex-col items-center gap-5 shadow-2xl max-w-sm w-full mx-4 border border-zinc-100">
         <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center">
           <Trophy size={28} className="text-emerald-600" />
         </div>
-
         <div className="text-center">
-          <h3 className="text-lg font-black text-zinc-900 tracking-tight">
-            All items complete!
-          </h3>
+          <h3 className="text-lg font-black text-zinc-900 tracking-tight">All items complete!</h3>
           <p className="text-xs text-zinc-500 font-semibold mt-2 leading-relaxed">
-            You've finished all {totalItems} activities in this session.
-            Submit now to lock in your score and see the results.
+            You've finished all {totalItems} activities in this session. Submit now to lock in your score.
           </p>
         </div>
-
         <div className="w-full bg-zinc-50 border border-zinc-100 rounded-2xl p-4 flex items-center justify-between">
-          <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">
-            Completed
-          </span>
-          <span className="text-sm font-black text-[#01696F]">
-            {completedItems} / {totalItems} activities
-          </span>
+          <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Completed</span>
+          <span className="text-sm font-black text-[#01696F]">{completedItems} / {totalItems} activities</span>
         </div>
-
         <div className="flex flex-col gap-2 w-full">
           <button
             onClick={onConfirm}
@@ -123,15 +178,9 @@ function ConfirmSubmitOverlay({
             className="w-full py-3 bg-[#01696F] hover:bg-[#01696F]/90 disabled:opacity-60 text-white font-black text-xs uppercase tracking-wider rounded-2xl transition-all active:scale-95 shadow-sm flex items-center justify-center gap-2"
           >
             {isSubmitting ? (
-              <>
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                Submitting…
-              </>
+              <><Loader2 className="w-3.5 h-3.5 animate-spin" />Submitting…</>
             ) : (
-              <>
-                Submit & see results
-                <ArrowRight size={13} />
-              </>
+              <>Submit & see results<ArrowRight size={13} /></>
             )}
           </button>
           <button
@@ -142,6 +191,53 @@ function ConfirmSubmitOverlay({
             Review my answers first
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Bottom Feedback ──────────────────────────────────────────────────────────
+
+function BottomFeedback({
+  feedback,
+  onClose,
+}: {
+  feedback: any;
+  onClose: () => void;
+}) {
+  if (!feedback) return null;
+  const ok = !feedback.isError;
+  return (
+    <div className={cn(
+      "absolute bottom-4 left-1/2 -translate-x-1/2 z-30",
+      "w-[min(480px,calc(100%-2rem))] rounded-2xl shadow-2xl border",
+      "animate-fade-in-up overflow-hidden",
+      ok ? "bg-emerald-50 border-emerald-200" : "bg-rose-50 border-rose-200"
+    )}>
+      <div className={cn("h-1 w-full", ok ? "bg-emerald-500" : "bg-rose-500")} />
+      <div className="px-5 py-4 flex items-start gap-3">
+        <div className={cn(
+          "mt-0.5 w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center shadow-sm",
+          ok ? "bg-emerald-100" : "bg-rose-100"
+        )}>
+          {ok
+            ? <CheckCircle2 size={18} className="text-emerald-600" fill="currentColor" />
+            : <XCircle size={18} className="text-rose-500" fill="currentColor" />}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className={cn("text-sm font-bold", ok ? "text-emerald-800" : "text-rose-800")}>
+            {feedback.message}
+          </p>
+        </div>
+        <button
+          onClick={onClose}
+          className={cn(
+            "flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center transition-all",
+            ok ? "hover:bg-emerald-100 text-emerald-500" : "hover:bg-rose-100 text-rose-400"
+          )}
+        >
+          <X size={14} />
+        </button>
       </div>
     </div>
   );
@@ -158,6 +254,7 @@ export default function TestSessionPage() {
   const activityType = params?.activityType as string;
 
   const token = useAuthStore((s) => s.token) || Cookies.get("shankh-token");
+  const user = useAuthStore((s) => s.user);
 
   const headers = {
     "Content-Type": "application/json",
@@ -180,6 +277,11 @@ export default function TestSessionPage() {
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [spreadsheetGrid, setSpreadsheetGrid] = useState<Record<string, string>>({});
   const [canvasElements, setCanvasElements] = useState<any[]>([]);
+  // Separate initial snapshot passed to CanvasExercise — decoupled from the
+  // live canvasElements so that user edits don't re-trigger initialisation.
+  const [initialCanvasElements, setInitialCanvasElements] = useState<any[]>([]);
+  const [excelValidated, setExcelValidated] = useState(false);
+  const [excelFeedback, setExcelFeedback] = useState<Record<string, boolean>>({});
 
   // ── UI state ──────────────────────────────────────────────────────────────
   const [submitting, setSubmitting] = useState(false);
@@ -187,14 +289,34 @@ export default function TestSessionPage() {
   const [feedback, setFeedback] = useState<any>(null);
   const [showConfirm, setShowConfirm] = useState(false);
 
+  // ── Panel state ───────────────────────────────────────────────────────────
+  const [leftPanelOpen, setLeftPanelOpen] = useState(true);
+  const [rightPanelOpen, setRightPanelOpen] = useState(true);
+  const [activeLeftTab, setActiveLeftTab] = useState<"instructions" | "context">("instructions");
+
+  // ── Step counting (MCQ questions each count as 1 step) ────────────────────
+  const [totalSteps, setTotalSteps] = useState(0);
+  const [completedSteps, setCompletedSteps] = useState(0);
+
+  // ── Reactions for current test item ──────────────────────────────────────
+  const [reactionCounts, setReactionCounts] = useState({ likes: 0, dislikes: 0 });
+  const [userReaction, setUserReaction] = useState<"like" | "dislike" | null>(null);
+
   // Track latest timeSpentSecs for the confirm overlay's complete call
   const timeSpentRef = useRef(0);
+
+  // ── Mobile: collapse panels on small screens ──────────────────────────────
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.innerWidth < 768) {
+      setLeftPanelOpen(false);
+      setRightPanelOpen(false);
+    }
+  }, []);
 
   // ── Load or start session ─────────────────────────────────────────────────
   const loadSession = useCallback(async () => {
     if (!testId || !activityType) return;
     try {
-      // 1. Try to resume
       let res = await fetch(
         `${backendUrl}/api/v1/skill/tests/${testId}/sessions/${activityType}`,
         { headers }
@@ -203,7 +325,6 @@ export default function TestSessionPage() {
       let data: any;
 
       if (res.status === 404) {
-        // 2. Start fresh
         res = await fetch(
           `${backendUrl}/api/v1/skill/tests/${testId}/sessions`,
           {
@@ -227,17 +348,12 @@ export default function TestSessionPage() {
       setSession(data.session);
       timeSpentRef.current = data.session.timeSpentSecs ?? 0;
 
-      // Redirect if already finished
-      if (
-        data.session.status === "completed" ||
-        data.session.status === "expired"
-      ) {
+      if (data.session.status === "completed" || data.session.status === "expired") {
         router.push(`/skill/tests/${testId}/${activityType}/result`);
         return;
       }
 
       if (!data.nextItem) {
-        // All items done — show confirm
         setShowConfirm(true);
         setLoading(false);
         return;
@@ -245,7 +361,6 @@ export default function TestSessionPage() {
 
       setNextItem(data.nextItem);
 
-      // 3. Load the activity content for the next item
       const actRes = await fetch(
         `${backendUrl}/api/v1/activities/${data.nextItem.lessonId}`,
         { headers }
@@ -262,10 +377,37 @@ export default function TestSessionPage() {
       setActivityData(raw);
       setCurrentStepSubIndex(0);
 
-      // Reset inputs
+      // Each MCQ question counts as 1 step; canvas/quantus = 1 step per item
+      const stepsPerItem = activityType === "mcq" ? norm.length : 1;
+      setTotalSteps(data.session.totalItems * stepsPerItem);
+      setCompletedSteps(data.session.completedItems * stepsPerItem);
+
+      // Fetch reactions for the new lesson item
+      if (token && data.nextItem?.lessonId) {
+        fetch(`${backendUrl}/api/v1/reactions/lessons/${data.nextItem.lessonId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+          .then((r) => r.json())
+          .then((rj) => {
+            if (rj?.data) {
+              setReactionCounts({ likes: rj.data.likes, dislikes: rj.data.dislikes });
+              setUserReaction(rj.data.userReaction);
+            }
+          })
+          .catch(() => {});
+      }
+
       setSelectedOption(null);
-      setSpreadsheetGrid(targetStep.data?.gridValues || {});
-      setCanvasElements([]);
+      setExcelValidated(false);
+      setExcelFeedback({});
+      // Load local draft first; fall back to server-provided initial values.
+      // Use data.nextItem directly — nextItem state is stale at this point.
+      const qDraft = activityType === "quantus" ? loadQuantusDraft(data.nextItem.id) : null;
+      setSpreadsheetGrid(qDraft ?? targetStep.data?.gridValues ?? {});
+      const cDraft = activityType === "canvas" ? loadCanvasDraft(data.nextItem.id) : null;
+      const initElements = cDraft ?? [];
+      setCanvasElements(initElements);
+      setInitialCanvasElements(initElements);
       setFeedback(null);
     } catch (err) {
       console.error(err);
@@ -278,8 +420,23 @@ export default function TestSessionPage() {
     loadSession();
   }, [loadSession]);
 
-  // ── Timer handlers ────────────────────────────────────────────────────────
+  // ── Persist Quantus draft locally ─────────────────────────────────────────
+  useEffect(() => {
+    if (!nextItem || activityType !== "quantus") return;
+    if (Object.keys(spreadsheetGrid).length === 0) return;
+    const t = setTimeout(() => saveQuantusDraft(nextItem.id, spreadsheetGrid), 600);
+    return () => clearTimeout(t);
+  }, [spreadsheetGrid, nextItem, activityType]);
 
+  // ── Persist Canvas draft locally ──────────────────────────────────────────
+  useEffect(() => {
+    if (!nextItem || activityType !== "canvas") return;
+    if ((canvasElements as any[]).length === 0) return;
+    const t = setTimeout(() => saveCanvasDraft(nextItem.id, canvasElements as any), 400);
+    return () => clearTimeout(t);
+  }, [canvasElements, nextItem, activityType]);
+
+  // ── Timer handlers ────────────────────────────────────────────────────────
   const handleTimerTick = useCallback((secs: number) => {
     timeSpentRef.current = secs;
   }, []);
@@ -287,16 +444,11 @@ export default function TestSessionPage() {
   const handleTimerExpired = async () => {
     if (!session) return;
     try {
-      await fetch(
-        `${backendUrl}/api/v1/skill/sessions/${session.id}/complete`,
-        {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            timeSpentSecs: session.timeLimitMins * 60,
-          }),
-        }
-      );
+      await fetch(`${backendUrl}/api/v1/skill/sessions/${session.id}/complete`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ timeSpentSecs: session.timeLimitMins * 60 }),
+      });
       router.push(`/skill/tests/${testId}/${activityType}/result`);
     } catch (err) {
       console.error(err);
@@ -304,19 +456,15 @@ export default function TestSessionPage() {
   };
 
   // ── Confirm & complete ────────────────────────────────────────────────────
-
   const handleConfirmComplete = async () => {
     if (!session) return;
     setCompleting(true);
     try {
-      await fetch(
-        `${backendUrl}/api/v1/skill/sessions/${session.id}/complete`,
-        {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ timeSpentSecs: timeSpentRef.current }),
-        }
-      );
+      await fetch(`${backendUrl}/api/v1/skill/sessions/${session.id}/complete`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ timeSpentSecs: timeSpentRef.current }),
+      });
       router.push(`/skill/tests/${testId}/${activityType}/result`);
     } catch (err) {
       console.error(err);
@@ -325,42 +473,45 @@ export default function TestSessionPage() {
     }
   };
 
+  const TYPE_TO_SECTION: Record<string, string> = {
+    mcq: "mcqs",
+    canvas: "framework_drills",
+    quantus: "quant_lab",
+  };
+
   const handlePauseExit = async () => {
-    // Save timer state before leaving
     if (session) {
       try {
-        await fetch(
-          `${backendUrl}/api/v1/skill/sessions/${session.id}`,
-          {
-            method: "PATCH",
-            headers,
-            body: JSON.stringify({ timeSpentSecs: timeSpentRef.current }),
-          }
-        );
+        await fetch(`${backendUrl}/api/v1/skill/sessions/${session.id}`, {
+          method: "PATCH",
+          headers,
+          body: JSON.stringify({ timeSpentSecs: timeSpentRef.current }),
+        });
       } catch { }
     }
-    router.push("/skill");
+    router.push(`/skill?section=${TYPE_TO_SECTION[activityType] ?? "mcqs"}`);
   };
 
   // ── Validation helpers ────────────────────────────────────────────────────
-
   const validateExcel = (step: any): Record<string, boolean> => {
     const result: Record<string, boolean> = {};
     if (!step?.gridRows || !step?.gridCols) return result;
-    const key = (r: number, c: number) => `${r}-${c}`;
+    // Key must match ExcelGrid getCellKey — label-based
+    const key = (r: number, c: number) => `${step.gridRows[r]}-${step.gridCols[c]}`;
     step.gridRows.forEach((_: string, rIdx: number) => {
       step.gridCols.forEach((_c: string, cIdx: number) => {
         if (cIdx === 0) return;
         const k = key(rIdx, cIdx);
         let n = 0;
         try {
-          n = Number(
-            evaluateExcelFormula(spreadsheetGrid[k] ?? "", spreadsheetGrid, [], key)
-          );
+          n = Number(evaluateExcelFormula(spreadsheetGrid[k] ?? "", spreadsheetGrid, [], key));
         } catch {
           n = Number(spreadsheetGrid[k]);
         }
-        result[k] = Math.abs(n - Number(step.correctAnswers?.[k])) < 0.0001;
+        const expected = Number(step.correctAnswers?.[k]);
+        const diff = Math.abs(n - expected);
+        const tol = Math.abs(expected) > 1 ? Math.abs(expected) * 0.001 : 0.001;
+        result[k] = diff <= tol;
       });
     });
     return result;
@@ -396,17 +547,13 @@ export default function TestSessionPage() {
   };
 
   // ── Check & submit ────────────────────────────────────────────────────────
-
   const handleCheckSubmit = async () => {
     if (!session || !nextItem || !normalizedSteps.length) return;
     const step = normalizedSteps[currentStepSubIndex];
     setSubmitting(true);
     setFeedback(null);
 
-    const gradePayload: Record<string, any> = {
-      lessonId: nextItem.lessonId,
-      activityType,
-    };
+    const gradePayload: Record<string, any> = { lessonId: nextItem.lessonId, activityType };
 
     if (activityType === "mcq") {
       if (!selectedOption) {
@@ -414,9 +561,7 @@ export default function TestSessionPage() {
         setSubmitting(false);
         return;
       }
-      gradePayload.answers = [
-        { questionId: step.id || "", selectedOptionId: selectedOption },
-      ];
+      gradePayload.answers = [{ questionId: step.id || "", selectedOptionId: selectedOption }];
     } else if (activityType === "quantus") {
       const res = validateExcel(step);
       const correct = Object.values(res).filter(Boolean).length;
@@ -435,23 +580,37 @@ export default function TestSessionPage() {
     }
 
     try {
-      // Step 1: Grade via normal cascade
-      const gradeRes = await fetch(
-        `${backendUrl}/api/v1/attempts/session/${activityType}`,
-        {
-          method: "POST",
-          headers,
-          body: JSON.stringify(gradePayload),
-        }
-      );
+      const gradeRes = await fetch(`${backendUrl}/api/v1/attempts/session/${activityType}`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(gradePayload),
+      });
       const gradeJson = await gradeRes.json();
       if (!gradeRes.ok) throw new Error(gradeJson?.error || "Grading failed");
 
       const attemptId = gradeJson.data.id;
       const scorePct = gradeJson.data.accuracy ?? gradeJson.data.scorePct ?? 100;
 
-      // For MCQ with multiple questions, step through them first
+      // Per-cell feedback for quantus
+      if (activityType === "quantus") {
+        const cellMap: Record<string, boolean> = {};
+        const correctAnswers: Record<string, string> = step.correctAnswers ?? {};
+        // Keys are already label-based after backend + frontend normalisation
+        Object.entries(correctAnswers).forEach(([k, expected]) => {
+          const userVal = (spreadsheetGrid[k] ?? "").trim();
+          const numUser = Number(userVal);
+          const numExp = Number(expected as string);
+          const bothNum = !isNaN(numUser) && !isNaN(numExp) && String(expected) !== "";
+          const diff = Math.abs(numUser - numExp);
+          const tol = Math.abs(numExp) > 1 ? Math.abs(numExp) * 0.001 : 0.001;
+          cellMap[k] = bothNum ? diff <= tol : userVal === String(expected).trim();
+        });
+        setExcelFeedback(cellMap);
+        setExcelValidated(true);
+      }
+
       if (activityType === "mcq" && currentStepSubIndex < normalizedSteps.length - 1) {
+        setCompletedSteps((prev) => prev + 1);
         setCurrentStepSubIndex((prev) => prev + 1);
         setSelectedOption(null);
         setFeedback({
@@ -462,41 +621,41 @@ export default function TestSessionPage() {
         return;
       }
 
-      // Step 2: Link to skill test session
-      const submitRes = await fetch(
-        `${backendUrl}/api/v1/skill/sessions/${session.id}/submit`,
-        {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            testItemId: nextItem.id,
-            activityType,
-            existingSessionId: attemptId,
-            scorePct,
-          }),
-        }
-      );
+      const submitRes = await fetch(`${backendUrl}/api/v1/skill/sessions/${session.id}/submit`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          testItemId: nextItem.id,
+          activityType,
+          existingSessionId: attemptId,
+          scorePct,
+        }),
+      });
       const submitJson = await submitRes.json();
       if (!submitRes.ok) throw new Error("Failed to submit to session");
 
       const { sessionProgress, allComplete } = submitJson.data;
 
-      // Update local session progress counters
       setSession((prev: any) => ({
         ...prev,
         completedItems: sessionProgress.completedItems,
         totalItems: sessionProgress.totalItems,
       }));
 
+      // Count this final step as done
+      setCompletedSteps((prev) => prev + 1);
+
+      // Clear local draft — activity submitted to server
+      if (nextItem) {
+        clearQuantusDraft(nextItem.id);
+        clearCanvasDraft(nextItem.id);
+      }
+
       if (allComplete) {
-        // Show confirmation screen instead of auto-completing
         setFeedback(null);
         setShowConfirm(true);
       } else {
-        setFeedback({
-          isError: false,
-          message: "Activity recorded! Loading next activity…",
-        });
+        setFeedback({ isError: false, message: "Activity recorded! Loading next activity…" });
         setTimeout(() => loadSession(), 1200);
       }
     } catch (e: any) {
@@ -506,8 +665,24 @@ export default function TestSessionPage() {
     }
   };
 
-  // ── Loading state ─────────────────────────────────────────────────────────
+  // ── Reactions ─────────────────────────────────────────────────────────────
+  const handleReaction = async (reaction: "like" | "dislike") => {
+    if (!token || !nextItem?.lessonId) return;
+    try {
+      const res = await fetch(`${backendUrl}/api/v1/reactions/lessons/${nextItem.lessonId}`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ reaction, source: "test" }),
+      });
+      const rj = await res.json();
+      if (rj?.data) {
+        setReactionCounts({ likes: rj.data.likes, dislikes: rj.data.dislikes });
+        setUserReaction(rj.data.userReaction);
+      }
+    } catch { }
+  };
 
+  // ── Loading state ─────────────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center h-screen bg-[#F0EDE7] text-[#01696F] gap-2">
@@ -519,276 +694,402 @@ export default function TestSessionPage() {
 
   const step = normalizedSteps[currentStepSubIndex];
 
-  // ── MCQ question counter label ────────────────────────────────────────────
   const mcqLabel =
     activityType === "mcq" && normalizedSteps.length > 1
       ? `Question ${currentStepSubIndex + 1} of ${normalizedSteps.length}`
       : null;
 
+  const completedItems = session?.completedItems ?? 0;
+  const totalItems = session?.totalItems ?? 0;
+  // Use fine-grained step counts (each MCQ question = 1 step) for display
+  const displayCompleted = totalSteps > 0 ? completedSteps : completedItems;
+  const displayTotal = totalSteps > 0 ? totalSteps : totalItems;
+  const progressPct = displayTotal > 0 ? Math.round((displayCompleted / displayTotal) * 100) : 0;
+
   // ─────────────────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col h-screen overflow-hidden bg-[#F0EDE7] p-3 sm:p-4 gap-3 sm:gap-4 font-sans">
+    <div className="flex flex-row h-screen overflow-hidden font-sans bg-white text-zinc-800 p-2 sm:p-3 gap-0">
 
-      {/* ── Header ── */}
-      <header className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shrink-0">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handlePauseExit}
-            className="w-10 h-10 flex items-center justify-center bg-white border border-zinc-300 rounded-xl hover:bg-zinc-50 transition-colors shadow-sm active:scale-95 text-[#01696F]"
-            title="Pause & exit"
-          >
-            <ChevronLeft size={18} />
-          </button>
-          <div>
-            <h2 className="text-base sm:text-lg font-black text-[#01696F] tracking-tight leading-none">
-              {activityData?.lessonName || "Skill Test"}
-            </h2>
-            <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider mt-1">
-              {activityType.toUpperCase()} session
-              {session && (
-                <span className="ml-2 text-[#01696F]">
-                  · {session.completedItems ?? 0} / {session.totalItems ?? "?"} done
+      {/* ══════════════════════ LEFT PANEL ══════════════════════ */}
+      <div className={cn(
+        "flex-shrink-0 transition-all duration-300 ease-in-out overflow-hidden",
+        leftPanelOpen ? "w-60 xl:w-64" : "w-0"
+      )}>
+        <div className="w-60 xl:w-64 h-full flex flex-col justify-between pr-2">
+          <div className="flex flex-col gap-3 overflow-y-auto flex-1 pb-3">
+
+            {/* Logo + back */}
+            <div className="flex flex-col items-center gap-3 border-b border-zinc-100 pb-3 pt-1">
+              <div className="w-full flex justify-center">
+                {/* Replace with your actual logo import */}
+                <div className="h-8 w-28 bg-[#01696F]/10 rounded-lg flex items-center justify-center">
+                  <span className="text-xs font-black text-[#01696F] tracking-widest uppercase">Shankh</span>
+                </div>
+              </div>
+              <button
+                onClick={handlePauseExit}
+                className="w-full py-1.5 bg-[#DFEAEA] text-[#01696F] hover:bg-[#D7E8E9] font-bold text-xs rounded-xl shadow-sm transition-all active:scale-95 flex items-center justify-center gap-1.5 border border-[#01696F]/10"
+              >
+                <ChevronLeft size={13} /> Pause & Exit
+              </button>
+            </div>
+
+            
+
+            {/* Progress */}
+            <div className="flex flex-col gap-1.5 px-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Progress</span>
+                <span className="text-[10px] font-black text-[#01696F]">{displayCompleted}/{displayTotal}</span>
+              </div>
+              <div className="w-full h-2 bg-zinc-100 rounded-full overflow-hidden border border-zinc-200">
+                <div
+                  className="h-full bg-[#01696F] rounded-full transition-all duration-700"
+                  style={{ width: `${progressPct}%` }}
+                />
+              </div>
+            </div>
+
+            {/* Activity type */}
+            {step && (
+              <div className="flex items-center justify-between px-1">
+                <ActivityTypePill type={step.type} />
+                {mcqLabel && (
+                  <span className="text-[10px] font-bold text-zinc-400">{mcqLabel}</span>
+                )}
+              </div>
+            )}
+
+            {/* Instructions / Context tabs */}
+            <div className="flex bg-[#F0EDE7] p-1 rounded-full w-full border border-zinc-200/50 shadow-sm">
+              {(["instructions", "context"] as const).map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveLeftTab(tab)}
+                  className={cn(
+                    "flex-1 py-1.5 text-[10px] font-bold rounded-full transition-all duration-200 capitalize",
+                    activeLeftTab === tab
+                      ? "bg-[#28251D] text-white shadow-sm"
+                      : "text-zinc-500 hover:text-zinc-800"
+                  )}
+                >
+                  {tab}
+                </button>
+              ))}
+            </div>
+
+            {/* Content card */}
+            <div className="bg-[#FAF7F2] shadow-[0_2px_4px_0_#0000001F_inset] border border-[#F0EDE7] rounded-2xl p-3 flex flex-col gap-3 flex-1 overflow-y-auto">
+              <div className="flex items-start justify-between gap-2 border-b border-zinc-200/50 pb-2">
+                <h3 className="font-extrabold text-zinc-900 text-xs leading-tight tracking-tight">
+                  {activityData?.lessonName || "Skill Test"}
+                </h3>
+                <span className="px-2 py-0.5 bg-[#01696F]/10 text-[#01696F] text-[9px] font-black rounded-full uppercase tracking-wider flex-shrink-0">
+                  {activityType}
                 </span>
+              </div>
+
+              {activeLeftTab === "instructions" ? (
+                <div className="animate-fade-in">
+                  <span className="text-[9px] uppercase font-black tracking-widest text-[#01696F]/70 block mb-1">
+                    Instructions
+                  </span>
+                  <p className="text-xs text-zinc-700 leading-relaxed font-semibold whitespace-pre-line">
+                    {step?.instructions || step?.questionText || "Complete the activity and submit your answer."}
+                  </p>
+                </div>
+              ) : (
+                step?.contextText && (
+                  <div className="animate-fade-in">
+                    <span className="text-[9px] uppercase font-black tracking-widest text-[#01696F]/70 block mb-1">
+                      Context & Scenario
+                    </span>
+                    <p className="text-xs text-zinc-600 leading-relaxed font-medium whitespace-pre-line">
+                      {step.contextText}
+                    </p>
+                  </div>
+                )
               )}
-            </p>
+
+              {activityType === "canvas" && step?.draggableElements && (
+                <CanvasToolkit draggableElements={step.draggableElements} />
+              )}
+            </div>
           </div>
-        </div>
 
-        <div className="w-full sm:flex-1 sm:max-w-lg">
-          {session && (
-            <TimerBar
-              sessionId={session.id}
-              timeLimitMins={session.timeLimitMins}
-              initialTimeSpentSecs={session.timeSpentSecs ?? 0}
-              onExpire={handleTimerExpired}
-              onTick={handleTimerTick}
-            />
-          )}
-        </div>
-      </header>
-
-      {/* ── Workspace ── */}
-      <div className="flex-1 min-h-0 flex flex-col md:flex-row gap-3 sm:gap-4">
-
-        {/* Left: instructions */}
-        <div className="w-full md:w-72 lg:w-80 shrink-0 bg-white border border-zinc-200 rounded-3xl p-5 flex flex-col gap-4 shadow-sm overflow-y-auto">
-          <div className="flex flex-col gap-3">
-            {mcqLabel && (
-              <span className="px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider border border-violet-100 bg-violet-50 text-violet-700 self-start">
-                {mcqLabel}
-              </span>
-            )}
-
-            <div>
-              <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border border-emerald-100 bg-emerald-50 text-emerald-700">
-                Instructions
-              </span>
-              <h3 className="font-extrabold text-sm text-zinc-800 leading-snug tracking-tight mt-2.5">
-                {step?.questionText || "Activity guidelines"}
-              </h3>
+          {/* User profile card */}
+          <div className="bg-[#DFEAEA] border border-[#01696F]/10 rounded-2xl p-2.5 flex items-center gap-2 flex-shrink-0">
+            <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-[#01696F] font-bold shadow-sm flex-shrink-0 border border-zinc-200 text-xs">
+              {user?.name?.[0]?.toUpperCase() ?? "?"}
             </div>
-
-            <div className="pt-3 border-t border-zinc-100">
-              <span className="text-[9px] uppercase font-black tracking-widest text-[#01696F]/70 block mb-1.5">
-                Context
-              </span>
-              <p className="text-xs text-zinc-600 leading-relaxed font-medium whitespace-pre-line">
-                {step?.instructions || step?.contextText || "Complete the activity and submit your answer."}
-              </p>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-extrabold text-zinc-800 truncate">{user?.name ?? "Guest"}</p>
+              <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">Test Session</p>
             </div>
-
-            {activityType === "canvas" && step?.draggableElements && (
-              <CanvasToolkit draggableElements={step.draggableElements} />
+            {nextItem && (
+              <div className="flex items-center gap-1 flex-shrink-0">
+                <button
+                  onClick={() => handleReaction("like")}
+                  className={cn(
+                    "flex items-center gap-0.5 px-1.5 py-1 rounded-lg text-[10px] font-bold transition-all active:scale-90",
+                    userReaction === "like" ? "bg-[#01696F] text-white" : "text-zinc-500 hover:bg-white/60"
+                  )}
+                >
+                  <ThumbsUp size={10} /> {reactionCounts.likes}
+                </button>
+                <button
+                  onClick={() => handleReaction("dislike")}
+                  className={cn(
+                    "flex items-center gap-0.5 px-1.5 py-1 rounded-lg text-[10px] font-bold transition-all active:scale-90",
+                    userReaction === "dislike" ? "bg-rose-500 text-white" : "text-zinc-500 hover:bg-white/60"
+                  )}
+                >
+                  <ThumbsDown size={10} /> {reactionCounts.dislikes}
+                </button>
+              </div>
             )}
           </div>
+        </div>
+      </div>
 
-          {/* Progress footer */}
-          <div className="mt-auto pt-4 border-t border-zinc-100 flex items-center justify-between shrink-0">
-            <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">
-              Session progress
+      {/* ── Left panel toggle ── */}
+      <PanelToggle open={leftPanelOpen} onClick={() => setLeftPanelOpen((o) => !o)} side="left" />
+
+      {/* ══════════════════════ MAIN WORKSPACE ══════════════════════ */}
+      <div className="flex-1 min-w-0 flex flex-col bg-[#F0EDE7] shadow-[0px_4px_8px_0px_#0000003D_inset] border border-[#F0EDE7] rounded-2xl overflow-hidden mx-1.5">
+
+        {/* ── Toolbar ── */}
+        <div className="flex items-center justify-between px-3 py-2.5 border-b border-zinc-200 bg-[#F0EDE7]/60 shrink-0 gap-2 flex-wrap">
+
+          {/* Left controls */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={handlePauseExit}
+              className="px-3 py-1.5 bg-[#01696F] text-white hover:bg-[#01696F]/90 font-bold text-xs rounded-xl shadow-sm transition-all active:scale-95 flex items-center gap-1.5 flex-shrink-0"
+            >
+              <Pause size={11} className="flex-shrink-0" />
+              <span className="hidden sm:inline">Pause</span>
+            </button>
+
+            {/* Session progress indicator */}
+            <span className="text-[12px] font-semibold text-[#01696F] bg-[#E6F0F1] px-3 py-1.5 rounded-xl shadow-sm border border-[#01696F]/10 select-none flex-shrink-0 whitespace-nowrap">
+              {displayCompleted} / {displayTotal} done
             </span>
-            <span className="text-[10px] font-black text-[#01696F]">
-              {session?.completedItems ?? 0} / {session?.totalItems ?? "?"} done
-            </span>
+          </div>
+
+          {/* Right controls */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={handleCheckSubmit}
+              disabled={submitting || showConfirm}
+              className="px-3 sm:px-4 py-2 bg-[#00A389] text-white hover:bg-[#00A389]/90 disabled:opacity-50 font-extrabold text-xs rounded-xl shadow-sm transition-all active:scale-95 flex items-center gap-1.5 flex-shrink-0"
+            >
+              {submitting ? (
+                <><Loader2 className="w-3.5 h-3.5 animate-spin" /><span className="hidden sm:inline">Checking…</span></>
+              ) : (
+                <><span className="hidden sm:inline">Submit Answer</span><span className="sm:hidden">Submit</span><ArrowRight size={13} /></>
+              )}
+            </button>
           </div>
         </div>
 
-        {/* Center: activity workspace */}
-        <div className="flex-1 min-w-0 bg-[#FAF7F2] border border-zinc-200 rounded-3xl flex flex-col overflow-hidden shadow-inner relative">
+        {/* ── Activity area ── */}
+        <div className="flex-1 overflow-auto relative">
 
           {/* Confirm overlay */}
           {showConfirm && (
             <ConfirmSubmitOverlay
-              completedItems={session?.completedItems ?? 0}
-              totalItems={session?.totalItems ?? 0}
+              completedItems={displayCompleted}
+              totalItems={displayTotal}
               onConfirm={handleConfirmComplete}
               onReview={() => setShowConfirm(false)}
               isSubmitting={completing}
             />
           )}
 
-          {/* Activity area */}
-          <div className="flex-1 overflow-auto relative">
+          {/* Quantus */}
+          {activityType === "quantus" && step && (
+            <div className="absolute inset-0 flex flex-col">
+              <ExcelGrid
+                table={
+                  step.gridRows?.map((row: string) =>
+                    step.gridCols?.map((col: string) =>
+                      step.gridValues?.[`${row}-${col}`] ?? ""
+                    )
+                  ) || []
+                }
+                inputs={
+                  step.gridRows?.flatMap((row: string, rIdx: number) =>
+                    step.gridCols
+                      ?.map((col: string, cIdx: number) => {
+                        if (cIdx === 0) return null;
+                        const k = `${row}-${col}`;
+                        if (step.correctAnswers?.[k] === undefined) return null;
+                        return {
+                          row: rIdx,
+                          col: cIdx,
+                          correctValue: step.correctAnswers[k] || "",
+                          placeholder: "",
+                          formula: step.cellHints?.[k] || undefined,
+                        };
+                      })
+                      .filter(Boolean)
+                  ) || []
+                }
+                userInputs={spreadsheetGrid}
+                setUserInputs={setSpreadsheetGrid}
+                isValidated={excelValidated}
+                feedback={excelFeedback}
+                sheetTabName="Test model"
+                showToolbar={true}
+                colLabels={step.gridCols || []}
+                rowLabels={step.gridRows || []}
+                showProgress={!excelValidated}
+              />
+            </div>
+          )}
 
-            {/* Quantus */}
-            {activityType === "quantus" && step && (
-              <div className="absolute inset-0 flex flex-col">
-                <ExcelGrid
-                  table={
-                    step.gridRows?.map((row: string, rIdx: number) =>
-                      step.gridCols?.map((col: string, cIdx: number) =>
-                        step.gridValues?.[`${rIdx}-${cIdx}`] || ""
-                      )
-                    ) || []
-                  }
-                  inputs={
-                    step.gridRows?.flatMap((_: string, rIdx: number) =>
-                      step.gridCols
-                        ?.map((_c: string, cIdx: number) => {
-                          if (cIdx === 0) return null;
-                          return {
-                            row: rIdx,
-                            col: cIdx,
-                            correctValue:
-                              step.correctAnswers?.[`${step.gridRows[rIdx]}-${step.gridCols[cIdx]}`] || "",
-                            placeholder: "",
-                          };
-                        })
-                        .filter(Boolean)
-                    ) || []
-                  }
-                  userInputs={spreadsheetGrid}
-                  setUserInputs={setSpreadsheetGrid}
-                  isValidated={feedback !== null}
-                  feedback={{}}
-                  sheetTabName="Test model"
-                  showToolbar={true}
-                  colLabels={step.gridCols || []}
-                  rowLabels={step.gridRows || []}
-                />
+          {/* Canvas */}
+          {activityType === "canvas" && step && (
+            <div className="absolute inset-0 flex flex-col">
+              <CanvasExercise
+                canvasBackgroundText={step.questionText || "Framework Drill"}
+                onElementsChange={setCanvasElements}
+                initialElements={initialCanvasElements}
+                assemblyMode={step.assemblyMode}
+              />
+            </div>
+          )}
+
+          {/* MCQ */}
+          {activityType === "mcq" && step && (
+            <div className="flex flex-col p-6 sm:p-10 justify-center max-w-3xl mx-auto space-y-8 animate-fade-in w-full min-h-full">
+              <h2 className="text-lg sm:text-xl font-extrabold text-zinc-900 leading-snug tracking-tight">
+                {step.questionText}
+              </h2>
+              <div className="space-y-3">
+                {step.options?.map((opt: any) => {
+                  const isSelected = selectedOption === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      onClick={() => setSelectedOption(opt.id)}
+                      className={cn(
+                        "w-full text-left p-4 sm:p-5 rounded-2xl border transition-all duration-200 flex items-center justify-between shadow-sm active:scale-[0.99] group",
+                        isSelected
+                          ? "bg-[#01696F] border-transparent text-white font-bold"
+                          : "border-zinc-200 hover:border-zinc-300 hover:bg-zinc-50/50 text-zinc-700 bg-white"
+                      )}
+                    >
+                      <div className="flex items-center gap-3 sm:gap-4">
+                        <span className={cn(
+                          "w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0 shadow-sm transition-all",
+                          isSelected ? "bg-white text-[#01696F]" : "bg-white border border-zinc-200 text-zinc-700"
+                        )}>
+                          {opt.display}
+                        </span>
+                        <span className="text-sm font-semibold tracking-tight">{opt.label}</span>
+                      </div>
+                      {isSelected && (
+                        <CheckCircle2 size={18} className="text-white flex-shrink-0" fill="currentColor" />
+                      )}
+                    </button>
+                  );
+                })}
               </div>
-            )}
+            </div>
+          )}
 
-            {/* Canvas */}
-            {activityType === "canvas" && step && (
-              <div className="absolute inset-0 flex flex-col">
-                <CanvasExercise
-                  canvasBackgroundText={step.questionText || "Framework Drill"}
-                  onElementsChange={setCanvasElements}
-                  initialElements={[]}
-                  assemblyMode={step.assemblyMode}
-                />
+          {/* Bottom feedback */}
+          <BottomFeedback feedback={feedback} onClose={() => setFeedback(null)} />
+        </div>
+      </div>
+
+      {/* ── Right panel toggle ── */}
+      <PanelToggle open={rightPanelOpen} onClick={() => setRightPanelOpen((o) => !o)} side="right" />
+
+      {/* ══════════════════════ RIGHT PANEL — SESSION INFO ══════════════════════ */}
+      <div className={cn(
+        "flex-shrink-0 transition-all duration-300 ease-in-out overflow-hidden",
+        rightPanelOpen ? "w-72 xl:w-80" : "w-0"
+      )}>
+        <div className="w-72 xl:w-80 h-full flex flex-col pl-2">
+          <div className="bg-white flex flex-col h-full overflow-hidden rounded-2xl border border-zinc-100 shadow-sm">
+
+            {/* Header */}
+            <div className="flex items-center gap-2.5 px-4 py-3 border-b border-zinc-200 flex-shrink-0 bg-[#FAF7F2]">
+              <div className="w-8 h-8 rounded-full bg-[#01696F]/10 flex items-center justify-center flex-shrink-0">
+                <Trophy size={16} className="text-[#01696F]" />
               </div>
-            )}
-
-            {/* MCQ */}
-            {activityType === "mcq" && step && (
-              <div className="flex flex-col justify-center max-w-2xl mx-auto space-y-5 p-6 sm:p-8 animate-fade-in w-full min-h-full">
-                <h2 className="text-base sm:text-lg font-extrabold text-zinc-950 leading-snug tracking-tight">
-                  {step.questionText}
-                </h2>
-                <div className="space-y-2.5">
-                  {step.options?.map((opt: any) => {
-                    const isSelected = selectedOption === opt.id;
-                    return (
-                      <button
-                        key={opt.id}
-                        onClick={() => setSelectedOption(opt.id)}
-                        className={cn(
-                          "w-full text-left p-4 rounded-2xl border transition-all duration-200 flex items-center justify-between shadow-sm active:scale-[0.99] text-sm font-semibold",
-                          isSelected
-                            ? "bg-[#01696F] border-transparent text-white font-bold"
-                            : "border-zinc-200 hover:border-zinc-300 hover:bg-zinc-50 text-zinc-700 bg-white"
-                        )}
-                      >
-                        <div className="flex items-center gap-3">
-                          <span
-                            className={cn(
-                              "w-7 h-7 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0 shadow-sm transition-all",
-                              isSelected
-                                ? "bg-white text-[#01696F]"
-                                : "bg-white border border-zinc-200 text-zinc-700"
-                            )}
-                          >
-                            {opt.display}
-                          </span>
-                          <span>{opt.label}</span>
-                        </div>
-                        {isSelected && (
-                          <CheckCircle2 size={16} className="text-white flex-shrink-0" fill="currentColor" />
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Feedback overlay */}
-            {feedback && !showConfirm && (
-              <div
-                className={cn(
-                  "absolute bottom-4 left-1/2 -translate-x-1/2 z-30",
-                  "w-[min(420px,calc(100%-2rem))] rounded-2xl shadow-xl border p-4 flex items-start gap-3 animate-fade-in-up",
-                  feedback.isError
-                    ? "bg-rose-50 border-rose-200"
-                    : "bg-emerald-50 border-emerald-200"
-                )}
+              <h3 className="font-black text-zinc-800 text-base tracking-tight">Session</h3>
+              <button
+                onClick={() => setRightPanelOpen(false)}
+                aria-label="Close panel"
+                className="ml-auto w-7 h-7 flex items-center justify-center rounded-lg hover:bg-zinc-100 transition group"
               >
-                <div
-                  className={cn(
-                    "w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0",
-                    feedback.isError
-                      ? "bg-rose-100 text-rose-500"
-                      : "bg-emerald-100 text-emerald-600"
-                  )}
-                >
-                  {feedback.isError ? (
-                    <XCircle size={16} />
-                  ) : (
-                    <CheckCircle2 size={16} />
-                  )}
+                <X size={16} className="text-zinc-500 group-hover:text-zinc-800 transition" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-3 bg-[#F0EDE7]">
+
+              {/* Timer card */}
+              {session && (
+                <div className="bg-white rounded-2xl p-3 border border-zinc-100 shadow-sm">
+                  <h4 className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-2">Timer</h4>
+                  <TimerBar
+                    sessionId={session.id}
+                    timeLimitMins={session.timeLimitMins}
+                    initialTimeSpentSecs={session.timeSpentSecs ?? 0}
+                    onExpire={handleTimerExpired}
+                    onTick={handleTimerTick}
+                  />
                 </div>
-                <p
-                  className={cn(
-                    "text-xs font-bold leading-relaxed",
-                    feedback.isError ? "text-rose-800" : "text-emerald-800"
-                  )}
-                >
-                  {feedback.message}
+              )}
+
+              {/* Session progress card */}
+              <div className="bg-white rounded-2xl p-3 border border-zinc-100 shadow-sm flex flex-col gap-2">
+                <h4 className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Session Progress</h4>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-zinc-500 font-semibold">Activities done</span>
+                  <span className="text-sm font-black text-[#01696F]">{displayCompleted} / {displayTotal}</span>
+                </div>
+                <div className="w-full h-2 bg-zinc-100 rounded-full overflow-hidden border border-zinc-200">
+                  <div
+                    className="h-full bg-[#01696F] rounded-full transition-all duration-700"
+                    style={{ width: `${progressPct}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Current activity card */}
+              {step && (
+                <div className="bg-white rounded-2xl p-3 border border-zinc-100 shadow-sm">
+                  <h4 className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-2">
+                    Current Activity
+                  </h4>
+                  <div className="flex flex-col gap-1.5">
+                    <ActivityTypePill type={step.type} />
+                    <p className="text-[11px] text-zinc-600 font-medium leading-relaxed mt-1">
+                      {step.instructions || step.questionText || "Complete the activity."}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Tips card */}
+              <div className="bg-white rounded-2xl p-3 border border-zinc-100 shadow-sm">
+                <div className="flex items-center gap-1.5 mb-2">
+                  <Lightbulb size={12} className="text-amber-500" fill="currentColor" />
+                  <h4 className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Tips</h4>
+                </div>
+                <p className="text-[11px] text-zinc-500 font-medium leading-relaxed">
+                  Complete each activity and submit to advance. Your progress is saved automatically.
+                  Use Pause to exit without losing your work.
                 </p>
               </div>
-            )}
-          </div>
-
-          {/* Action toolbar */}
-          <div className="px-5 py-4 border-t border-zinc-200 bg-white shrink-0 flex items-center justify-between gap-3">
-            <button
-              onClick={handlePauseExit}
-              className="px-4 py-2 border border-zinc-300 hover:bg-zinc-50 text-zinc-600 font-bold text-xs rounded-xl shadow-sm transition-all active:scale-95 flex items-center gap-1.5"
-            >
-              <Pause size={12} />
-              <span className="hidden sm:inline">Pause session</span>
-              <span className="sm:hidden">Pause</span>
-            </button>
-
-            <button
-              onClick={handleCheckSubmit}
-              disabled={submitting || showConfirm}
-              className="px-5 py-2.5 bg-[#00A389] text-white hover:bg-[#00A389]/90 disabled:opacity-50 font-extrabold text-xs rounded-xl shadow-sm transition-all active:scale-95 flex items-center gap-1.5"
-            >
-              {submitting ? (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  Checking…
-                </>
-              ) : (
-                <>
-                  Submit answer
-                  <ArrowRight size={13} />
-                </>
-              )}
-            </button>
+            </div>
           </div>
         </div>
       </div>

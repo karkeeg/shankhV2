@@ -196,24 +196,51 @@ export const resumeTestSession = async (req: Request, res: Response) => {
   const userId = req.userId!;
   const { id: testId, activityType } = req.params;
 
-  const session = await prisma.userSkillTestSession.findFirst({
+  // Deep includes for the answer-review panel on the result page.
+  // quantusSession only returns inputSnapshot + cell-level data (no flat correctAnswers field).
+  const raw = await prisma.userSkillTestSession.findFirst({
     where: { userId, testId, activityType: activityType as any },
     include: {
       responses: {
-        select: { testItemId: true, scorePct: true, activityType: true },
+        include: {
+          mcqSession: {
+            include: {
+              answers: {
+                include: {
+                  question: { include: { options: { orderBy: { orderIndex: "asc" } } } },
+                  selectedOption: true,
+                },
+              },
+            },
+          },
+          quantusSession: {
+            include: {
+              activity: {
+                include: {
+                  quantusCells: {
+                    select: { rowIndex: true, colIndex: true, expectedValue: true, isEditable: true },
+                    orderBy: [{ rowIndex: "asc" }, { colIndex: "asc" }],
+                  },
+                  columns: { select: { colIndex: true, label: true }, orderBy: { colIndex: "asc" } },
+                },
+              },
+            },
+          },
+          canvasSession: { select: { canvasData: true, scorePct: true } },
+        },
       },
     },
-  });
+  }) as any;
 
-  if (!session) return res.status(404).json({ error: "Session not found" });
+  if (!raw) return res.status(404).json({ error: "Session not found" });
 
-  const completedItemIds = session.responses.map((r) => r.testItemId);
+  const completedItemIds = (raw.responses as any[]).map((r: any) => r.testItemId as string);
   const nextItem = await prisma.skillTestItem.findFirst({
     where: { testId, activityType: activityType as any, id: { notIn: completedItemIds } },
     orderBy: { orderIndex: "asc" },
   });
 
-  return res.json({ data: { session, completedItemIds, nextItem } });
+  return res.json({ data: { session: raw, completedItemIds, nextItem } });
 };
 
 /** PATCH /skill/sessions/:sessionId */

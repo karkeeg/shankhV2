@@ -4,7 +4,11 @@
       "Bash(npm install *)",
       "Bash(find \"d:\\\\\\\\NxtWave\\\\\\\\shankhV2\\\\\\\\backend\" -type f)",
       "Bash(find \"d:\\\\\\\\NxtWave\\\\\\\\shankhV2\\\\\\\\backend\" -type f -name \"*.ts\" -o -name \"*.js\")",
-      "Bash(grep -E \"^d:\\\\\\\\\\\\\\\\NxtWave\\\\\\\\\\\\\\\\shankhV2\\\\\\\\\\\\\\\\backend\\\\\\\\/\\(backend/\\)?src/\")"
+      "Bash(grep -E \"^d:\\\\\\\\\\\\\\\\NxtWave\\\\\\\\\\\\\\\\shankhV2\\\\\\\\\\\\\\\\backend\\\\\\\\/\\(backend/\\)?src/\")",
+      "PowerShell(New-Item *)",
+      "PowerShell(Get-Content *)",
+      "Bash(npx tsc *)",
+      "Bash(npx next *)"
     ]
   }
 }

@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import { prisma } from "../prisma";
 import { ActivityType } from "@prisma/client";
-import { cascadeLessonProgress, recordStreakDay, recalculateLessonProgress } from "../services/progressService";
+import { cascadeLessonProgress, recordStreakDay, recalculateLessonProgress, PASS_THRESHOLD_PCT, COMPLETION_THRESHOLD_PCT } from "../services/progressService";
 import { invalidateProgressSummaryCache } from "./progressController";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -226,24 +226,44 @@ export const getActivity = async (req: Request, res: Response) => {
           draggableElements,
           // solutionEdges intentionally omitted — grading is server-side only
         },
-        completedByUser: (canvasBest?.scorePct ?? 0) >= 70,
+        completedByUser: (canvasBest?.scorePct ?? 0) >= COMPLETION_THRESHOLD_PCT,
         bestScore: canvasBest?.scorePct ?? 0,
         submittedCanvasData: canvasBest?.canvasData || null,
         draft: canvasDraft?.draftState || null,
       });
     } else if (la.activityType === "quantus" && quantusActivity) {
-      const columns = quantusActivity.columns || [];
-      const colLabels = columns.map(c => c.label);
-      const rowIndices = Array.from(new Set((quantusActivity.quantusCells || []).map(c => c.rowIndex))).sort((a, b) => a - b);
-      const gridRows = rowIndices.map(r => String(r));
+      const columns = (quantusActivity.columns || []) as { colIndex: number; label: string }[];
+      const sortedCols = [...columns].sort((a, b) => a.colIndex - b.colIndex);
+      const colLabelMap: Record<number, string> = {};
+      sortedCols.forEach(c => { colLabelMap[c.colIndex] = c.label; });
+      const colLabels = sortedCols.map(c => c.label);
+
+      const cells = (quantusActivity.quantusCells || []) as { rowIndex: number; colIndex: number; displayValue: string; expectedValue: string }[];
+      const rowIndices: number[] = Array.from(new Set(cells.map(c => c.rowIndex))).sort((a, b) => a - b);
+
+      // Use first-column cells as row labels (meaningful names instead of raw indices)
+      const firstColIdx = sortedCols[0]?.colIndex ?? 0;
+      const rowLabelMap: Record<number, string> = {};
+      cells
+        .filter(c => c.colIndex === firstColIdx)
+        .forEach(c => { rowLabelMap[c.rowIndex] = (c.displayValue || "").trim() || String(c.rowIndex); });
+      const gridRows = rowIndices.map(r => rowLabelMap[r] ?? String(r));
+
+      // Keys use ${rowLabel}-${colLabel} — consistent with ExcelGrid getCellKey
       const gridValues: Record<string, string> = {};
       const correctAnswers: Record<string, string> = {};
-
-      (quantusActivity.quantusCells || []).forEach(cell => {
-        const colLabel = columns[cell.colIndex]?.label || String(cell.colIndex);
-        const key = `${cell.rowIndex}-${colLabel}`;
-        gridValues[key] = cell.displayValue || "";
-        correctAnswers[key] = cell.expectedValue || "";
+      const cellHints: Record<string, string> = {};
+      cells.forEach(cell => {
+        const rowLabel = rowLabelMap[cell.rowIndex] ?? String(cell.rowIndex);
+        const colLabel = colLabelMap[cell.colIndex] ?? String(cell.colIndex);
+        const k = `${rowLabel}-${colLabel}`;
+        const val = (cell.displayValue || "").trim();
+        const exp = (cell.expectedValue || "").trim();
+        if (exp) correctAnswers[k] = exp;
+        else if (val) gridValues[k] = val;
+        // Carry formula hint / helper text for answer cells
+        const hint = ((cell as any).hintText || (cell as any).formula || "").trim();
+        if (hint) cellHints[k] = hint;
       });
 
       steps.push({
@@ -255,6 +275,7 @@ export const getActivity = async (req: Request, res: Response) => {
           gridCols: colLabels,
           gridValues,
           correctAnswers,
+          cellHints,
         },
         completedByUser: (quantusBest?.scorePct ?? 0) >= 70,
         bestScore: quantusBest?.scorePct ?? 0,
@@ -398,7 +419,7 @@ export const submitMcqSession = async (req: Request, res: Response) => {
   });
 
   // Update lesson progress
-  const status = accuracy >= 70 ? "completed" : "in_progress";
+  const status = accuracy >= PASS_THRESHOLD_PCT ? "completed" : "in_progress";
   if (status === "completed") {
     await prisma.userActivityDraft.deleteMany({
       where: { userId, activityId: activity.id, activityType: "mcq" },
@@ -536,7 +557,7 @@ export const submitCanvasSession = async (req: Request, res: Response) => {
   });
 
   // ── 5. Cascade progress ─────────────────────────────────────────────────
-  const passThreshold = activity.passThreshold;
+  const passThreshold = activity.passThreshold ?? PASS_THRESHOLD_PCT;
   const status = scorePct >= passThreshold ? "completed" : "in_progress";
   if (status === "completed") {
     await prisma.userActivityDraft.deleteMany({
@@ -613,7 +634,7 @@ export const submitQuantusSession = async (req: Request, res: Response) => {
     },
   });
 
-  const status = scorePct >= 70 ? "completed" : "in_progress";
+  const status = scorePct >= PASS_THRESHOLD_PCT ? "completed" : "in_progress";
   if (status === "completed") {
     await prisma.userActivityDraft.deleteMany({
       where: { userId, activityId: activity.id, activityType: "quantus" },

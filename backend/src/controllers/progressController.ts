@@ -338,6 +338,71 @@ export const getDashboardData = async (req: Request, res: Response) => {
       }
     }
 
+    // Fetch active professions — traverse the same hierarchy the skill page uses:
+    // Profession → SkillTopic (isActive) → SkillTest (isActive + isPublished)
+    // This guarantees dashboard counts are consistent with what the student actually sees.
+    const professions = await prisma.profession.findMany({
+      where: { isActive: true },
+      orderBy: { orderIndex: "asc" },
+      include: {
+        skillTopics: {
+          where: { isActive: true },
+          include: {
+            tests: {
+              where: { isActive: true, isPublished: true },
+              include: {
+                items: true,
+                sessions: { where: { userId } },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const professionsProgress = professions.map((p) => {
+      // Flatten tests from active topics only — mirrors the skill page query path
+      const tests = p.skillTopics.flatMap((t) => t.tests);
+
+      // Count at the activity-session level (not whole-test level) so that
+      // e.g. MCQ✓ + Canvas✓ + Quantus(in_progress) shows 2/3 done, not 0/1.
+      let totalActivities = 0;
+      let completedActivities = 0;
+      let hasAnyStartedSession = false;
+
+      for (const test of tests) {
+        const types = Array.from(new Set(test.items.map((item) => item.activityType)));
+        if (types.length === 0) continue;
+
+        totalActivities += types.length;
+
+        if (test.sessions.length > 0) hasAnyStartedSession = true;
+
+        for (const type of types) {
+          const done = test.sessions.some(
+            (s) => s.activityType === type && (s.status === "completed" || s.status === "expired")
+          );
+          if (done) completedActivities++;
+        }
+      }
+
+      const progressPct = totalActivities > 0
+        ? Math.round((completedActivities / totalActivities) * 100)
+        : 0;
+
+      return {
+        id: p.id,
+        name: p.name,
+        slug: p.slug,
+        description: p.description,
+        iconKey: p.iconKey,
+        totalActivities,
+        completedActivities,
+        progressPct,
+        hasStarted: hasAnyStartedSession,
+      };
+    });
+
     return res.json({
       data: {
         streak,
@@ -345,7 +410,8 @@ export const getDashboardData = async (req: Request, res: Response) => {
         completedDates,
         modulesProgress,
         overallProgressPct,
-        resumeLesson
+        resumeLesson,
+        professionsProgress
       }
     });
   } catch (error) {

@@ -385,7 +385,7 @@ export default function ProfessionTestsAdmin() {
     // ─────────────────────────────────────────────────────────────────────────
     return (
         <MainLayout>
-            <div className="flex flex-col h-full max-h-[calc(100vh-24px)] overflow-y-auto p-8 gap-6 animate-fade-in bg-gradient-to-br from-[#fcfcfb] to-[#f5f3ee]">
+            <div className="flex flex-col h-full max-h-[calc(100vh-24px)] overflow-y-auto p-8 gap-6 animate-fade-in">
 
                 {/* ── Toast ── */}
                 {toast && (

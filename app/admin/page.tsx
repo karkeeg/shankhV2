@@ -12,6 +12,7 @@ import {
   TrendingUp,
   Settings,
   Layers,
+  FileText,
 } from "lucide-react";
 import { useAuthStore } from "@/lib/auth-store";
 
@@ -47,7 +48,7 @@ export default function AdminDashboard() {
 
   return (
     <MainLayout>
-      <div className="flex flex-col h-full max-h-[calc(100vh-24px)] overflow-y-auto p-8 gap-8 animate-fade-in bg-gradient-to-br from-[#fcfcfb] to-[#f5f3ee]">
+      <div className="flex flex-col h-full max-h-[calc(100vh-24px)] overflow-y-auto p-8 gap-8 animate-fade-in">
 
         {/* Header */}
         <header className="flex flex-col gap-1 border-b border-[#01696F]/10 pb-5 shrink-0">
@@ -194,6 +195,29 @@ export default function AdminDashboard() {
                 </h3>
                 <p className="text-xs text-zinc-500 font-medium">
                   Manage modules, topics, subtopics, and lessons for the primary student learning paths. Reorders and organizes standard hierarchy.
+                </p>
+              </div>
+            </div>
+
+            {/* Case Simulations Card */}
+            <div
+              onClick={() => router.push("/admin/cases")}
+              className="bg-white border border-zinc-200/80 rounded-3xl p-6 shadow-sm hover:shadow-md hover:border-[#01696F]/30 transition-all cursor-pointer group flex flex-col justify-between min-h-[160px]"
+            >
+              <div className="flex items-start justify-between">
+                <div className="p-4 bg-teal-50 text-[#01696F] rounded-2xl">
+                  <FileText size={24} />
+                </div>
+                <div className="p-2 bg-zinc-50 border border-zinc-100 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity">
+                  <ArrowRight size={16} className="text-[#01696F]" />
+                </div>
+              </div>
+              <div className="space-y-1 mt-4">
+                <h3 className="text-base font-extrabold text-zinc-900 leading-snug">
+                  Case Simulations
+                </h3>
+                <p className="text-xs text-zinc-500 font-medium">
+                  Create and manage case simulations with reading material and manual test activities for the Skill Building section.
                 </p>
               </div>
             </div>

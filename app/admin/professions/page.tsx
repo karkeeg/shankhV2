@@ -22,6 +22,7 @@ import {
   Award,
   BookOpen,
 } from "lucide-react";
+import { ProfessionAdminCardSkeleton } from "@/components/ui/Skeletons";
 
 const API = process.env.NEXT_PUBLIC_BACKEND_URL || "";
 
@@ -233,7 +234,7 @@ export default function ProfessionsAdmin() {
 
   return (
     <MainLayout>
-      <div className="flex flex-col h-full max-h-[calc(100vh-24px)] overflow-y-auto p-8 gap-8 animate-fade-in bg-gradient-to-br from-[#fcfcfb] to-[#f5f3ee]">
+      <div className="flex flex-col h-full max-h-[calc(100vh-24px)] overflow-y-auto p-8 gap-8 animate-fade-in ">
 
         {/* Navigation & Header */}
         <div className="flex flex-col gap-4 shrink-0">
@@ -293,9 +294,8 @@ export default function ProfessionsAdmin() {
 
         {/* Professions List/Grid */}
         {loading ? (
-          <div className="flex flex-col items-center justify-center py-20 gap-3">
-            <div className="w-8 h-8 border-4 border-[#01696F] border-t-transparent rounded-full animate-spin"></div>
-            <p className="text-xs text-zinc-500 font-medium animate-pulse">Loading professions...</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[1, 2, 3, 4, 5, 6].map((i) => <ProfessionAdminCardSkeleton key={i} />)}
           </div>
         ) : filteredProfessions.length === 0 ? (
           <div className="flex flex-col items-center justify-center bg-white border border-zinc-200/60 rounded-3xl p-12 text-center shadow-sm">

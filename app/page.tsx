@@ -13,6 +13,7 @@ import { ProgressOverview } from "@/components/dashboard/ProgressOverview";
 import { LearningPathOverview } from "@/components/dashboard/LearningPathOverview";
 import { Heatmap } from "@/components/dashboard/Heatmap";
 import { CategoriesSection } from "@/components/dashboard/CategoriesSection";
+import { DashboardSkeleton } from "@/components/ui/Skeletons";
 
 export default function Dashboard() {
   const [mounted, setMounted] = useState(false);
@@ -72,13 +73,7 @@ export default function Dashboard() {
   }, [mounted, token]);
 
   if (!mounted || loading) {
-    return (
-      <MainLayout>
-        <div className="flex-1 flex items-center justify-center">
-          <div className="w-8 h-8 border-4 flex border-[#01696F] border-t-transparent rounded-full animate-spin" />
-        </div>
-      </MainLayout>
-    );
+    return <DashboardSkeleton />;
   }
 
   const AiSidebar = <AiAssistantSidebar isOpen={isAiOpen} onClose={() => setIsAiOpen(false)} />;
@@ -104,7 +99,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <CategoriesSection />
+        <CategoriesSection professions={dashboardData.professionsProgress || []} />
       </div>
     </MainLayout>
   );

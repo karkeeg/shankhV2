@@ -267,6 +267,8 @@ interface ExcelGridProps {
   /** External selection synchronization (e.g. for admin builder) */
   selectedCell?: { row: number; col: number } | null;
   onSelectCell?: (cell: { row: number; col: number } | null) => void;
+  /** Show "X / Y cells answered" progress bar below the grid */
+  showProgress?: boolean;
 }
 
 interface CellStyle {
@@ -304,6 +306,7 @@ export const ExcelGrid = ({
   rowLabels,
   selectedCell,
   onSelectCell,
+  showProgress = false,
 }: ExcelGridProps) => {
   // Sync selection state locally or lift up
   const [internalSelectedCell, setInternalSelectedCell] = useState<{
@@ -579,15 +582,42 @@ export const ExcelGrid = ({
     ? cellStyles[getCellKey(activeSelectedCell.row, activeSelectedCell.col)] || {}
     : {};
 
-  // Generate Column Headers (A, B, C...)
-  const colHeaders = colLabels || Array.from({ length: table[0]?.length || 0 }, (_, i) =>
-    String.fromCharCode(65 + i),
-  );
+  // Generate Column Headers (A, B, C...) with a minimum of 8 columns to feel like Excel
+  const colHeaders = useMemo(() => {
+    const headers = colLabels ? [...colLabels] : Array.from({ length: table[0]?.length || 0 }, (_, i) => String.fromCharCode(65 + i));
+    const minCols = 8;
+    if (headers.length < minCols) {
+      for (let i = headers.length; i < minCols; i++) {
+        headers.push(String.fromCharCode(65 + i));
+      }
+    }
+    return headers;
+  }, [colLabels, table]);
 
   // Compute cell address label (e.g. "E5")
   const cellAddress = activeSelectedCell
     ? `${String.fromCharCode(65 + activeSelectedCell.col)}${activeSelectedCell.row + 1}`
     : "";
+
+  // Computed value for formula bar badge (when raw value is a formula)
+  const formulaComputedValue = useMemo(() => {
+    if (!currentFormulaValue.trim().startsWith("=")) return null;
+    try {
+      const result = evaluateExcelFormula(currentFormulaValue, userInputs, table, getCellKey);
+      const rounded = Number(result.toFixed(4));
+      return isFinite(rounded) ? String(rounded) : null;
+    } catch { return null; }
+  }, [currentFormulaValue, userInputs, table]);
+
+  // Progress stats — count non-empty answer cells vs total answer cells
+  const progressStats = useMemo(() => {
+    if (!showProgress || inputs.length === 0) return null;
+    const answered = inputs.filter(({ row, col }) => {
+      const k = getCellKey(row, col);
+      return (userInputs[k] ?? "").trim() !== "";
+    }).length;
+    return { answered, total: inputs.length };
+  }, [showProgress, inputs, userInputs, getCellKey]);
 
   return (
     <div className="flex flex-col h-full bg-white border border-zinc-200 shadow-xl overflow-hidden font-sans ring-1 ring-zinc-200">
@@ -742,37 +772,42 @@ export const ExcelGrid = ({
         </div>
 
         {/* Formula bar */}
-        <input
-          type="text"
-          value={isEditing ? editValue : currentFormulaValue}
-          onChange={(e) => {
-            if (activeSelectedCell && !isValidated) {
-              if (!isEditing) {
-                setIsEditing(true);
+        <div className="flex-1 flex items-center gap-2 pr-3">
+          <input
+            type="text"
+            value={isEditing ? editValue : currentFormulaValue}
+            onChange={(e) => {
+              if (activeSelectedCell && !isValidated) {
+                if (!isEditing) setIsEditing(true);
+                setEditValue(e.target.value);
               }
-              setEditValue(e.target.value);
-            }
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && activeSelectedCell) {
-              e.preventDefault();
-              commitEdit(activeSelectedCell.row, activeSelectedCell.col, editValue);
-            } else if (e.key === "Escape") {
-              e.preventDefault();
-              cancelEdit();
-            }
-          }}
-          disabled={isValidated}
-          className="flex-1 px-4 py-1 border-none outline-none text-sm text-zinc-800 font-bold tracking-tight bg-white animate-fade-in"
-          placeholder="Enter value or formula (e.g. =B1*(1+C2))"
-        />
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && activeSelectedCell) {
+                e.preventDefault();
+                commitEdit(activeSelectedCell.row, activeSelectedCell.col, editValue);
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                cancelEdit();
+              }
+            }}
+            disabled={isValidated}
+            className="flex-1 px-4 py-1 border-none outline-none text-sm text-zinc-800 font-bold tracking-tight bg-transparent animate-fade-in"
+            placeholder="Enter value or formula (e.g. =B1*(1+C2))"
+          />
+          {formulaComputedValue !== null && (
+            <span className="shrink-0 text-[10px] font-black text-[#01696F] bg-[#E6F0F1] border border-[#01696F]/20 px-2 py-0.5 rounded-lg whitespace-nowrap select-none">
+              = {formulaComputedValue}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Spreadsheet Main Area */}
-      <div 
+      <div
         tabIndex={0}
         onKeyDown={handleGridKeyDown}
-        className="flex-1 overflow-auto bg-zinc-50 relative focus:outline-none"
+        className="flex-1 overflow-auto bg-zinc-50 relative focus:outline-none [&_td]:overflow-visible"
       >
         <table className="border-collapse table-fixed w-full">
           <thead>
@@ -818,19 +853,30 @@ export const ExcelGrid = ({
                     )}>
                       {rowIndex + 1}
                     </td>
-                    {row.map((cell, colIndex) => (
-                      <td
-                        key={colIndex}
-                        className={cn(
-                          "h-8 border border-zinc-200 bg-[#7C5DFA]/15 px-2 py-1 text-[13px]",
-                          colIndex === 0
-                            ? "text-[#312e81] font-bold"
-                            : "text-[#312e81] font-semibold text-center"
-                        )}
-                      >
-                        {cell}
-                      </td>
-                    ))}
+                    {colHeaders.map((_, colIndex) => {
+                      if (colIndex >= row.length) {
+                        return (
+                          <td 
+                            key={colIndex}
+                            className="h-8 border border-zinc-200 bg-[#7C5DFA]/15"
+                          />
+                        );
+                      }
+                      const cell = row[colIndex];
+                      return (
+                        <td
+                          key={colIndex}
+                          className={cn(
+                            "h-8 border border-zinc-200 bg-[#7C5DFA]/15 px-2 py-1 text-[13px]",
+                            colIndex === 0
+                              ? "text-[#312e81] font-bold"
+                              : "text-[#312e81] font-semibold text-center"
+                          )}
+                        >
+                          {colIndex === 0 && rowLabels ? rowLabels[rowIndex] ?? cell : cell}
+                        </td>
+                      );
+                    })}
                   </tr>
                 );
               }
@@ -845,7 +891,37 @@ export const ExcelGrid = ({
                     {rowIndex + 1}
                   </td>
 
-                  {row.map((cell, colIndex) => {
+                  {colHeaders.map((_, colIndex) => {
+                    if (colIndex >= row.length) {
+                      const isSelected =
+                        activeSelectedCell?.row === rowIndex &&
+                        activeSelectedCell?.col === colIndex;
+                      return (
+                        <td
+                          key={colIndex}
+                          onClick={() => {
+                            setActiveSelectedCell({ row: rowIndex, col: colIndex });
+                            setIsEditing(false);
+                          }}
+                          className={cn(
+                            "h-8 border border-zinc-200 bg-white relative p-0 transition-all cursor-pointer",
+                            isSelected &&
+                            "outline outline-2 outline-[#7C5DFA] z-[5] shadow-inner"
+                          )}
+                        >
+                          {isSelected && !isEditing && !isValidated && (
+                            <div 
+                              className="absolute w-2 h-2 bg-[#7C5DFA] border border-white bottom-[-4px] right-[-4px] cursor-crosshair z-[10] shadow-sm"
+                            />
+                          )}
+                          {isSelected && !isValidated && (
+                            <div className="absolute inset-0 bg-[#7C5DFA]/5 pointer-events-none" />
+                          )}
+                        </td>
+                      );
+                    }
+
+                    const cell = row[colIndex];
                     const inputConfig = inputs.find(
                       (i) => i.row === rowIndex && i.col === colIndex,
                     );
@@ -887,20 +963,21 @@ export const ExcelGrid = ({
                         }}
                         onDoubleClick={() => startEditing(rowIndex, colIndex)}
                         className={cn(
-                          "h-8 border border-zinc-200 bg-white relative p-0 transition-all cursor-pointer",
+                          "h-8 border border-zinc-200 bg-white relative p-0 transition-all cursor-pointer overflow-visible",
                           rowStyle,
-                          isSelected &&
-                          "outline outline-2 outline-[#7C5DFA] z-[5] shadow-inner",
+                          // Row-label column — distinct frozen-pane look
+                          colIndex === 0 && rowLabels && "bg-zinc-50 border-r-2 border-r-zinc-300",
+                          // Answer cell — visible teal tint with left accent
+                          (inputConfig || dropdownConfig) && !isValidated && colIndex !== 0 &&
+                            "bg-[#E8F5F5] border-l-[3px] border-l-[#01696F]/40",
+                          // Validated correct
+                          isValidated && feedback[key] === true &&
+                            "bg-emerald-50 border-l-[3px] border-l-emerald-500",
+                          // Validated wrong
+                          isValidated && feedback[key] === false &&
+                            "bg-rose-50 border-l-[3px] border-l-rose-500",
+                          isSelected && "outline outline-2 outline-[#7C5DFA] z-[5] shadow-inner",
                           isReferenced && !isSelected && referencedColorClass,
-                          (inputConfig || dropdownConfig) &&
-                          !isValidated &&
-                          "bg-blue-50/20",
-                          isValidated &&
-                          feedback[key] &&
-                          "bg-emerald-50 text-emerald-700",
-                          isValidated &&
-                          feedback[key] === false &&
-                          "bg-rose-50 text-rose-700",
                         )}
                         style={{
                           backgroundColor: cellStyle.bg || undefined,
@@ -908,7 +985,7 @@ export const ExcelGrid = ({
                         title={inputConfig?.formula ? `Formula: ${inputConfig.formula}` : undefined}
                       >
                         {inputConfig ? (
-                          <div className="w-full h-full relative group/input" style={customStyle}>
+                          <div className="w-full h-full relative group/input overflow-visible" style={customStyle}>
                             {isSelected && isEditing ? (
                               <input
                                 type="text"
@@ -937,13 +1014,18 @@ export const ExcelGrid = ({
                               </div>
                             )}
                             {inputConfig.formula && (
-                              <div className="absolute top-0 right-0 p-0.5 opacity-0 group-hover/input:opacity-100 transition-opacity pointer-events-none">
-                                <span className="text-[8px] font-black text-blue-500 bg-blue-50 px-1 rounded border border-blue-100">fx</span>
+                              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 opacity-0 group-hover/input:opacity-100 transition-all duration-150 pointer-events-none">
+                                <div className="bg-[#01696F] text-white text-[11px] font-semibold px-3 py-2 rounded-xl shadow-xl max-w-[240px] text-center leading-snug whitespace-normal">
+                                  💡 {inputConfig.formula}
+                                </div>
+                                <div className="w-2.5 h-2.5 bg-[#01696F] rotate-45 mx-auto -mt-1.5 rounded-sm" />
                               </div>
                             )}
                             {isValidated && feedback[key] === false && inputConfig.correctValue && (
-                              <div className="absolute -top-6 left-1/2 -translate-x-1/2 z-50 bg-rose-600 text-white text-[10px] font-bold px-2 py-0.5 rounded opacity-0 group-hover/input:opacity-100 whitespace-nowrap shadow-md pointer-events-none transition-opacity">
-                                Expected: {inputConfig.correctValue}
+                              <div className="absolute bottom-0 left-0 right-0 flex items-center justify-center pointer-events-none z-10">
+                                <span className="text-[9px] font-black text-emerald-700 bg-emerald-100 border-t border-emerald-300 w-full text-center px-1 leading-tight py-0.5 truncate">
+                                  ✓ {inputConfig.correctValue}
+                                </span>
                               </div>
                             )}
                           </div>
@@ -980,11 +1062,13 @@ export const ExcelGrid = ({
                               "px-2 py-1 text-[13px] font-medium overflow-hidden whitespace-nowrap text-ellipsis",
                               (rowIndex === 0 && !rowLabels)
                                 ? "text-zinc-400 font-bold uppercase text-[10px]"
-                                : "text-zinc-700",
+                                : colIndex === 0 && rowLabels
+                                  ? "text-zinc-700 font-semibold"
+                                  : "text-zinc-700",
                             )}
                             style={customStyle}
                           >
-                            {cell}
+                            {colIndex === 0 && rowLabels ? rowLabels[rowIndex] ?? cell : cell}
                           </div>
                         )}
 
@@ -1006,8 +1090,8 @@ export const ExcelGrid = ({
                 </tr>
               );
             })}
-            {/* Empty Rows Padding */}
-            {Array.from({ length: Math.max(0, 10 - table.length) }).map(
+            {/* Empty Rows Padding — 3 ghost rows to keep spreadsheet feel */}
+            {Array.from({ length: Math.max(0, 3 - table.length) }).map(
               (_, i) => (
                 <tr key={`empty-${i}`}>
                   <td className="h-8 bg-zinc-100 border border-zinc-200 text-zinc-400 text-center text-[10px] sticky left-0">
@@ -1025,6 +1109,26 @@ export const ExcelGrid = ({
           </tbody>
         </table>
       </div>
+
+      {/* Progress bar (shown when showProgress=true) */}
+      {progressStats && (
+        <div className="flex items-center gap-3 px-4 py-1.5 bg-[#F0FAFA] border-t border-[#01696F]/15 shrink-0">
+          <div className="flex-1 h-1.5 bg-zinc-200 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-[#01696F] rounded-full transition-all duration-500"
+              style={{ width: `${progressStats.total > 0 ? Math.round((progressStats.answered / progressStats.total) * 100) : 0}%` }}
+            />
+          </div>
+          <span className={cn(
+            "text-[10px] font-black shrink-0 tabular-nums",
+            progressStats.answered === progressStats.total && progressStats.total > 0
+              ? "text-emerald-600"
+              : "text-[#01696F]"
+          )}>
+            {progressStats.answered} / {progressStats.total} cells answered
+          </span>
+        </div>
+      )}
 
       {/* Spreadsheet Bottom Tabs Bar */}
       <div className="flex items-center justify-between px-3 py-1 bg-[#d4d7db] border-t border-zinc-400/30 text-[10px] font-bold text-zinc-500 h-10 shadow-inner">

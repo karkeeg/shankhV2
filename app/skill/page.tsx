@@ -3,13 +3,16 @@
 import React, { useEffect, useState, useCallback, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
-  Loader2, Search, Bell, ChevronDown, ChevronUp,
+  Search, Bell, ChevronDown, ChevronUp,
   Play, RotateCcw, CheckCircle2, Clock, Hourglass,
+  Loader2,
 } from "lucide-react";
+import { CaseSimulationCardSkeleton, SkillProfessionCardSkeleton } from "@/components/ui/Skeletons";
 import { useAuthStore } from "@/lib/auth-store";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { cn } from "@/lib/utils";
 import Cookies from "js-cookie";
+import { CaseStudiesModal } from "@/components/case/CaseStudiesModal";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -62,6 +65,16 @@ function getTestStatus(test: SkillTest): "not_started" | "in_progress" | "comple
   return allDone ? "completed" : "in_progress";
 }
 
+// Filter-aware status: only looks at the specific activity type being filtered.
+// Prevents "Resume" showing for a test where MCQ is in_progress but canvas hasn't started.
+function getFilteredStatus(test: SkillTest, filterType: string | null): "not_started" | "in_progress" | "completed" {
+  if (!filterType) return getTestStatus(test);
+  const prog = test.userProgress.find(p => p.activityType === filterType);
+  if (!prog) return "not_started";
+  if (prog.status === "completed" || prog.status === "expired") return "completed";
+  return "in_progress";
+}
+
 function firstAvailableType(test: SkillTest, filterType: string | null): string {
   const order = filterType
     ? [filterType as "mcq" | "canvas" | "quantus"]
@@ -71,6 +84,10 @@ function firstAvailableType(test: SkillTest, filterType: string | null): string 
       const prog = test.userProgress.find(p => p.activityType === t);
       if (!prog || prog.status === "in_progress") return t;
     }
+  }
+  // Fallback: respect filterType if it has items
+  if (filterType && (test.itemCounts[filterType as keyof typeof test.itemCounts] ?? 0) > 0) {
+    return filterType;
   }
   for (const t of (["mcq", "canvas", "quantus"] as const)) {
     if (test.itemCounts[t] > 0) return t;
@@ -86,9 +103,12 @@ function nextAction(tests: SkillTest[], filterType: string | null): { test: Skil
     if (inProg) return { test, type: inProg.activityType, isResume: true };
   }
   for (const test of tests) {
-    if (getTestStatus(test) === "not_started") {
-      return { test, type: firstAvailableType(test, filterType), isResume: false };
-    }
+    const hasFilteredItems = !filterType || (test.itemCounts[filterType as keyof typeof test.itemCounts] ?? 0) > 0;
+    if (!hasFilteredItems) continue;
+    const hasStartedFilterType = filterType
+      ? test.userProgress.some(p => p.activityType === filterType)
+      : test.userProgress.length > 0;
+    if (!hasStartedFilterType) return { test, type: firstAvailableType(test, filterType), isResume: false };
   }
   return null;
 }
@@ -124,7 +144,7 @@ function TestRow({ test, filterType, onStart }: {
   filterType: string | null;
   onStart: (id: string, type: string) => void;
 }) {
-  const status = getTestStatus(test);
+  const status = getFilteredStatus(test, filterType);
   const inProgType = test.userProgress.find(p =>
     p.status === "in_progress" && (!filterType || p.activityType === filterType)
   );
@@ -185,7 +205,20 @@ function TopicSection({ topicData, filterType, onNavigate }: {
 }) {
   const [expanded, setExpanded] = useState(false);
   const filteredTests = filterTestsBySection(topicData.tests, filterType);
-  const doneTests = filteredTests.filter(t => getTestStatus(t) === "completed").length;
+
+  // Count activity sessions (not whole tests) for the badge — same logic as ProfessionCard
+  let topicTotalActivities = 0;
+  let topicCompletedActivities = 0;
+  for (const test of filteredTests) {
+    const types = filterType
+      ? ((test.itemCounts[filterType as keyof typeof test.itemCounts] ?? 0) > 0 ? [filterType] : [])
+      : (["mcq", "canvas", "quantus"] as const).filter(t => (test.itemCounts[t] ?? 0) > 0);
+    topicTotalActivities += types.length;
+    for (const t of types) {
+      const prog = test.userProgress.find(p => p.activityType === t);
+      if (prog && (prog.status === "completed" || prog.status === "expired")) topicCompletedActivities++;
+    }
+  }
 
   if (filteredTests.length === 0) return null;
 
@@ -199,10 +232,10 @@ function TopicSection({ topicData, filterType, onNavigate }: {
           {expanded ? <ChevronUp size={13} className="text-zinc-400" /> : <ChevronDown size={13} className="text-zinc-400" />}
           <span className="text-xs font-extrabold text-zinc-700">{topicData.topic.name}</span>
           <span className="text-[9px] font-black text-zinc-400 bg-zinc-100 px-1.5 py-0.5 rounded-full">
-            {doneTests}/{filteredTests.length}
+            {topicCompletedActivities}/{topicTotalActivities}
           </span>
         </div>
-        {doneTests === filteredTests.length && filteredTests.length > 0 && (
+        {topicCompletedActivities === topicTotalActivities && topicTotalActivities > 0 && (
           <CheckCircle2 size={13} className="text-emerald-500 shrink-0" fill="currentColor" />
         )}
       </div>
@@ -233,8 +266,22 @@ function ProfessionCard({ profession, topics, filterType, defaultExpanded, onNav
   // Filter all tests by section type
   const allFilteredTests = topics.flatMap(t => filterTestsBySection(t.tests, filterType));
   const action = nextAction(allFilteredTests, filterType);
-  const allDone = allFilteredTests.length > 0 && allFilteredTests.every(t => getTestStatus(t) === "completed");
-  const doneTests = allFilteredTests.filter(t => getTestStatus(t) === "completed").length;
+
+  // Count at activity-session level so MCQ✓ + Canvas✓ + Quantus(in_progress)
+  // correctly shows 2/3 done instead of 0/1 tests.
+  let totalActivities = 0;
+  let completedActivities = 0;
+  for (const test of allFilteredTests) {
+    const types = filterType
+      ? ((test.itemCounts[filterType as keyof typeof test.itemCounts] ?? 0) > 0 ? [filterType] : [])
+      : (["mcq", "canvas", "quantus"] as const).filter(t => (test.itemCounts[t] ?? 0) > 0);
+    totalActivities += types.length;
+    for (const t of types) {
+      const prog = test.userProgress.find(p => p.activityType === t);
+      if (prog && (prog.status === "completed" || prog.status === "expired")) completedActivities++;
+    }
+  }
+  const allDone = totalActivities > 0 && completedActivities === totalActivities;
 
   return (
     <div className="bg-white border border-zinc-200 rounded-3xl overflow-hidden shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)] hover:shadow-[0_4px_20px_-4px_rgba(0,0,0,0.1)] transition-all duration-300">
@@ -263,16 +310,16 @@ function ProfessionCard({ profession, topics, filterType, defaultExpanded, onNav
         </div>
 
         {/* Progress bar */}
-        {allFilteredTests.length > 0 && (
+        {totalActivities > 0 && (
           <div className="mt-3 flex items-center gap-2">
             <div className="flex-1 h-1.5 bg-zinc-100 rounded-full overflow-hidden border border-zinc-200">
               <div
                 className="h-full bg-[#01696F] rounded-full transition-all duration-700"
-                style={{ width: `${(doneTests / allFilteredTests.length) * 100}%` }}
+                style={{ width: `${(completedActivities / totalActivities) * 100}%` }}
               />
             </div>
             <span className="text-[9px] font-black text-zinc-400 whitespace-nowrap">
-              {doneTests}/{allFilteredTests.length} tests
+              {completedActivities}/{totalActivities} activities
             </span>
           </div>
         )}
@@ -305,7 +352,7 @@ function ProfessionCard({ profession, topics, filterType, defaultExpanded, onNav
             No tests available
           </button>
         ) : allDone ? (
-          <button disabled className="w-full py-3 rounded-2xl text-sm font-black text-emerald-600 bg-emerald-50 border border-emerald-200 flex items-center justify-center gap-2 cursor-default">
+          <button disabled className="w-full py-3 rounded-2xl text-sm font-black text-white bg-[#01696F] border border-[#01696F]/20 flex items-center justify-center gap-2 cursor-default">
             <CheckCircle2 size={15} fill="currentColor" /> All tests complete
           </button>
         ) : action?.isResume ? (
@@ -350,6 +397,11 @@ function SkillHomeContent() {
   const [topicsByProf, setTopicsByProf] = useState<Record<string, SkillTopic[]>>({});
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [cases, setCases] = useState<any[]>([]);
+  const [casesLoading, setCasesLoading] = useState(false);
+  // Case preview modal (shown before entering the test page)
+  const [previewCase, setPreviewCase] = useState<{ id: string; title: string; studies: any[] } | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -379,6 +431,17 @@ function SkillHomeContent() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  // Fetch case simulations when that section is active
+  useEffect(() => {
+    if (section !== "case_simulations") return;
+    setCasesLoading(true);
+    fetch(`${backendUrl}/api/v1/cases`, { headers })
+      .then((r) => r.json())
+      .then((res) => setCases(res.data ?? []))
+      .catch(() => {})
+      .finally(() => setCasesLoading(false));
+  }, [section, token]);
+
   // Navigate to test session
   const handleNavigate = useCallback((testId: string, activityType: string) => {
     router.push(`/skill/tests/${testId}/${activityType}`);
@@ -388,6 +451,36 @@ function SkillHomeContent() {
   const handleSelectProfession = useCallback((slug: string) => {
     router.push(`/skill/${slug}?section=${section}`);
   }, [router, section]);
+
+  // Open case: show studies popup for first-time Start; go direct for Resume/Review
+  const handleOpenCase = useCallback(async (c: any) => {
+    const studiesRead = c.session?.studiesRead === true;
+    if (studiesRead) {
+      // Already read — go straight to test
+      router.push(`/case-simulations/${c.id}/test`);
+      return;
+    }
+    // First time or incomplete — show studies modal first
+    setPreviewLoading(true);
+    setPreviewCase({ id: c.id, title: c.title, studies: [] });
+    try {
+      const res = await fetch(`${backendUrl}/api/v1/cases/${c.id}`, { headers });
+      const data = await res.json();
+      setPreviewCase({ id: c.id, title: c.title, studies: data.data?.caseStudies ?? [] });
+    } catch {
+      setPreviewCase(null);
+    } finally {
+      setPreviewLoading(false);
+    }
+  }, [router, backendUrl, headers]);
+
+  const handleStartActivities = useCallback(async () => {
+    if (!previewCase) return;
+    await fetch(`${backendUrl}/api/v1/cases/${previewCase.id}/session`, { method: "POST", headers });
+    await fetch(`${backendUrl}/api/v1/cases/${previewCase.id}/session/mark-read`, { method: "POST", headers });
+    setPreviewCase(null);
+    router.push(`/case-simulations/${previewCase.id}/test`);
+  }, [previewCase, router, backendUrl, headers]);
 
   // Filter professions by search
   const filtered = professions.filter(p =>
@@ -441,10 +534,85 @@ function SkillHomeContent() {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto px-6 py-5 space-y-8">
-        {loading ? (
-          <div className="flex flex-col items-center justify-center min-h-[300px] gap-3 text-[#01696F]">
-            <Loader2 className="w-9 h-9 animate-spin" />
-            <span className="text-sm font-semibold">Loading skill tracks…</span>
+
+        {/* ── Case Simulations section ── */}
+        {section === "case_simulations" && (
+          casesLoading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+              {[1, 2, 3].map((i) => <CaseSimulationCardSkeleton key={i} />)}
+            </div>
+          ) : cases.length === 0 ? (
+            <div className="py-20 text-center text-zinc-400 font-semibold text-sm">
+              No case simulations published yet.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+              {cases.map((c) => {
+                const sess = c.session;
+                const isCompleted = sess?.status === "completed";
+                const isReading = sess?.status === "reading" && sess?.studiesRead === false;
+                const isTesting = sess?.status === "testing";
+                const progressPct = sess ? Math.round(((sess.completedCount ?? 0) / Math.max(1, sess.totalActivities ?? 1)) * 100) : 0;
+                return (
+                  <div key={c.id} className="bg-white border border-zinc-200 rounded-3xl p-5 flex flex-col gap-3 shadow-sm hover:shadow-md transition-all">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-widest text-[#01696F]/60 mb-1">Case Simulation</p>
+                        <h3 className="font-extrabold text-zinc-900 text-base leading-snug">{c.title}</h3>
+                      </div>
+                      <span className={cn(
+                        "text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg border shrink-0",
+                        c.difficulty === "easy" ? "bg-[#E6F0F1] text-[#01696F] border-[#01696F]/20"
+                          : c.difficulty === "medium" ? "bg-amber-50 text-amber-700 border-amber-200"
+                          : "bg-red-50 text-red-700 border-red-200"
+                      )}>
+                        {c.difficulty}
+                      </span>
+                    </div>
+                    {c.description && <p className="text-[11px] text-zinc-500 font-medium leading-relaxed line-clamp-2">{c.description}</p>}
+                    <div className="flex items-center gap-3 text-[10px] font-bold text-zinc-400">
+                      <span>{c.studyCount} case {c.studyCount === 1 ? "study" : "studies"}</span>
+                      <span>·</span>
+                      <span>{c.activityCount} {c.activityCount === 1 ? "activity" : "activities"}</span>
+                    </div>
+                    {sess && (
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-[9px] font-black text-zinc-400">
+                          <span>{isCompleted ? "Completed" : isTesting ? "In progress" : "Reading"}</span>
+                          <span>{isCompleted ? "100%" : `${progressPct}%`}</span>
+                        </div>
+                        <div className="w-full h-1.5 bg-zinc-100 rounded-full overflow-hidden">
+                          <div className={cn("h-full rounded-full transition-all", isCompleted ? "bg-[#01696F]" : "bg-[#01696F]")} style={{ width: isCompleted ? "100%" : `${progressPct}%` }} />
+                        </div>
+                      </div>
+                    )}
+                    <button
+                      onClick={() => handleOpenCase(c)}
+                      className={cn(
+                        "w-full py-2.5 rounded-2xl text-xs font-black flex items-center justify-center gap-1.5 transition-all active:scale-[0.98]",
+                        isCompleted
+                          ? "bg-[#01696F]/10 text-[#01696F] border border-[#01696F]/20"
+                          : "bg-[#01696F] text-white hover:bg-[#01696F]/90 shadow-sm"
+                      )}
+                    >
+                      {isCompleted
+                        ? (<><CheckCircle2 size={12} fill="currentColor" /> Review</>)
+                        : sess?.studiesRead
+                          ? (<><RotateCcw size={12} /> Resume</>)
+                          : (<><Play size={11} fill="currentColor" /> Start</>)
+                      }
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )
+        )}
+
+        {/* ── Skill tests sections (MCQ / Canvas / Quantus) ── */}
+        {section !== "case_simulations" && (loading ? (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            {[1, 2, 3, 4].map((i) => <SkillProfessionCardSkeleton key={i} />)}
           </div>
         ) : (
           <>
@@ -484,12 +652,22 @@ function SkillHomeContent() {
 
             {filtered.length === 0 && (
               <div className="py-20 text-center text-zinc-400 font-semibold text-sm">
-                No professions found matching "{searchQuery}"
+                No professions found matching &quot;{searchQuery}&quot;
               </div>
             )}
           </>
-        )}
+        ))}
       </div>
+
+      {/* Case studies preview modal — shown before entering the test page */}
+      <CaseStudiesModal
+        studies={previewCase?.studies ?? []}
+        caseTitle={previewCase?.title ?? ""}
+        isOpen={!!previewCase}
+        onClose={() => setPreviewCase(null)}
+        onStartActivities={handleStartActivities}
+        loading={previewLoading}
+      />
     </div>
   );
 }

@@ -11,6 +11,9 @@ import progressRoutes from "./routes/progress";
 import skillRoutes from "./routes/skill";
 import adminRoutes from "./routes/admin";
 import activityRoutes from "./routes/activity";
+import reactionRoutes from "./routes/reactions";
+import bookmarkRoutes from "./routes/bookmarks";
+import caseRoutes from "./routes/cases";
 
 dotenv.config();
 
@@ -37,6 +40,9 @@ app.use("/api/v1/skill", skillRoutes);
 app.use("/api/v1/admin", adminRoutes);
 app.use("/api/v1/activities", activityRoutes);
 app.use("/api/v1/attempts", activityRoutes);
+app.use("/api/v1/reactions", reactionRoutes);
+app.use("/api/v1/bookmarks", bookmarkRoutes);
+app.use("/api/v1/cases", caseRoutes);
 
 
 app.listen(port, () => {

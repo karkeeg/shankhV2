@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import Cookies from "js-cookie";
+import { clearAllDrafts } from "./activityDraft";
 
 interface User {
   id: string;
@@ -92,6 +93,7 @@ export const useAuthStore = create<AuthState>()(
           console.error("Logout error:", err);
         } finally {
           Cookies.remove("shankh-token", { path: "/" });
+          clearAllDrafts();
           set({ user: null, token: null, error: null });
         }
       },

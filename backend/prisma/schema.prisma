@@ -145,6 +145,7 @@ model Subtopic {
   lessons                Lesson[]
   subtopicProfessionTags SubtopicProfessionTag[]
   userSubtopicProgresses UserSubtopicProgress[]
+  userBookmarks          UserBookmark[]
 }
 
 model Lesson {
@@ -167,6 +168,7 @@ model Lesson {
   userLessonProgresses UserLessonProgress[]
   userLessonSessions   UserLessonSession[]
   skillTestItems       SkillTestItem[]
+  lessonReactions      LessonReaction[]
 }
 
 model LessonActivity {
@@ -378,6 +380,15 @@ model User {
 
   // Streaks
   userStreaks             UserStreak[]
+
+  // Reactions
+  lessonReactions        LessonReaction[]
+
+  // Bookmarks
+  userBookmarks          UserBookmark[]
+
+  // Case simulations
+  caseSessions           UserCaseSession[]
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -576,6 +587,41 @@ model UserStreak {
   createdAt DateTime @default(now())
 
   @@unique([userId, date], map: "uq_user_streak_date")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BOOKMARKS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model UserBookmark {
+  id         String   @id @default(uuid())
+  userId     String
+  subtopicId String
+  createdAt  DateTime @default(now())
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subtopic Subtopic @relation(fields: [subtopicId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, subtopicId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// REACTIONS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model LessonReaction {
+  id        String   @id @default(uuid())
+  userId    String
+  lessonId  String
+  reaction  String   // "like" | "dislike"
+  source    String   @default("lesson")  // "lesson" | "test"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, lessonId, source])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -786,4 +832,86 @@ model UserSkillTestResponse {
 
   @@unique([sessionId, testItemId], map: "uq_test_response")
   @@index([sessionId],              map: "idx_test_response_session")
+}
+
+
+// =============================================================================
+// CASE SIMULATIONS
+// =============================================================================
+
+model CaseSimulation {
+  id          String     @id @default(uuid())
+  title       String
+  description String?
+  difficulty  Difficulty @default(medium)
+  isPublished Boolean    @default(false)
+  orderIndex  Int        @default(0)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  caseStudies    CaseStudy[]
+  caseActivities CaseActivity[]
+  caseSessions   UserCaseSession[]
+}
+
+model CaseStudy {
+  id               String         @id @default(uuid())
+  caseSimulationId String
+  caseSimulation   CaseSimulation @relation(fields: [caseSimulationId], references: [id], onDelete: Cascade)
+  title            String
+  content          String
+  orderIndex       Int            @default(0)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+}
+
+// Activities inside a case simulation ? manually authored by admin (no lesson link)
+// activityData JSON shape:
+//   MCQ:     { instructions, context, questions: [{ id, questionText, explanation, options: [{ id, optionText, isCorrect }] }] }
+//   Canvas:  { instructions, context, title, assemblyMode, scoringMode, tokens, draggableElements }
+//   Quantus: { instructions, context, title, gridRows, gridCols, gridValues, correctAnswers }
+model CaseActivity {
+  id               String         @id @default(uuid())
+  caseSimulationId String
+  caseSimulation   CaseSimulation @relation(fields: [caseSimulationId], references: [id], onDelete: Cascade)
+  activityType     ActivityType
+  activityData     Json
+  orderIndex       Int            @default(0)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  responses CaseActivityResponse[]
+}
+
+model UserCaseSession {
+  id               String         @id @default(uuid())
+  userId           String
+  caseSimulationId String
+  status           String         @default("reading")  // "reading" | "testing" | "completed"
+  studiesRead      Boolean        @default(false)
+  totalActivities  Int            @default(0)
+  completedCount   Int            @default(0)
+  score            Float?
+  completedAt      DateTime?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  caseSimulation CaseSimulation @relation(fields: [caseSimulationId], references: [id], onDelete: Cascade)
+  responses      CaseActivityResponse[]
+
+  @@unique([userId, caseSimulationId])
+}
+
+model CaseActivityResponse {
+  id             String          @id @default(uuid())
+  sessionId      String
+  session        UserCaseSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  caseActivityId String
+  activity       CaseActivity    @relation(fields: [caseActivityId], references: [id], onDelete: Cascade)
+  responseData   Json
+  scorePct       Float?
+  createdAt      DateTime        @default(now())
+
+  @@unique([sessionId, caseActivityId])
 }
