@@ -1,6 +1,6 @@
 "use client";
 
-import React, { Suspense } from "react";
+import React, { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   LayoutGrid,
@@ -19,6 +19,22 @@ import { useAuthStore } from "@/lib/auth-store";
 
 import logo from "@/public/ShankhFull.png";
 
+const API = process.env.NEXT_PUBLIC_BACKEND_URL || "";
+
+function useLearningModules() {
+  const [modules, setModules] = useState<{ name: string; slug: string }[]>([]);
+  useEffect(() => {
+    fetch(`${API}/api/v1/content/modules`)
+      .then((r) => r.json())
+      .then((res) => {
+        const list = res.data ?? [];
+        setModules(list.map((m: any) => ({ name: m.name, slug: m.slug })));
+      })
+      .catch(() => {});
+  }, []);
+  return modules;
+}
+
 type SidebarItem = {
   name: string;
   href: string;
@@ -34,11 +50,22 @@ type SidebarGroup = {
 const SidebarNavContent = ({
   user,
   pathname,
+  learningModules,
 }: {
   user: any;
   pathname: string;
+  learningModules: { name: string; slug: string }[];
 }) => {
   const searchParams = useSearchParams();
+
+  const moduleItems: SidebarItem[] =
+    learningModules.length > 0
+      ? learningModules.map((m) => ({ name: m.name, href: `/learning/${m.slug}` }))
+      : [
+          { name: "Finance", href: "/learning/finance" },
+          { name: "Strategy", href: "/learning/strategy" },
+          { name: "Operations", href: "/learning/operations" },
+        ];
 
   const menuGroups: SidebarGroup[] = [
     {
@@ -52,11 +79,7 @@ const SidebarNavContent = ({
     {
       label: "Learning",
       icon: BookOpen,
-      items: [
-        { name: "Finance", href: "/learning/finance" },
-        { name: "Strategy", href: "/learning/strategy" },
-        { name: "Operations", href: "/learning/operations" },
-      ],
+      items: moduleItems,
     },
     {
       label: "Skill building",
@@ -196,6 +219,7 @@ export const Sidebar = () => {
   const router = useRouter();
   const logout = useAuthStore((state) => state.logout);
   const user = useAuthStore((state) => state.user);
+  const learningModules = useLearningModules();
 
   const handleLogout = () => {
     logout();
@@ -216,27 +240,28 @@ export const Sidebar = () => {
 
       {/* Nav Content */}
       <Suspense fallback={<div className="flex-1 px-3 space-y-4" />}>
-        <SidebarNavContent user={user} pathname={pathname} />
+        <SidebarNavContent user={user} pathname={pathname} learningModules={learningModules} />
       </Suspense>
 
       {/* Profile Footer */}
       <div className="p-4 border-t border-zinc-100">
-        <div className="flex items-center gap-3 p-3 rounded-2xl bg-[#DFEAEA] shadow-[inset_0px_4px_4px_0px_#00000014]">
-          <div className="w-10 h-10 rounded-full bg-white shadow-sm overflow-hidden flex-shrink-0">
-            <div className="w-full h-full flex items-center justify-center text-[#01696F] font-bold">
-              {user?.name?.charAt(0) || "U"}
-            </div>
+        <Link
+          href="/profile"
+          className="flex items-center gap-3 p-3 rounded-2xl bg-[#DFEAEA] shadow-[inset_0px_4px_4px_0px_#00000014] hover:bg-[#cee0e0] transition-colors group"
+        >
+          <div className="w-10 h-10 rounded-full bg-white shadow-sm overflow-hidden flex-shrink-0 flex items-center justify-center text-[#01696F] font-bold text-sm">
+            {user?.name?.charAt(0)?.toUpperCase() || "U"}
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-bold text-[#1a1a1a] truncate">
               {user?.name || ""}
             </p>
             <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider mt-0.5">
-              Free Plan
+              {user ? ((user as any).planType === 'pro' ? 'Pro Plan' : (user as any).planType === 'enterprise' ? 'Enterprise' : 'Free Plan') : 'Free Plan'}
             </p>
           </div>
           <button
-            onClick={handleLogout}
+            onClick={(e) => { e.preventDefault(); handleLogout(); }}
             className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-bold text-zinc-400 hover:text-red-500 hover:bg-gray-100 transition-colors"
           >
             <LogOutIcon
@@ -246,7 +271,7 @@ export const Sidebar = () => {
               className="hover:scale-110"
             />
           </button>
-        </div>
+        </Link>
       </div>
     </aside>
   );

@@ -13,6 +13,7 @@ export interface QuantusActivityData {
   gridCols: string[];
   gridValues: Record<string, string>;    // prefilled static values
   correctAnswers: Record<string, string>; // cells students must answer correctly
+  cellHints?: Record<string, string>;    // formula hints shown on hover
 }
 
 interface Props {
@@ -28,6 +29,9 @@ export function QuantusActivityBuilder({ value, onChange }: Props) {
   const [answerCells, setAnswerCells] = useState<Set<string>>(
     () => new Set(Object.keys(value.correctAnswers))
   );
+  const [cellHints, setCellHints] = useState<Record<string, string>>(
+    () => value.cellHints ?? {}
+  );
   const [selectedCell, setSelectedCell] = useState<{ row: number; col: number } | null>(null);
   const [studentPreview, setStudentPreview] = useState(false);
 
@@ -35,7 +39,7 @@ export function QuantusActivityBuilder({ value, onChange }: Props) {
     onChange({ ...value, [key]: val });
   }, [value, onChange]);
 
-  const syncParent = useCallback((grid: Record<string, string>, answers: Set<string>, rows: string[], cols: string[]) => {
+  const syncParent = useCallback((grid: Record<string, string>, answers: Set<string>, rows: string[], cols: string[], hints?: Record<string, string>) => {
     const gridValues: Record<string, string> = {};
     const correctAnswers: Record<string, string> = {};
     rows.forEach((row) => {
@@ -49,8 +53,11 @@ export function QuantusActivityBuilder({ value, onChange }: Props) {
         }
       });
     });
-    onChange({ ...value, gridRows: rows, gridCols: cols, gridValues, correctAnswers });
-  }, [value, onChange]);
+    const resolvedHints = hints ?? cellHints;
+    const filteredHints: Record<string, string> = {};
+    Object.entries(resolvedHints).forEach(([k, v]) => { if (v) filteredHints[k] = v; });
+    onChange({ ...value, gridRows: rows, gridCols: cols, gridValues, correctAnswers, cellHints: filteredHints });
+  }, [value, onChange, cellHints]);
 
   const handleGridChange: React.Dispatch<React.SetStateAction<Record<string, string>>> = useCallback((updater) => {
     setAdminGrid((prev) => {
@@ -151,33 +158,33 @@ export function QuantusActivityBuilder({ value, onChange }: Props) {
   // Static cells appear locked (white) — admin edits them via the formula bar.
   // This matches exactly what students see, so admin knows the visual before publishing.
   const adminInputs = useMemo(() => {
-    const list: { row: number; col: number; correctValue: string; placeholder: string }[] = [];
+    const list: { row: number; col: number; correctValue: string; placeholder: string; formula?: string }[] = [];
     value.gridRows.forEach((row, rIdx) => {
       value.gridCols.forEach((col, cIdx) => {
         if (cIdx === 0) return;
         const k = `${row}-${col}`;
         if (answerCells.has(k)) {
-          list.push({ row: rIdx, col: cIdx, correctValue: adminGrid[k] ?? "", placeholder: "Enter answer…" });
+          list.push({ row: rIdx, col: cIdx, correctValue: adminGrid[k] ?? "", placeholder: "Enter answer…", formula: cellHints[k] || undefined });
         }
       });
     });
     return list;
-  }, [value.gridRows, value.gridCols, answerCells, adminGrid]);
+  }, [value.gridRows, value.gridCols, answerCells, adminGrid, cellHints]);
 
   // Student preview: only answer cells are editable, pre-filled values shown
   const previewInputs = useMemo(() => {
-    const list: { row: number; col: number; correctValue: string; placeholder: string }[] = [];
+    const list: { row: number; col: number; correctValue: string; placeholder: string; formula?: string }[] = [];
     value.gridRows.forEach((row, rIdx) => {
       value.gridCols.forEach((col, cIdx) => {
         if (cIdx === 0) return;
         const k = `${row}-${col}`;
         if (answerCells.has(k)) {
-          list.push({ row: rIdx, col: cIdx, correctValue: adminGrid[k] ?? "", placeholder: "Type answer…" });
+          list.push({ row: rIdx, col: cIdx, correctValue: adminGrid[k] ?? "", placeholder: "Type answer…", formula: cellHints[k] || undefined });
         }
       });
     });
     return list;
-  }, [value.gridRows, value.gridCols, answerCells, adminGrid]);
+  }, [value.gridRows, value.gridCols, answerCells, adminGrid, cellHints]);
 
   // Student preview table: answer cells show blank
   const previewTable = useMemo(() => {
@@ -302,7 +309,7 @@ export function QuantusActivityBuilder({ value, onChange }: Props) {
               </span>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             {/* One-click answer toggle (edit mode only) */}
             {!studentPreview && selectedCell && !selectedIsFirstCol && (
               <button
@@ -316,6 +323,23 @@ export function QuantusActivityBuilder({ value, onChange }: Props) {
               >
                 {selectedIsAnswer ? "Unmark this cell" : "Mark this cell only"}
               </button>
+            )}
+            {/* Formula hint input for selected answer cell */}
+            {!studentPreview && selectedCell && selectedIsAnswer && selectedKey && (
+              <div className="flex items-center gap-1.5">
+                <span className="text-[9px] font-black text-zinc-400 uppercase tracking-wider whitespace-nowrap">💡 Hint:</span>
+                <input
+                  type="text"
+                  value={cellHints[selectedKey] ?? ""}
+                  onChange={(e) => {
+                    const next = { ...cellHints, [selectedKey]: e.target.value };
+                    setCellHints(next);
+                    syncParent(adminGrid, answerCells, value.gridRows, value.gridCols, next);
+                  }}
+                  placeholder="e.g. =Revenue*(1+Growth)"
+                  className="border border-zinc-200 rounded-lg px-2.5 py-1 text-[11px] text-zinc-800 bg-white placeholder:text-zinc-400 outline-none focus:border-[#01696F] w-52"
+                />
+              </div>
             )}
             {!studentPreview && !selectedCell && (
               <span className="text-[10px] text-zinc-400 font-medium flex items-center gap-1">

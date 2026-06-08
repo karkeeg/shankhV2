@@ -1,17 +1,20 @@
 "use client";
 
-import React, { useEffect, useState, useMemo, useRef, useCallback } from "react";
+import React, { useEffect, useState, useMemo, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuthStore } from "@/lib/auth-store";
 import {
   Loader2, ArrowLeft, ArrowRight, CheckCircle2,
   XCircle, ChevronLeft, ChevronRight, Trophy, X, RefreshCw, BookOpen,
+  PencilRuler, Minimize2, Maximize2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ExcelGrid } from "@/components/exercise/ExcelGrid";
-import { CanvasWorkspace, CanvasWorkspaceHandle } from "@/components/canvas/CanvasWorkspace";
-import { CanvasPalette, tokensToItems } from "@/components/canvas/CanvasPalette";
-import type { GradeResult, CanvasSnapshot, PlacedNode, CanvasEdge } from "@/components/canvas/types";
+import { CanvasExercise } from "@/components/exercise/CanvasExercise";
+import { CanvasToolkit } from "@/components/exercise/CanvasToolkit";
+import { Whiteboard } from "@/components/exercise/Whiteboard";
+import { scratchpadKey } from "@/lib/scratchpad";
+import type { DragCategory, DragItem } from "@/types/exercise";
 import Image from "next/image";
 import logo from "@/public/ShankhFull.png";
 import { CaseStudiesModal } from "@/components/case/CaseStudiesModal";
@@ -242,28 +245,77 @@ function buildSteps(rawActivities: any[], doneStepIds: Set<string>): any[] {
   return [...incomplete, ...complete];
 }
 
-// ─── Compute GradeResult from submitted edges vs solution ─────────────────────
+// ─── Extract token-based graph from a React Flow canvas ───────────────────────
+// CanvasExercise emits React Flow { nodes, edges } where node IDs are instance
+// IDs and the underlying token lives at node.data.tokenId. The case grader
+// compares token-id edges, so we map instance IDs → token IDs here. Mirrors the
+// extractCanvasGraph helper used by the learning + skill activity pages.
 
-function computeCanvasGrade(
-  submittedEdges: { sourceId: string; targetId: string }[],
-  solutionEdges: { sourceId: string; targetId: string }[]
-): GradeResult {
-  const solutionKeys = new Set(solutionEdges.map(e => `${e.sourceId}→${e.targetId}`));
-  const correct: string[] = [];
-  const wrong: string[] = [];
-  for (const e of submittedEdges) {
-    const k = `${e.sourceId}→${e.targetId}`;
-    if (solutionKeys.has(k)) correct.push(k); else wrong.push(k);
-  }
-  const missing = solutionEdges
-    .map(e => `${e.sourceId}→${e.targetId}`)
-    .filter(k => !correct.includes(k));
-  return {
-    scorePct: solutionEdges.length > 0 ? Math.round((correct.length / solutionEdges.length) * 100) : 100,
-    correct,
-    wrong,
-    missing,
+function extractCanvasGraph(canvasElements: any): { placedTokens: string[]; edges: { from: string; to: string }[] } {
+  if (!canvasElements?.nodes) return { placedTokens: [], edges: [] };
+  const nodeMap = new Map<string, string>(
+    (canvasElements.nodes as any[]).map((n: any) => [n.id, n.data?.tokenId as string])
+  );
+  const placedTokens = (canvasElements.nodes as any[])
+    .map((n: any) => n.data?.tokenId as string)
+    .filter(Boolean);
+  const edges = ((canvasElements.edges as any[]) ?? [])
+    .map((e: any) => {
+      const from = nodeMap.get(e.source);
+      const to = nodeMap.get(e.target);
+      return from && to ? { from, to } : null;
+    })
+    .filter(Boolean) as { from: string; to: string }[];
+  return { placedTokens, edges };
+}
+
+// ─── Draggable splitter (VS Code-style panel resizer) ─────────────────────────
+// Reports the horizontal drag delta (px) on each mouse move. Parent decides
+// whether to add or subtract it from a panel width.
+
+function clamp(v: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, v));
+}
+
+function Resizer({ onResize, onDragState }: {
+  onResize: (deltaX: number) => void;
+  onDragState?: (dragging: boolean) => void;
+}) {
+  const lastX = useRef(0);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    lastX.current = e.clientX;
+    onDragState?.(true);
+
+    const move = (ev: MouseEvent) => {
+      const delta = ev.clientX - lastX.current;
+      lastX.current = ev.clientX;
+      onResize(delta);
+    };
+    const up = () => {
+      document.removeEventListener("mousemove", move);
+      document.removeEventListener("mouseup", up);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      onDragState?.(false);
+    };
+    document.addEventListener("mousemove", move);
+    document.addEventListener("mouseup", up);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
   };
+
+  return (
+    <div
+      onMouseDown={handleMouseDown}
+      className="flex-shrink-0 w-1.5 self-stretch my-1 rounded-full cursor-col-resize bg-transparent hover:bg-[#01696F]/30 active:bg-[#01696F]/50 transition-colors duration-150 group"
+    >
+      <div className="w-full h-full flex items-center justify-center">
+        <div className="w-[3px] h-8 rounded-full bg-zinc-200 group-hover:bg-[#01696F]/50 transition-colors" />
+      </div>
+    </div>
+  );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -296,12 +348,19 @@ export default function CaseTestPage() {
   const [studiesRead, setStudiesRead] = useState(false);
   const [leftOpen, setLeftOpen] = useState(true);
   const [rightOpen, setRightOpen] = useState(false);
+  const [boardOpen, setBoardOpen] = useState(false);   // whiteboard scratchpad panel
+  const [centerOpen, setCenterOpen] = useState(true);  // main question workspace
+
+  // Resizable panel widths (px) — VS Code-style draggable splitters
+  const [leftWidth, setLeftWidth] = useState(248);
+  const [boardWidth, setBoardWidth] = useState(460);
+  const [activitiesWidth, setActivitiesWidth] = useState(312);
+  const [dragging, setDragging] = useState(false);
   const [activeLeftTab, setActiveLeftTab] = useState<"instructions" | "context">("instructions");
 
-  // Canvas state
-  const canvasRef = useRef<CanvasWorkspaceHandle>(null);
-  const [canvasPlacedIds, setCanvasPlacedIds] = useState<Set<string>>(new Set());
-  const [canvasGradeResult, setCanvasGradeResult] = useState<GradeResult | null>(null);
+  // Canvas state — React Flow graph emitted by CanvasExercise (same as learning)
+  const [canvasElements, setCanvasElements] = useState<any>(null);
+  const [canvasResetNonce, setCanvasResetNonce] = useState(0);
 
   const headers = { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) };
 
@@ -367,68 +426,106 @@ export default function CaseTestPage() {
   const progressPct = totalSteps > 0 ? Math.round((completedCount / totalSteps) * 100) : 0;
 
   const isCanvasActive = step?.stepType === "canvas";
-  const isCanvasSubmitted = isCanvasActive && (isStepDone || canvasGradeResult !== null);
+  const isCanvasSubmitted = isCanvasActive && isStepDone;
 
   // Reset UI state when navigating to a different step
   useEffect(() => {
     setSelectedOption(null);
     setFeedback(null);
-    setCanvasPlacedIds(new Set());
-    setCanvasGradeResult(null);
+    setCanvasElements(null);
     if (step?.stepType === "quantus") setSpreadsheetGrid(actData?.gridValues ?? {});
   }, [currentIdx]);
 
-  // ── Canvas: palette + review reconstruction ────────────────────────────────
+  // ── Canvas: palette → drag toolkit + review reconstruction ──────────────────
+  // Mirror normalizeCaseSteps in the learning page: convert the stored
+  // paletteItems (or legacy tokens) into the DragCategory[] shape CanvasToolkit
+  // expects, so the case canvas behaves identically to lesson/skill canvases.
 
-  const canvasPaletteItems = useMemo(
-    () => actData?.paletteItems?.length ? actData.paletteItems : tokensToItems(actData?.tokens ?? []),
-    [step]
-  );
-
-  const canvasReviewNodes: PlacedNode[] = useMemo(() => {
-    if (step?.stepType !== "canvas") return [];
-    const positions: { id: string; x: number; y: number }[] = actData?.solutionSnapshot?.nodePositions ?? [];
-    return canvasPaletteItems.map((item: any, idx: number) => {
-      const pos = positions.find((p: any) => p.id === item.id);
-      return { ...item, x: pos?.x ?? (40 + (idx % 4) * 170), y: pos?.y ?? (40 + Math.floor(idx / 4) * 90) };
-    });
-  }, [step, canvasPaletteItems]);
-
-  const canvasReviewEdges: CanvasEdge[] = useMemo(() => {
-    if (step?.stepType !== "canvas" || !isStepDone) return [];
-    return (step.response?.responseData?.edges ?? []).map((e: any, i: number) => ({
-      id: `edge-${i}`, sourceId: e.sourceId, targetId: e.targetId,
+  const canvasPalette: { id: string; label: string; shape: string; color?: string }[] = useMemo(() => {
+    if (actData?.paletteItems?.length) {
+      return actData.paletteItems.map((p: any) => ({
+        id: p.id, label: p.label, shape: p.shape ?? "rectangle", color: p.color,
+      }));
+    }
+    return (actData?.tokens ?? []).map((t: any) => ({
+      id: t.id, label: t.content || t.label || t.id, shape: t.type ?? "rectangle",
     }));
-  }, [step, isStepDone]);
+  }, [step]);
 
-  const canvasReviewGrade: GradeResult | null = useMemo(() => {
-    if (!isStepDone || !canvasReviewEdges.length) return canvasGradeResult;
-    const solution: { sourceId: string; targetId: string }[] = actData?.solutionSnapshot?.edges ?? [];
-    if (!solution.length) return null;
-    return computeCanvasGrade(
-      canvasReviewEdges.map(e => ({ sourceId: e.sourceId, targetId: e.targetId })),
-      solution
-    );
-  }, [step, isStepDone, canvasReviewEdges, canvasGradeResult]);
+  const canvasDraggableElements = useMemo<DragCategory[]>(() => {
+    if (!canvasPalette.length) return [];
+    return [{
+      category: "Nodes",
+      items: canvasPalette.map((p): DragItem => ({
+        id: p.id, label: p.label, content: p.label, type: (p.shape ?? "rectangle") as DragItem["type"],
+      })),
+    }];
+  }, [canvasPalette]);
+
+  // Review graph (disabled CanvasExercise after submission). Prefer the live
+  // graph just submitted this session, then a stored React Flow snapshot, then
+  // a reconstruction from solution node positions + submitted token edges.
+  const canvasReviewElements = useMemo<any>(() => {
+    if (!isCanvasActive || !isStepDone) return null;
+    if (canvasElements?.nodes?.length) return canvasElements;
+
+    const respData = step?.response?.responseData ?? {};
+    if (respData.rf?.nodes?.length) return respData.rf;
+
+    let tokenEdges: { sourceId: string; targetId: string }[] = [];
+    if (respData.edges?.length) {
+      tokenEdges = respData.edges;
+    } else if (respData.canvasData?.edges?.length) {
+      tokenEdges = respData.canvasData.edges.map((e: any) => ({
+        sourceId: e.from ?? e.sourceId, targetId: e.to ?? e.targetId,
+      }));
+    }
+    if (!tokenEdges.length || !canvasPalette.length) return null;
+
+    const positions: { id: string; x: number; y: number }[] = actData?.solutionSnapshot?.nodePositions ?? [];
+    const usedTokenIds = new Set<string>();
+    tokenEdges.forEach((e) => { usedTokenIds.add(e.sourceId); usedTokenIds.add(e.targetId); });
+
+    const nodes = canvasPalette
+      .filter((item) => usedTokenIds.has(item.id))
+      .map((item, idx) => {
+        const pos = positions.find((p) => p.id === item.id);
+        return {
+          id: item.id,
+          type: "tokenNode",
+          position: { x: pos?.x ?? (60 + (idx % 4) * 190), y: pos?.y ?? (60 + Math.floor(idx / 4) * 110) },
+          data: { tokenId: item.id, label: item.label, shape: item.shape ?? "rectangle" },
+        };
+      });
+    const edges = tokenEdges.map((e, i) => ({
+      id: `r-${i}`,
+      source: e.sourceId,
+      target: e.targetId,
+      type: "deletable",
+      markerEnd: { type: "arrowclosed", color: "#94a3b8", width: 14, height: 14 },
+      style: { stroke: "#94a3b8", strokeWidth: 2 },
+    }));
+    return { nodes, edges };
+  }, [isCanvasActive, isStepDone, canvasElements, step, canvasPalette]);
 
   // ── Excel helpers ──────────────────────────────────────────────────────────
 
   const excelTable = useMemo(() => {
-    if (!actData?.gridRows || !actData?.gridCols) return [];
+    if (!Array.isArray(actData?.gridRows) || !Array.isArray(actData?.gridCols)) return [];
     return actData.gridRows.map((row: string) =>
       actData.gridCols.map((col: string) => actData.gridValues?.[`${row}-${col}`] ?? "")
     );
   }, [step]);
 
   const excelInputs = useMemo(() => {
-    if (!actData?.gridRows || !actData?.gridCols) return [];
+    if (!Array.isArray(actData?.gridRows) || !Array.isArray(actData?.gridCols)) return [];
     const list: any[] = [];
     actData.gridRows.forEach((row: string, rIdx: number) => {
       actData.gridCols.forEach((col: string, cIdx: number) => {
         if (cIdx === 0) return;
         const k = `${row}-${col}`;
         if (actData.correctAnswers?.[k] !== undefined)
-          list.push({ row: rIdx, col: cIdx, correctValue: actData.correctAnswers[k], placeholder: "" });
+          list.push({ row: rIdx, col: cIdx, correctValue: actData.correctAnswers[k], placeholder: "", formula: actData.cellHints?.[k] || undefined });
       });
     });
     return list;
@@ -508,44 +605,48 @@ export default function CaseTestPage() {
 
   // ── Submit: Canvas ─────────────────────────────────────────────────────────
 
-  const handleCanvasSubmit = useCallback(async (snapshot: CanvasSnapshot): Promise<GradeResult | null> => {
-    if (!step) return null;
+  const handleCanvasSubmit = async () => {
+    if (!step || step.stepType !== "canvas" || isStepDone) return;
+    const graph = extractCanvasGraph(canvasElements);
+    if (graph.placedTokens.length === 0) {
+      setFeedback({ isError: true, message: "Drag some nodes onto the canvas first!" });
+      return;
+    }
+    if (graph.edges.length === 0) {
+      setFeedback({ isError: true, message: "Connect at least two nodes before submitting!" });
+      return;
+    }
     setSubmitting(true);
+    setFeedback(null);
     try {
       const res = await fetch(`${API}/api/v1/cases/${id}/activities/${step.activityId}/submit`, {
         method: "POST", headers,
-        body: JSON.stringify({ responseData: { edges: snapshot.edges.map(e => ({ sourceId: e.sourceId, targetId: e.targetId })) } }),
+        // canvasData feeds the grader ({from,to} token edges); rf preserves the
+        // full React Flow layout so the canvas can be reloaded in review mode.
+        body: JSON.stringify({ responseData: { canvasData: graph, rf: canvasElements } }),
       });
       const rj = await res.json();
-      if (!res.ok) return null;
-      const { scorePct, gradeBreakdown, allComplete } = rj.data;
-      const grade: GradeResult = gradeBreakdown ?? { scorePct, correct: [], wrong: [], missing: [] };
+      if (!res.ok) throw new Error(rj?.error || "Submit failed");
+      const { scorePct, allComplete } = rj.data;
       setCompletedStepIds(prev => new Set([...prev, step.id]));
       setCompletedActivityIds(prev => new Set([...prev, step.activityId]));
       setScores(prev => ({ ...prev, [step.activityId]: scorePct }));
-      setCanvasGradeResult(grade);
-      if (allComplete) setTimeout(() => router.push("/skill?section=case_simulations"), 3000);
-      return grade;
-    } catch { return null; }
-    finally { setSubmitting(false); }
-  }, [step, id, headers]);
-
-  const handleCanvasSubmitActive = async () => {
-    if (!canvasRef.current) return;
-    const snapshot = canvasRef.current.getSnapshot();
-    if (snapshot.edges.length === 0) {
-      setFeedback({ isError: true, message: "Draw at least one connection before submitting!" });
-      return;
-    }
-    await handleCanvasSubmit(snapshot);
+      setFeedback({
+        isError: false,
+        message: scorePct >= 60 ? `Score: ${Math.round(scorePct)}% ✓` : `Recorded. Score: ${Math.round(scorePct)}%`,
+        scorePct,
+      });
+      if (allComplete) setTimeout(() => router.push("/skill?section=case_simulations"), 2500);
+    } catch (e: any) {
+      setFeedback({ isError: true, message: e?.message || "Error submitting." });
+    } finally { setSubmitting(false); }
   };
 
   const handleReset = () => {
     setFeedback(null);
     if (step?.stepType === "canvas") {
-      canvasRef.current?.reset();
-      setCanvasGradeResult(null);
-      setCanvasPlacedIds(new Set());
+      setCanvasElements(null);
+      setCanvasResetNonce(n => n + 1); // force CanvasExercise to remount blank
     } else if (step?.stepType === "mcq-question") {
       setSelectedOption(null);
     } else if (step?.stepType === "quantus") {
@@ -589,11 +690,14 @@ export default function CaseTestPage() {
     <div className="flex flex-row h-screen overflow-hidden font-sans bg-white text-zinc-800 p-2 sm:p-3 gap-0">
 
       {/* ══════════════════════ LEFT PANEL ══════════════════════ */}
-      <div className={cn(
-        "flex-shrink-0 transition-all duration-300 ease-in-out overflow-hidden",
-        leftOpen ? "w-60 xl:w-64" : "w-0"
-      )}>
-        <div className="w-60 xl:w-64 h-full flex flex-col justify-between pr-2">
+      <div
+        className={cn(
+          "flex-shrink-0 overflow-hidden",
+          !dragging && "transition-all duration-300 ease-in-out"
+        )}
+        style={{ width: leftOpen ? leftWidth : 0 }}
+      >
+        <div className="h-full flex flex-col justify-between pr-2" style={{ width: leftWidth }}>
           <div className="flex flex-col gap-3 overflow-y-auto flex-1 pb-3">
 
             {/* Logo + navigation buttons */}
@@ -689,27 +793,18 @@ export default function CaseTestPage() {
                 <p className="text-[10px] text-zinc-400 font-medium italic">No context provided.</p>
               )}
 
-              {/* Canvas palette inside content card — active mode only */}
-              {isCanvasActive && !isCanvasSubmitted && canvasPaletteItems.length > 0 && (
-                <div className="border-t border-zinc-200/50 pt-2">
-                  <CanvasPalette items={canvasPaletteItems} placedIds={canvasPlacedIds} />
-                </div>
+              {/* Canvas modeling toolkit inside content card — active mode only.
+                  Same drag-and-drop toolkit used by the learning + skill pages. */}
+              {isCanvasActive && !isCanvasSubmitted && (
+                <CanvasToolkit draggableElements={canvasDraggableElements} />
               )}
 
-              {/* Canvas result legend inside content card (after submission) */}
+              {/* Submitted note (after submission) */}
               {isCanvasActive && isCanvasSubmitted && (
-                <div className="border-t border-zinc-200/50 pt-2 flex flex-col gap-1.5">
-                  <span className="text-[9px] font-black uppercase tracking-widest text-zinc-400">Result Legend</span>
-                  {[
-                    { color: "bg-emerald-500", label: "Correct edge" },
-                    { color: "bg-red-500", label: "Wrong edge" },
-                    { color: "bg-orange-400", label: "Missing edge" },
-                  ].map(({ color, label }) => (
-                    <div key={label} className="flex items-center gap-2">
-                      <div className={cn("w-3 h-3 rounded-full shrink-0", color)} />
-                      <span className="text-[10px] font-semibold text-zinc-600">{label}</span>
-                    </div>
-                  ))}
+                <div className="border-t border-zinc-200/50 pt-2">
+                  <p className="text-[10px] font-semibold text-zinc-500 leading-relaxed">
+                    ✓ Submitted{scores[step.activityId] !== undefined ? ` — score ${Math.round(scores[step.activityId])}%` : ""}. Your framework is shown on the canvas.
+                  </p>
                 </div>
               )}
             </div>
@@ -728,6 +823,14 @@ export default function CaseTestPage() {
         </div>
       </div>
 
+      {/* Left panel splitter */}
+      {leftOpen && (
+        <Resizer
+          onDragState={setDragging}
+          onResize={(d) => setLeftWidth((w) => clamp(w + d, 180, 420))}
+        />
+      )}
+
       {/* Left panel toggle */}
       {!leftOpen && (
         <button
@@ -738,8 +841,27 @@ export default function CaseTestPage() {
         </button>
       )}
 
+      {/* Center restore toggle — shown when the question workspace is minimized */}
+      {!centerOpen && (
+        <button
+          onClick={() => setCenterOpen(true)}
+          className="self-center z-20 flex-shrink-0 w-8 h-40 mx-1 bg-white border border-zinc-200 shadow-md rounded-full flex items-center justify-center hover:bg-[#E6F0F1] hover:border-[#01696F]/30 transition-all duration-200 active:scale-95 group"
+        >
+          <div className="flex flex-col items-center justify-center gap-2">
+            <span className="text-[11px] font-bold text-[#01696F] uppercase tracking-widest [writing-mode:vertical-rl] rotate-180">
+              Question
+            </span>
+            <Maximize2 size={14} className="text-[#01696F] group-hover:scale-110 transition-transform duration-200" />
+          </div>
+        </button>
+      )}
+
       {/* ══════════════════════ MAIN WORKSPACE ══════════════════════ */}
-      <div className="flex-1 min-w-0 flex flex-col bg-[#F0EDE7] shadow-[0px_4px_8px_0px_#0000003D_inset] border border-[#F0EDE7] rounded-2xl overflow-hidden mx-1.5">
+      <div className={cn(
+        "min-w-0 flex flex-col bg-[#F0EDE7] shadow-[0px_4px_8px_0px_#0000003D_inset] border border-[#F0EDE7] rounded-2xl overflow-hidden",
+        !dragging && "transition-all duration-300 ease-in-out",
+        centerOpen ? "flex-1 mx-1.5" : "w-0 flex-none mx-0 border-0"
+      )}>
 
         {/* Toolbar — matches lesson activity page */}
         <div className="flex items-center justify-between px-3 py-2.5 border-b border-zinc-200 bg-[#F0EDE7]/60 shrink-0 gap-2 flex-wrap">
@@ -788,8 +910,15 @@ export default function CaseTestPage() {
           {/* Right controls */}
           <div className="flex items-center gap-2 flex-shrink-0">
             <button
+              onClick={() => setCenterOpen(false)}
+              title="Minimize question — give the scratchpad more room"
+              className="px-2.5 py-2 bg-white text-zinc-500 hover:text-[#01696F] border border-zinc-200 hover:border-[#01696F]/30 font-bold text-xs rounded-xl shadow-sm transition-all active:scale-95 flex items-center gap-1.5 flex-shrink-0"
+            >
+              <Minimize2 size={13} /> <span className="hidden lg:inline">Minimize</span>
+            </button>
+            <button
               onClick={
-                isCanvasActive ? (isCanvasSubmitted ? undefined : handleCanvasSubmitActive)
+                isCanvasActive ? (isCanvasSubmitted ? undefined : handleCanvasSubmit)
                   : step?.stepType === "mcq-question" ? handleMcqAnswer
                     : handleQuantusSubmit
               }
@@ -916,29 +1045,23 @@ export default function CaseTestPage() {
             )
           )}
 
-          {/* ── Canvas ── */}
+          {/* ── Canvas — same React Flow editor as learning + skill ── */}
           {isCanvasActive && (
-            <div className="absolute inset-0">
+            <div className="absolute inset-0 flex flex-col">
               {isCanvasSubmitted ? (
-                <CanvasWorkspace
+                <CanvasExercise
                   key={`canvas-review-${step.id}`}
-                  paletteItems={canvasPaletteItems}
-                  initialNodes={canvasReviewNodes}
-                  initialEdges={canvasReviewEdges}
-                  solutionSnapshot={actData?.solutionSnapshot ?? null}
-                  gradeResult={canvasReviewGrade}
-                  showBreakdown
+                  canvasBackgroundText={actData?.title || "Framework"}
+                  initialElements={canvasReviewElements}
                   disabled
                 />
               ) : (
-                <CanvasWorkspace
-                  key={`canvas-active-${step.id}`}
-                  ref={canvasRef}
-                  paletteItems={canvasPaletteItems}
-                  initialNodes={[]}
-                  initialEdges={[]}
-                  disabled={false}
-                  onPlacedIdsChange={setCanvasPlacedIds}
+                <CanvasExercise
+                  key={`canvas-active-${step.id}-${canvasResetNonce}`}
+                  canvasBackgroundText={actData?.title || "Framework Drill"}
+                  onElementsChange={setCanvasElements}
+                  initialElements={[]}
+                  assemblyMode={actData?.assemblyMode || "graph"}
                 />
               )}
             </div>
@@ -948,27 +1071,94 @@ export default function CaseTestPage() {
         </div>
       </div>
 
-      {/* Right panel toggle */}
-      {!rightOpen && (
-        <button
-          onClick={() => setRightOpen(true)}
-          className="self-center z-20 flex-shrink-0 w-8 h-40 bg-white border border-zinc-200 shadow-md rounded-full flex items-center justify-center hover:bg-[#E6F0F1] hover:border-[#01696F]/30 transition-all duration-200 active:scale-95 group"
-        >
-          <div className="flex flex-col items-center justify-center gap-2">
-            <span className="text-[11px] font-bold text-[#01696F] uppercase tracking-widest [writing-mode:vertical-rl] rotate-180">
-              Activities
-            </span>
-            <Trophy size={14} className="text-[#01696F] group-hover:scale-110 transition-transform duration-200" />
+      {/* Right edge toggles — Scratchpad + Activities, stacked */}
+      <div className="self-center z-20 flex-shrink-0 flex flex-col gap-2">
+        {!boardOpen && (
+          <button
+            onClick={() => setBoardOpen(true)}
+            className="w-8 h-40 bg-white border border-zinc-200 shadow-md rounded-full flex items-center justify-center hover:bg-[#E6F0F1] hover:border-[#01696F]/30 transition-all duration-200 active:scale-95 group"
+          >
+            <div className="flex flex-col items-center justify-center gap-2">
+              <span className="text-[11px] font-bold text-[#01696F] uppercase tracking-widest [writing-mode:vertical-rl] rotate-180">
+                Scratchpad
+              </span>
+              <PencilRuler size={14} className="text-[#01696F] group-hover:scale-110 transition-transform duration-200" />
+            </div>
+          </button>
+        )}
+        {!rightOpen && (
+          <button
+            onClick={() => setRightOpen(true)}
+            className="w-8 h-40 bg-white border border-zinc-200 shadow-md rounded-full flex items-center justify-center hover:bg-[#E6F0F1] hover:border-[#01696F]/30 transition-all duration-200 active:scale-95 group"
+          >
+            <div className="flex flex-col items-center justify-center gap-2">
+              <span className="text-[11px] font-bold text-[#01696F] uppercase tracking-widest [writing-mode:vertical-rl] rotate-180">
+                Activities
+              </span>
+              <Trophy size={14} className="text-[#01696F] group-hover:scale-110 transition-transform duration-200" />
+            </div>
+          </button>
+        )}
+      </div>
+
+      {/* Scratchpad splitter */}
+      {boardOpen && centerOpen && (
+        <Resizer
+          onDragState={setDragging}
+          onResize={(d) => setBoardWidth((w) => clamp(w - d, 300, 900))}
+        />
+      )}
+
+      {/* ══════════════════════ RIGHT PANEL — Scratchpad (Whiteboard) ══════════════════════ */}
+      <div
+        className={cn(
+          "overflow-hidden",
+          !dragging && "transition-all duration-300 ease-in-out",
+          boardOpen && !centerOpen ? "flex-1 min-w-0" : "flex-shrink-0"
+        )}
+        style={boardOpen && !centerOpen ? undefined : { width: boardOpen ? boardWidth : 0 }}
+      >
+        <div className="h-full flex flex-col pl-2" style={{ width: centerOpen ? boardWidth : "100%" }}>
+          <div className="bg-white flex flex-col h-full overflow-hidden rounded-2xl border border-zinc-100 shadow-sm">
+            {/* Header */}
+            <div className="flex items-center gap-2.5 px-4 py-3 border-b border-zinc-200 flex-shrink-0 bg-[#FAF7F2]">
+              <div className="w-8 h-8 rounded-full bg-[#01696F]/10 flex items-center justify-center flex-shrink-0">
+                <PencilRuler size={16} className="text-[#01696F]" />
+              </div>
+              <h3 className="font-black text-zinc-800 text-base tracking-tight">Scratchpad</h3>
+              <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">Rough work · not graded</span>
+              <button
+                onClick={() => setBoardOpen(false)}
+                className="ml-auto w-7 h-7 flex items-center justify-center rounded-lg hover:bg-zinc-100 transition group"
+              >
+                <X size={16} className="text-zinc-500 group-hover:text-zinc-800 transition" />
+              </button>
+            </div>
+            {/* Whiteboard surface */}
+            <div className="flex-1 min-h-0">
+              <Whiteboard
+                storageKey={scratchpadKey(user?.id ? `user-${user.id}` : `case-${id}`)}
+                refreshKey={`${leftOpen ? leftWidth : 0}-${centerOpen}-${boardOpen ? boardWidth : 0}-${rightOpen ? activitiesWidth : 0}`}
+              />
+            </div>
           </div>
-        </button>
+        </div>
+      </div>
+
+      {/* Activities splitter */}
+      {rightOpen && (
+        <Resizer
+          onDragState={setDragging}
+          onResize={(d) => setActivitiesWidth((w) => clamp(w - d, 240, 520))}
+        />
       )}
 
       {/* ══════════════════════ RIGHT PANEL — Activities ══════════════════════ */}
-      <div className={cn(
-        "flex-shrink-0 transition-all duration-300 ease-in-out overflow-hidden",
-        rightOpen ? "w-72 xl:w-80" : "w-0"
-      )}>
-        <div className="w-72 xl:w-80 h-full flex flex-col pl-2">
+      <div
+        className={cn("flex-shrink-0 overflow-hidden", !dragging && "transition-all duration-300 ease-in-out")}
+        style={{ width: rightOpen ? activitiesWidth : 0 }}
+      >
+        <div className="h-full flex flex-col pl-2" style={{ width: activitiesWidth }}>
           <div className="bg-white flex flex-col h-full overflow-hidden rounded-2xl border border-zinc-100 shadow-sm">
 
             {/* Header */}

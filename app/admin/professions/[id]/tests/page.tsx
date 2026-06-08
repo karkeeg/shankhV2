@@ -602,14 +602,24 @@ export default function ProfessionTestsAdmin() {
                                         )}
                                     </div>
 
-                                    {!selectedTest.isPublished && draftCount > 0 && (
-                                        <button
-                                            onClick={() => setShowPublishModal(true)}
-                                            className="flex items-center gap-1.5 px-4 py-2 bg-[#01696F] hover:bg-[#015257] text-white text-xs font-black rounded-xl shadow-md transition-all active:scale-95 shrink-0"
-                                        >
-                                            <Send size={13} /> Publish
-                                        </button>
-                                    )}
+                                    <div className="flex items-center gap-2 shrink-0">
+                                        {selectedTest.isPublished && (
+                                            <button
+                                                onClick={() => router.push(`/admin/professions/${professionId}/tests/${selectedTest.id}/preview`)}
+                                                className="flex items-center gap-1.5 px-4 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs font-black rounded-xl transition-all active:scale-95 border border-zinc-200"
+                                            >
+                                                <Eye size={13} /> Preview
+                                            </button>
+                                        )}
+                                        {!selectedTest.isPublished && draftCount > 0 && (
+                                            <button
+                                                onClick={() => setShowPublishModal(true)}
+                                                className="flex items-center gap-1.5 px-4 py-2 bg-[#01696F] hover:bg-[#015257] text-white text-xs font-black rounded-xl shadow-md transition-all active:scale-95"
+                                            >
+                                                <Send size={13} /> Publish
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
 
                                 {selectedTest.isPublished ? (

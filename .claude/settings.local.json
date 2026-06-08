@@ -8,7 +8,15 @@
       "PowerShell(New-Item *)",
       "PowerShell(Get-Content *)",
       "Bash(npx tsc *)",
-      "Bash(npx next *)"
+      "Bash(npx next *)",
+      "Bash(node -e \"require\\('express-rate-limit'\\)\")",
+      "Bash(Get-ChildItem -Recurse -Path \"D:\\\\NxtWave\\\\shankhV2\\\\app\\\\admin\" -Filter \"*.tsx\")",
+      "Bash(Select-Object FullName)",
+      "Bash(xargs grep -l \"profile\\\\|Profile\")",
+      "Bash(npx prisma *)",
+      "PowerShell(Get-ChildItem -Path \"D:\\\\NxtWave\\\\shankhV2\\\\app\\\\admin\" -Recurse -Force | Select-Object FullName | ForEach-Object { $_.FullName -replace [regex]::Escape\\(\"D:\\\\NxtWave\\\\shankhV2\\\\\"\\), \"\" })",
+      "Bash(git -C \"D:/NxtWave/shankhV2\" status --short app/onboarding app/profile)",
+      "Bash(npx eslint *)"
     ]
   }
 }

@@ -4,8 +4,9 @@ import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { useAuthStore } from "@/lib/auth-store";
-import { ArrowLeft, Save, Loader2 } from "lucide-react";
+import { ArrowLeft, Save, Loader2, PenLine, Check, AlertCircle } from "lucide-react";
 import { AdminCanvasEditor, AdminCanvasData } from "@/components/admin/AdminCanvasEditor";
+import { cn } from "@/lib/utils";
 
 const API = process.env.NEXT_PUBLIC_BACKEND_URL || "";
 
@@ -36,11 +37,10 @@ export default function CanvasAdminPage() {
     setTimeout(() => setToast(null), 3500);
   }, []);
 
-  // Load existing canvas activity
   useEffect(() => {
     fetch(`${API}/api/v1/admin/lessons/${lessonId}`, { headers })
-      .then(r => r.json())
-      .then(json => {
+      .then((r) => r.json())
+      .then((json) => {
         const a = json.data?.canvasActivity;
         if (a) {
           setData({
@@ -63,6 +63,10 @@ export default function CanvasAdminPage() {
   }, [lessonId]);
 
   const handleSave = async () => {
+    if (!data.title.trim() || !data.instructions.trim()) {
+      showToast("error", "Title and instructions are required");
+      return;
+    }
     setSaving(true);
     try {
       const res = await fetch(`${API}/api/v1/admin/lessons/${lessonId}/canvas`, {
@@ -75,8 +79,7 @@ export default function CanvasAdminPage() {
           scoringMode: data.scoringMode,
           paletteItems: data.paletteItems,
           solutionSnapshot: data.solutionSnapshot,
-          // Legacy compat fields
-          tokens: data.paletteItems.map(p => ({
+          tokens: data.paletteItems.map((p) => ({
             id: p.id, content: p.label, type: p.shape, tokenRole: "operand",
           })),
           assemblyMode: "graph",
@@ -93,45 +96,86 @@ export default function CanvasAdminPage() {
 
   if (loading) return (
     <MainLayout>
-      <div className="flex items-center justify-center h-full">
-        <Loader2 className="w-8 h-8 animate-spin text-[#01696F]" />
+      <div className="flex items-center justify-center h-full text-[#01696F]">
+        <Loader2 className="w-8 h-8 animate-spin" />
       </div>
     </MainLayout>
   );
 
   return (
     <MainLayout>
-      <div className="flex flex-col gap-6 p-6 max-h-[calc(100vh-24px)] overflow-y-auto">
-
-        {/* Header */}
-        <header className="flex items-center justify-between gap-4 shrink-0">
-          <div className="flex items-center gap-3">
-            <button onClick={() => router.back()}
-              className="flex items-center gap-1.5 text-xs font-bold text-zinc-500 hover:text-[#01696F] transition-colors">
-              <ArrowLeft size={14} /> Back
-            </button>
-            <div className="h-4 w-px bg-zinc-200" />
-            <div>
-              <h1 className="text-xl font-black text-zinc-800">Canvas Activity Editor</h1>
-              <p className="text-[10px] text-zinc-400 font-medium">Build the palette and draw the solution graph</p>
-            </div>
-          </div>
-          <button onClick={handleSave} disabled={saving}
-            className="flex items-center gap-2 px-5 py-2.5 bg-[#01696F] text-white text-xs font-black rounded-xl hover:bg-[#01696F]/90 disabled:opacity-60 shadow-sm active:scale-95 transition-all">
-            {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-            Save Activity
-          </button>
-        </header>
+      <div className="flex flex-col h-full max-h-[calc(100vh-24px)] overflow-hidden bg-zinc-50">
 
         {/* Toast */}
         {toast && (
-          <div className={`fixed top-4 right-4 z-50 px-4 py-2.5 rounded-xl text-sm font-bold shadow-xl ${toast.type === "success" ? "bg-emerald-600 text-white" : "bg-red-500 text-white"}`}>
+          <div className={cn(
+            "fixed top-5 right-5 z-50 flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-bold shadow-2xl",
+            toast.type === "success" ? "bg-emerald-600 text-white" : "bg-rose-600 text-white"
+          )}>
+            {toast.type === "success" ? <Check size={13} /> : <AlertCircle size={13} />}
             {toast.msg}
           </div>
         )}
 
-        {/* Editor — same component used everywhere */}
-        <AdminCanvasEditor value={data} onChange={setData} />
+        {/* ── Top bar ── */}
+        <div className="flex items-center gap-3 px-5 py-3 bg-white border-b border-zinc-200 shrink-0 flex-wrap">
+          <button
+            onClick={() => router.push(`/admin/lessons/${lessonId}`)}
+            className="flex items-center gap-1.5 text-xs font-bold text-[#01696F]/70 hover:text-[#01696F] group shrink-0"
+          >
+            <ArrowLeft size={13} className="group-hover:-translate-x-0.5 transition-transform" />
+            Back to Lesson
+          </button>
+          <div className="h-5 w-px bg-zinc-200 shrink-0" />
+          <span className="flex items-center gap-1.5 px-2.5 py-1 bg-indigo-50 text-indigo-600 border border-indigo-100 rounded-full text-[10px] font-black shrink-0">
+            <PenLine size={11} /> Canvas Drill
+          </span>
+          <input
+            value={data.title}
+            onChange={(e) => setData((d) => ({ ...d, title: e.target.value }))}
+            placeholder="Activity title *"
+            className="px-3 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-xs font-medium outline-none w-44 focus:bg-white focus:border-indigo-300"
+          />
+          <input
+            value={data.instructions}
+            onChange={(e) => setData((d) => ({ ...d, instructions: e.target.value }))}
+            placeholder="Instructions for students *"
+            className="flex-1 min-w-[180px] px-3 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-xs outline-none focus:bg-white focus:border-indigo-300"
+          />
+          <select
+            value={data.scoringMode}
+            onChange={(e) => setData((d) => ({ ...d, scoringMode: e.target.value as "partial" | "exact" }))}
+            className="px-3 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-xs text-zinc-700 outline-none focus:bg-white shrink-0"
+          >
+            <option value="partial">Partial credit</option>
+            <option value="exact">Exact match</option>
+          </select>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="flex items-center gap-2 px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-sm disabled:opacity-40 ml-auto shrink-0 transition-all active:scale-95"
+          >
+            {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+            {saving ? "Saving..." : "Save Canvas"}
+          </button>
+        </div>
+
+        {/* ── Context sub-bar ── */}
+        <div className="flex items-center gap-3 px-5 py-2 bg-white border-b border-zinc-100 shrink-0">
+          <span className="text-[9px] font-black uppercase tracking-widest text-zinc-400 shrink-0">Context / Scenario</span>
+          <input
+            value={data.context}
+            onChange={(e) => setData((d) => ({ ...d, context: e.target.value }))}
+            placeholder="Optional background text shown above the canvas..."
+            className="flex-1 px-3 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-xs outline-none focus:bg-white focus:border-indigo-300"
+          />
+        </div>
+
+        {/* ── Editor body ── */}
+        <div className="flex-1 overflow-y-auto p-6">
+          <AdminCanvasEditor value={data} onChange={setData} compact />
+        </div>
+
       </div>
     </MainLayout>
   );

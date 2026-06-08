@@ -19,6 +19,7 @@ export default function Dashboard() {
   const [mounted, setMounted] = useState(false);
   const token = useAuthStore((state) => state.token);
   const [loading, setLoading] = useState(true);
+  const [dashboardError, setDashboardError] = useState(false);
   const [isAiOpen, setIsAiOpen] = useState(true);
 
   const [dashboardData, setDashboardData] = useState<any>({
@@ -48,7 +49,6 @@ export default function Dashboard() {
           if (data) {
             setDashboardData(data);
 
-            // Determine resume target based on sessionStorage vs fallback to Today's Lessons (resumeLesson from DB)
             const sessionLast = sessionStorage.getItem("shankh:lastLesson");
             if (sessionLast) {
               setResumeLessonTarget(JSON.parse(sessionLast));
@@ -62,9 +62,12 @@ export default function Dashboard() {
               }
             }
           }
+        } else {
+          setDashboardError(true);
         }
       } catch (err) {
         console.error("Failed to fetch dashboard data:", err);
+        setDashboardError(true);
       } finally {
         setLoading(false);
       }
@@ -74,6 +77,26 @@ export default function Dashboard() {
 
   if (!mounted || loading) {
     return <DashboardSkeleton />;
+  }
+
+  if (dashboardError) {
+    return (
+      <MainLayout>
+        <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 text-zinc-500">
+          <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center">
+            <span className="text-red-400 text-xl">!</span>
+          </div>
+          <p className="font-semibold text-zinc-700">Failed to load dashboard</p>
+          <p className="text-xs text-zinc-400 text-center max-w-xs">Check your connection and try refreshing the page.</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-5 py-2 bg-[#01696F] text-white text-sm font-bold rounded-xl hover:bg-[#01696F]/90 transition-all active:scale-95"
+          >
+            Retry
+          </button>
+        </div>
+      </MainLayout>
+    );
   }
 
   const AiSidebar = <AiAssistantSidebar isOpen={isAiOpen} onClose={() => setIsAiOpen(false)} />;
@@ -94,7 +117,7 @@ export default function Dashboard() {
             simulations={dashboardData.simulations} 
           />
 
-          <div className="bg-white border border-zinc-200 rounded-2xl p-6 shadow-sm flex items-center justify-center">
+          <div className="bg-white border border-zinc-200 rounded-2xl shadow-sm flex items-center justify-center">
             <Heatmap completedDates={dashboardData.completedDates} />
           </div>
         </div>

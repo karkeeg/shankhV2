@@ -14,7 +14,7 @@ export const CanvasToolkit = ({ draggableElements }: CanvasToolkitProps) => {
   const dragGhostRef = useRef<HTMLDivElement>(null);
 
   const handleDragStart = (e: React.DragEvent, item: DragItem) => {
-    e.dataTransfer.setData("application/vnd.excalidraw.item", JSON.stringify(item));
+    e.dataTransfer.setData("canvas/flow-item", JSON.stringify(item));
     
     // Set up the drag ghost image
     if (dragGhostRef.current) {

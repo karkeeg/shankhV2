@@ -56,15 +56,19 @@ export function clearQuantusDraft(activityId: string): void {
   remove(key("q", activityId));
 }
 
-// Canvas snapshot: raw Excalidraw scene elements array
-export function saveCanvasDraft(activityId: string, elements: any[]): void {
-  if (!activityId || elements.length === 0) return;
-  save(key("c", activityId), elements);
+// Canvas snapshot: React Flow { nodes, edges } graph
+export function saveCanvasDraft(activityId: string, graph: { nodes: any[]; edges: any[] }): void {
+  if (!activityId) return;
+  if (!graph?.nodes?.length && !graph?.edges?.length) return;
+  save(key("c", activityId), graph);
 }
 
-export function loadCanvasDraft(activityId: string): any[] | null {
+export function loadCanvasDraft(activityId: string): { nodes: any[]; edges: any[] } | null {
   if (!activityId) return null;
-  return load<any[]>(key("c", activityId));
+  const raw = load<any>(key("c", activityId));
+  // Validate shape — ignore legacy Excalidraw arrays
+  if (!raw || Array.isArray(raw) || !raw.nodes) return null;
+  return raw;
 }
 
 export function clearCanvasDraft(activityId: string): void {

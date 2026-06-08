@@ -50,8 +50,8 @@ function LoginForm() {
       } else {
         router.push("/");
       }
-    } catch (err: any) {
-      setError(err.message || "Authentication failed");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Authentication failed");
     } finally {
       setLoading(false);
     }
@@ -133,7 +133,7 @@ function LoginForm() {
 
               <div className="mt-4 text-center">
                 <p className="text-zinc-600 text-sm">
-                  Don't have an account?{" "}
+                  Don&apos;t have an account?{" "}
                   <Link href="/signup" className="font-semibold text-[#1a1a1a] hover:underline">
                     Sign Up
                   </Link>

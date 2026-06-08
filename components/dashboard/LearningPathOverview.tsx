@@ -12,7 +12,7 @@ export const LearningPathOverview = ({
   simulations,
 }: LearningPathOverviewProps) => {
   return (
-    <div className="lg:col-span-2 bg-white border border-zinc-200 rounded-2xl p-6 shadow-sm flex flex-col justify-between space-y-6">
+    <div className="lg:col-span-2 bg-white border border-zinc-200 rounded-2xl p-6 shadow-sm flex flex-col justify-content gap-5">
       <div className="space-y-3">
         <h3 className="text-lg font-bold text-[#1a1a1a] tracking-tight">
           Your learning path is organized by function, topic, and role outcome.
@@ -22,7 +22,7 @@ export const LearningPathOverview = ({
         </p>
       </div>
 
-      <div className="grid grid-cols-3 gap-6 p-5 border border-[#1a1a1a] rounded-xl">
+      <div className="grid grid-cols-3 gap-2 p-5 border border-[#1a1a1a] rounded-xl">
         <div className="space-y-1 text-center border-r border-zinc-500">
           <p className="text-[10px] font-bold text-[#1a1a1a] uppercase tracking-wider">Mastery Score</p>
           <p className="text-2xl font-bold text-[#1a1a1a]">{Math.round(progressPercentage)}%</p>

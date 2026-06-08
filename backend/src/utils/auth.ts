@@ -27,4 +27,13 @@ export const serializeUser = (user: User) => ({
   role: user.role,
   planType: user.planType,
   avatarUrl: user.avatarUrl || null,
+  phone: user.phone || null,
+  isOnboarded: user.isOnboarded,
+  username: user.username || null,
+  profession: user.profession || null,
+  level: user.level || null,
+  goal: user.goal || null,
+  firstTopic: user.firstTopic || null,
 });
+
+

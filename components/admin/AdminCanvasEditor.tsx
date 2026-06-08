@@ -19,9 +19,11 @@ export interface AdminCanvasData {
 interface Props {
   value: AdminCanvasData;
   onChange: (v: AdminCanvasData) => void;
+  /** When true, hides the title/instructions/context/scoring fields (page handles them in its own top bar) */
+  compact?: boolean;
 }
 
-export function AdminCanvasEditor({ value, onChange }: Props) {
+export function AdminCanvasEditor({ value, onChange, compact = false }: Props) {
   const [tab, setTab] = useState<"palette" | "solution">("palette");
   const [placedIds, setPlacedIds] = useState<Set<string>>(new Set());
   const [modalOpen, setModalOpen] = useState(false);
@@ -98,20 +100,22 @@ export function AdminCanvasEditor({ value, onChange }: Props) {
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Metadata */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <FormField label="Title" value={value.title} onChange={v => set("title", v)} />
-        <div className="flex flex-col gap-1">
-          <label className="text-[9px] font-black uppercase tracking-widest text-zinc-400">Scoring</label>
-          <select value={value.scoringMode} onChange={e => set("scoringMode", e.target.value as "partial" | "exact")}
-            className="border border-zinc-200 rounded-xl px-3 py-2 text-sm text-zinc-800 bg-white outline-none focus:border-[#01696F]">
-            <option value="partial">Partial credit</option>
-            <option value="exact">Exact match only</option>
-          </select>
+      {/* Metadata — hidden when compact=true (page handles meta in its own top bar) */}
+      {!compact && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <FormField label="Title" value={value.title} onChange={v => set("title", v)} />
+          <div className="flex flex-col gap-1">
+            <label className="text-[9px] font-black uppercase tracking-widest text-zinc-400">Scoring</label>
+            <select value={value.scoringMode} onChange={e => set("scoringMode", e.target.value as "partial" | "exact")}
+              className="border border-zinc-200 rounded-xl px-3 py-2 text-sm text-zinc-800 bg-white outline-none focus:border-[#01696F]">
+              <option value="partial">Partial credit</option>
+              <option value="exact">Exact match only</option>
+            </select>
+          </div>
+          <FormField label="Instructions" value={value.instructions} onChange={v => set("instructions", v)} multiline />
+          <FormField label="Context / Scenario" value={value.context} onChange={v => set("context", v)} multiline />
         </div>
-        <FormField label="Instructions" value={value.instructions} onChange={v => set("instructions", v)} multiline />
-        <FormField label="Context / Scenario" value={value.context} onChange={v => set("context", v)} multiline />
-      </div>
+      )}
 
       {/* Tabs */}
       <div className="flex gap-1 bg-zinc-100 p-1 rounded-xl w-fit">

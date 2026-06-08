@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useMemo, useRef, useCallback } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuthStore } from "@/lib/auth-store";
 import {
@@ -9,8 +9,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ExcelGrid } from "@/components/exercise/ExcelGrid";
-import { CanvasWorkspace, CanvasWorkspaceHandle } from "@/components/canvas/CanvasWorkspace";
-import { CanvasPalette, tokensToItems } from "@/components/canvas/CanvasPalette";
+import { CanvasWorkspace } from "@/components/canvas/CanvasWorkspace";
+import { tokensToItems } from "@/components/canvas/CanvasPalette";
 import type { PlacedNode } from "@/components/canvas/types";
 import Image from "next/image";
 import logo from "@/public/ShankhFull.png";
@@ -251,7 +251,6 @@ export default function AdminCasePreviewPage() {
   const [leftOpen, setLeftOpen] = useState(true);
   const [rightOpen, setRightOpen] = useState(false);
   const [activeLeftTab, setActiveLeftTab] = useState<"instructions" | "context">("instructions");
-  const canvasRef = useRef<CanvasWorkspaceHandle>(null);
   const [canvasPlacedIds, setCanvasPlacedIds] = useState<Set<string>>(new Set());
 
   // ── Edit state ────────────────────────────────────────────────────────────
@@ -313,6 +312,15 @@ export default function AdminCasePreviewPage() {
     });
   }, [step, canvasPaletteItems]);
 
+  const canvasPreviewEdges = useMemo(() => {
+    if (step?.stepType !== "canvas") return [];
+    return (actData?.solutionSnapshot?.edges ?? []).map((e: any, i: number) => ({
+      id: `preview-edge-${i}`,
+      sourceId: e.sourceId,
+      targetId: e.targetId,
+    }));
+  }, [step, actData]);
+
   const excelTable = useMemo(() => {
     if (!actData?.gridRows || !actData?.gridCols) return [];
     return actData.gridRows.map((row: string) =>
@@ -337,7 +345,6 @@ export default function AdminCasePreviewPage() {
   const handleReset = () => {
     setSelectedOption(null);
     setCanvasPlacedIds(new Set());
-    if (step?.stepType === "canvas") canvasRef.current?.reset();
     if (step?.stepType === "quantus") setSpreadsheetGrid(actData?.gridValues ?? {});
   };
 
@@ -736,9 +743,12 @@ export default function AdminCasePreviewPage() {
                 ) : (
                   <p className="text-[10px] text-zinc-400 font-medium italic">No context provided.</p>
                 )}
-                {isCanvasActive && canvasPaletteItems.length > 0 && (
-                  <div className="border-t border-zinc-200/50 pt-2">
-                    <CanvasPalette items={canvasPaletteItems} placedIds={canvasPlacedIds} />
+                {isCanvasActive && canvasPreviewEdges.length > 0 && (
+                  <div className="border-t border-zinc-200/50 pt-2 flex flex-col gap-1.5">
+                    <span className="text-[9px] font-black uppercase tracking-widest text-[#01696F]/60">Solution Preview</span>
+                    <p className="text-[10px] text-zinc-500 font-medium leading-relaxed">
+                      {canvasPreviewEdges.length} connection{canvasPreviewEdges.length !== 1 ? "s" : ""} in the correct answer.
+                    </p>
                   </div>
                 )}
               </div>
@@ -855,12 +865,11 @@ export default function AdminCasePreviewPage() {
               <div className="absolute inset-0">
                 <CanvasWorkspace
                   key={`canvas-preview-${step.id}`}
-                  ref={canvasRef}
                   paletteItems={canvasPaletteItems}
                   initialNodes={canvasPreviewNodes}
-                  initialEdges={[]}
-                  disabled={false}
-                  onPlacedIdsChange={setCanvasPlacedIds}
+                  initialEdges={canvasPreviewEdges}
+                  solutionSnapshot={actData?.solutionSnapshot ?? null}
+                  disabled
                 />
               </div>
             )}

@@ -55,8 +55,8 @@ export const Heatmap = ({ completedDates = [] }: HeatmapProps) => {
   }
 
   return (
-    <div className="bg-white p-6 rounded-3xl flex flex-col h-full w-full border border-transparent select-none">
-      <div className="flex items-center justify-between mb-4">
+    <div className="bg-white p-4 rounded-3xl flex flex-col h-full w-full border border-transparent select-none">
+      <div className="flex items-center justify-between mb-2">
         <span className="text-xs font-bold text-zinc-900 uppercase tracking-widest">{monthName}</span>
       </div>
       <div className="grid grid-cols-7 gap-1 text-center mb-2">

@@ -329,6 +329,9 @@ export const ExcelGrid = ({
   const [editValue, setEditValue] = useState("");
   const [cellStyles, setCellStyles] = useState<Record<string, CellStyle>>({});
 
+  // Formula tooltip (fixed-position to escape overflow-auto clipping)
+  const [formulaTooltip, setFormulaTooltip] = useState<{ text: string; x: number; y: number } | null>(null);
+
   // Reset edit mode when selection changes (inline during render to avoid useEffect warning)
   const [prevSelected, setPrevSelected] = useState<{ row: number; col: number } | null>(activeSelectedCell);
   const selectedChanged = 
@@ -620,6 +623,7 @@ export const ExcelGrid = ({
   }, [showProgress, inputs, userInputs, getCellKey]);
 
   return (
+    <>
     <div className="flex flex-col h-full bg-white border border-zinc-200 shadow-xl overflow-hidden font-sans ring-1 ring-zinc-200">
       {/* Rich Toolbar (shown for canvas-style exercises or admin editing) */}
       {showToolbar && (
@@ -985,7 +989,15 @@ export const ExcelGrid = ({
                         title={inputConfig?.formula ? `Formula: ${inputConfig.formula}` : undefined}
                       >
                         {inputConfig ? (
-                          <div className="w-full h-full relative group/input overflow-visible" style={customStyle}>
+                          <div
+                            className="w-full h-full relative overflow-visible"
+                            style={customStyle}
+                            onMouseEnter={inputConfig.formula ? (e) => {
+                              const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                              setFormulaTooltip({ text: inputConfig.formula!, x: rect.left + rect.width / 2, y: rect.top });
+                            } : undefined}
+                            onMouseLeave={inputConfig.formula ? () => setFormulaTooltip(null) : undefined}
+                          >
                             {isSelected && isEditing ? (
                               <input
                                 type="text"
@@ -1006,19 +1018,11 @@ export const ExcelGrid = ({
                                 autoFocus
                               />
                             ) : (
-                              <div 
+                              <div
                                 className="w-full h-full px-2 py-1 text-[13px] text-zinc-800 font-semibold text-center flex items-center justify-center cursor-pointer"
                                 style={customStyle}
                               >
                                 {getDisplayValue(rowIndex, colIndex)}
-                              </div>
-                            )}
-                            {inputConfig.formula && (
-                              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 opacity-0 group-hover/input:opacity-100 transition-all duration-150 pointer-events-none">
-                                <div className="bg-[#01696F] text-white text-[11px] font-semibold px-3 py-2 rounded-xl shadow-xl max-w-[240px] text-center leading-snug whitespace-normal">
-                                  💡 {inputConfig.formula}
-                                </div>
-                                <div className="w-2.5 h-2.5 bg-[#01696F] rotate-45 mx-auto -mt-1.5 rounded-sm" />
                               </div>
                             )}
                             {isValidated && feedback[key] === false && inputConfig.correctValue && (
@@ -1166,6 +1170,20 @@ export const ExcelGrid = ({
         </div>
       </div>
     </div>
+
+    {/* Formula hint tooltip — fixed position so it escapes overflow-auto clipping */}
+    {formulaTooltip && (
+      <div
+        className="fixed z-[9999] pointer-events-none"
+        style={{ left: formulaTooltip.x, top: formulaTooltip.y - 8, transform: "translate(-50%, -100%)" }}
+      >
+        <div className="bg-[#01696F] text-white text-[11px] font-semibold px-3 py-2 rounded-xl shadow-xl max-w-[240px] text-center leading-snug whitespace-normal">
+          💡 {formulaTooltip.text}
+        </div>
+        <div className="w-2.5 h-2.5 bg-[#01696F] rotate-45 mx-auto -mt-1.5 rounded-sm" />
+      </div>
+    )}
+    </>
   );
 };
 

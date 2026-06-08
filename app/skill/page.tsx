@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   Search, Bell, ChevronDown, ChevronUp,
   Play, RotateCcw, CheckCircle2, Clock, Hourglass,
-  Loader2,
+  Loader2, Eye,
 } from "lucide-react";
 import { CaseSimulationCardSkeleton, SkillProfessionCardSkeleton } from "@/components/ui/Skeletons";
 import { useAuthStore } from "@/lib/auth-store";
@@ -139,16 +139,20 @@ function TypePill({ type, count, progress }: { type: string; count: number; prog
 
 // ─── TestRow ──────────────────────────────────────────────────────────────────
 
-function TestRow({ test, filterType, onStart }: {
+function TestRow({ test, filterType, onStart, onViewResult }: {
   test: SkillTest;
   filterType: string | null;
   onStart: (id: string, type: string) => void;
+  onViewResult: (id: string, type: string) => void;
 }) {
   const status = getFilteredStatus(test, filterType);
   const inProgType = test.userProgress.find(p =>
     p.status === "in_progress" && (!filterType || p.activityType === filterType)
   );
   const targetType = inProgType?.activityType ?? firstAvailableType(test, filterType);
+  const completedType = filterType ??
+    test.userProgress.find(p => p.status === "completed" || p.status === "expired")?.activityType ??
+    targetType;
 
   // Which type pills to show
   const visibleTypes = filterType
@@ -173,9 +177,12 @@ function TestRow({ test, filterType, onStart }: {
 
       <div className="shrink-0">
         {status === "completed" ? (
-          <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-[10px] font-black text-emerald-600 bg-emerald-50 border border-emerald-200">
-            <CheckCircle2 size={11} fill="currentColor" /> Done
-          </span>
+          <button
+            onClick={() => onViewResult(test.id, completedType)}
+            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-[10px] font-black text-emerald-600 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 transition-all active:scale-95"
+          >
+            <Eye size={10} /> Review
+          </button>
         ) : status === "in_progress" ? (
           <button
             onClick={() => onStart(test.id, targetType)}
@@ -198,10 +205,11 @@ function TestRow({ test, filterType, onStart }: {
 
 // ─── TopicSection ─────────────────────────────────────────────────────────────
 
-function TopicSection({ topicData, filterType, onNavigate }: {
+function TopicSection({ topicData, filterType, onNavigate, onViewResult }: {
   topicData: SkillTopic;
   filterType: string | null;
   onNavigate: (id: string, type: string) => void;
+  onViewResult: (id: string, type: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const filteredTests = filterTestsBySection(topicData.tests, filterType);
@@ -243,7 +251,7 @@ function TopicSection({ topicData, filterType, onNavigate }: {
       {expanded && (
         <div className="px-4 py-2 bg-white">
           {filteredTests.map(test => (
-            <TestRow key={test.id} test={test} filterType={filterType} onStart={onNavigate} />
+            <TestRow key={test.id} test={test} filterType={filterType} onStart={onNavigate} onViewResult={onViewResult} />
           ))}
         </div>
       )}
@@ -253,12 +261,13 @@ function TopicSection({ topicData, filterType, onNavigate }: {
 
 // ─── ProfessionCard ───────────────────────────────────────────────────────────
 
-function ProfessionCard({ profession, topics, filterType, defaultExpanded, onNavigate, onSelectProfession }: {
+function ProfessionCard({ profession, topics, filterType, defaultExpanded, onNavigate, onViewResult, onSelectProfession }: {
   profession: Profession;
   topics: SkillTopic[];
   filterType: string | null;
   defaultExpanded?: boolean;
   onNavigate: (testId: string, activityType: string) => void;
+  onViewResult: (testId: string, activityType: string) => void;
   onSelectProfession: (slug: string) => void;
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded ?? false);
@@ -339,6 +348,7 @@ function ProfessionCard({ profession, topics, filterType, defaultExpanded, onNav
                 topicData={topicData}
                 filterType={filterType}
                 onNavigate={onNavigate}
+                onViewResult={onViewResult}
               />
             ))
           )}
@@ -445,6 +455,11 @@ function SkillHomeContent() {
   // Navigate to test session
   const handleNavigate = useCallback((testId: string, activityType: string) => {
     router.push(`/skill/tests/${testId}/${activityType}`);
+  }, [router]);
+
+  // Navigate directly to result page for a completed test
+  const handleViewResult = useCallback((testId: string, activityType: string) => {
+    router.push(`/skill/tests/${testId}/${activityType}/result`);
   }, [router]);
 
   // Navigate to profession-specific page (preserving section filter)
@@ -626,6 +641,7 @@ function SkillHomeContent() {
                     filterType={filterType}
                     defaultExpanded={idx < 2}
                     onNavigate={handleNavigate}
+                    onViewResult={handleViewResult}
                     onSelectProfession={handleSelectProfession}
                   />
                 ))}

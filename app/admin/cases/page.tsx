@@ -35,11 +35,13 @@ export default function AdminCasesPage() {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!form.title.trim()) { alert("Title is required."); return; }
     setSaving(true);
     try {
       const res = await fetch(`${API}/api/v1/cases/admin/create`, { method: "POST", headers, body: JSON.stringify(form) });
       const rj = await res.json();
       if (res.ok) { setShowForm(false); setForm({ title: "", description: "", difficulty: "medium", isPublished: false, orderIndex: 0 }); load(); }
+      else { alert(rj.error || "Failed to create case."); }
     } finally { setSaving(false); }
   };
 

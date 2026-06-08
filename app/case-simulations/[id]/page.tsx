@@ -31,11 +31,13 @@ export default function CaseReadingPage() {
       fetch(`${API}/api/v1/cases/${id}`, { headers }).then((r) => r.json()),
       fetch(`${API}/api/v1/cases/${id}/session`, { method: "POST", headers: { ...headers, "Content-Type": "application/json" } }).then((r) => r.json()),
     ])
-      .then(([detail]) => {
-        setCaseData(detail.data);
-        // If already in testing or completed, skip to test page
-        // If user navigates here directly, always redirect to test page (which handles the modal)
-        router.replace(`/case-simulations/${id}/test`);
+      .then(([detail, sessionRes]) => {
+        const data = detail.data;
+        setCaseData(data);
+        // If the user has already read the studies, skip straight to the test
+        if (sessionRes?.data?.studiesRead === true || data?.session?.studiesRead === true) {
+          router.replace(`/case-simulations/${id}/test`);
+        }
       })
       .catch(() => { })
       .finally(() => setLoading(false));

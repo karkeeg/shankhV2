@@ -2,11 +2,16 @@ generator client {
   provider = "prisma-client-js"
 }
 
-generator erd {
-  provider = "prisma-erd-generator"
-  output   = "./ERD.svg"
-  theme    = "forest"
+generator client_root {
+  provider = "prisma-client-js"
+  output   = "../../node_modules/.prisma/client"
 }
+
+// generator erd {
+//   provider = "prisma-erd-generator"
+//   output   = "./ERD.svg"
+//   theme    = "forest"
+// }
 
 datasource db {
   provider = "postgresql"
@@ -356,7 +361,17 @@ model User {
   role                   String                 @default("learner")
   planType               PlanTier               @default(free)
   avatarUrl              String?
+  phone                  String?
   timezone               String?
+
+  // Onboarding profile
+  username               String?                @unique
+  isOnboarded            Boolean                @default(false)
+  profession             String?
+  level                  String?
+  goal                   String?
+  firstTopic             String?
+
   createdAt              DateTime               @default(now())
   lastActive             DateTime?
   deletedAt              DateTime?

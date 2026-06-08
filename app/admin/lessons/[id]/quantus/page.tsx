@@ -4,7 +4,8 @@ import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { useAuthStore } from "@/lib/auth-store";
-import { ArrowLeft, Save, Check, AlertCircle, Plus, Trash2, Grid3X3 } from "lucide-react";
+import { ArrowLeft, Save, Check, AlertCircle, Plus, Trash2, Grid3X3, TableProperties, Loader2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { ExcelGrid } from "@/components/exercise/ExcelGrid";
 
 
@@ -322,8 +323,11 @@ export default function QuantusAdminEditor() {
       <div className="flex flex-col h-full max-h-[calc(100vh-24px)] overflow-hidden bg-zinc-100">
 
         {toast && (
-          <div className={`fixed top-6 right-6 z-50 px-5 py-3 rounded-2xl text-xs font-bold shadow-2xl flex items-center gap-2 animate-fade-in ${toast.type === "success" ? "bg-emerald-600 text-white" : "bg-rose-600 text-white"}`}>
-            {toast.type === "success" ? <Check size={14} /> : <AlertCircle size={14} />} {toast.msg}
+          <div className={cn(
+            "fixed top-5 right-5 z-50 flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-bold shadow-2xl",
+            toast.type === "success" ? "bg-emerald-600 text-white" : "bg-rose-600 text-white"
+          )}>
+            {toast.type === "success" ? <Check size={13} /> : <AlertCircle size={13} />} {toast.msg}
           </div>
         )}
 
@@ -335,17 +339,31 @@ export default function QuantusAdminEditor() {
             Back to Lesson
           </button>
           <div className="h-5 w-px bg-zinc-200 shrink-0" />
+          <span className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 text-amber-600 border border-amber-100 rounded-full text-[10px] font-black shrink-0">
+            <TableProperties size={11} /> Quantus Lab
+          </span>
           <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Spreadsheet title *"
-            className="px-3 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-xs font-medium outline-none w-44 focus:bg-white" />
+            className="px-3 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-xs font-medium outline-none w-44 focus:bg-white focus:border-amber-300" />
           <input value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder="Instructions for students *"
-            className="flex-1 min-w-[180px] px-3 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-xs outline-none focus:bg-white" />
+            className="flex-1 min-w-[180px] px-3 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-xs outline-none focus:bg-white focus:border-amber-300" />
           <input value={sheetName} onChange={(e) => setSheetName(e.target.value)} placeholder="Sheet tab name"
             className="px-3 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-xs outline-none w-32 focus:bg-white" />
           <button onClick={save} disabled={saving || !gridReady}
-            className="flex items-center gap-2 px-5 py-2 bg-[#01696F] hover:bg-[#015257] text-white text-xs font-bold rounded-xl shadow-sm disabled:opacity-40 ml-auto shrink-0 transition-all">
-            <Save size={13} />
+            className="flex items-center gap-2 px-5 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-xl shadow-sm disabled:opacity-40 ml-auto shrink-0 transition-all active:scale-95">
+            {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
             {saving ? "Saving..." : "Save Quantus"}
           </button>
+        </div>
+
+        {/* ── Context sub-bar ── */}
+        <div className="flex items-center gap-3 px-5 py-2 bg-white border-b border-zinc-100 shrink-0">
+          <span className="text-[9px] font-black uppercase tracking-widest text-zinc-400 shrink-0">Context / Scenario</span>
+          <input
+            value={context}
+            onChange={(e) => setContext(e.target.value)}
+            placeholder="Optional background text shown above the spreadsheet..."
+            className="flex-1 px-3 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-xs outline-none focus:bg-white focus:border-amber-300"
+          />
         </div>
 
         {/* ── Grid setup (if not ready) ── */}

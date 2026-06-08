@@ -12,6 +12,8 @@ import {
   BarChart2,
   Search,
   Bell,
+  CheckCircle2,
+  ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -53,6 +55,7 @@ export default function ReviewCenterPage() {
   const [activeTab, setActiveTab] = useState<"all" | "liked" | "disliked">("liked");
   const [selectedTopicId, setSelectedTopicId] = useState<string>("");
   const [selectedSubtopicId, setSelectedSubtopicId] = useState<string>("");
+  const [searchQuery, setSearchQuery] = useState<string>("");
 
   const fetchReactions = useCallback(() => {
     if (!token) return;
@@ -109,17 +112,29 @@ export default function ReviewCenterPage() {
     return Object.values(topicsMap);
   }, [filteredLessons]);
 
+  const q = searchQuery.toLowerCase().trim();
+
+  const filteredTopicsList = useMemo(() => {
+    if (!q) return topicsList;
+    return topicsList.filter((topic) => {
+      if (topic.name.toLowerCase().includes(q)) return true;
+      return topic.lessons.some(
+        (l) => l.name.toLowerCase().includes(q) || l.subtopicName.toLowerCase().includes(q)
+      );
+    });
+  }, [topicsList, q]);
+
   // Sync selectedTopicId
   useEffect(() => {
-    if (topicsList.length > 0) {
-      const exists = topicsList.some((t) => t.id === selectedTopicId);
+    if (filteredTopicsList.length > 0) {
+      const exists = filteredTopicsList.some((t) => t.id === selectedTopicId);
       if (!exists) {
-        setSelectedTopicId(topicsList[0].id);
+        setSelectedTopicId(filteredTopicsList[0].id);
       }
     } else {
       setSelectedTopicId("");
     }
-  }, [topicsList, selectedTopicId]);
+  }, [filteredTopicsList, selectedTopicId]);
 
   // Extract unique subtopics for the selectedTopic
   const subtopicsList = useMemo(() => {
@@ -150,30 +165,41 @@ export default function ReviewCenterPage() {
     return Object.values(subtopicsMap);
   }, [filteredLessons, selectedTopicId]);
 
+  const filteredSubtopicsList = useMemo(() => {
+    if (!q) return subtopicsList;
+    return subtopicsList.filter(
+      (s) =>
+        s.name.toLowerCase().includes(q) ||
+        s.lessons.some((l) => l.name.toLowerCase().includes(q))
+    );
+  }, [subtopicsList, q]);
+
   // Sync selectedSubtopicId
   useEffect(() => {
-    if (subtopicsList.length > 0) {
-      const exists = subtopicsList.some((s) => s.id === selectedSubtopicId);
+    if (filteredSubtopicsList.length > 0) {
+      const exists = filteredSubtopicsList.some((s) => s.id === selectedSubtopicId);
       if (!exists) {
-        setSelectedSubtopicId(subtopicsList[0].id);
+        setSelectedSubtopicId(filteredSubtopicsList[0].id);
       }
     } else {
       setSelectedSubtopicId("");
     }
-  }, [subtopicsList, selectedSubtopicId]);
+  }, [filteredSubtopicsList, selectedSubtopicId]);
 
   const selectedTopic = useMemo(() => {
-    return topicsList.find((t) => t.id === selectedTopicId);
-  }, [topicsList, selectedTopicId]);
+    return filteredTopicsList.find((t) => t.id === selectedTopicId);
+  }, [filteredTopicsList, selectedTopicId]);
 
   const selectedSubtopic = useMemo(() => {
-    return subtopicsList.find((s) => s.id === selectedSubtopicId);
-  }, [subtopicsList, selectedSubtopicId]);
+    return filteredSubtopicsList.find((s) => s.id === selectedSubtopicId);
+  }, [filteredSubtopicsList, selectedSubtopicId]);
 
   const lessonsToDisplay = useMemo(() => {
     if (!selectedSubtopicId) return [];
-    return filteredLessons.filter((l) => l.subtopicId === selectedSubtopicId);
-  }, [filteredLessons, selectedSubtopicId]);
+    const base = filteredLessons.filter((l) => l.subtopicId === selectedSubtopicId);
+    if (!q) return base;
+    return base.filter((l) => l.name.toLowerCase().includes(q));
+  }, [filteredLessons, selectedSubtopicId, q]);
 
   const handleToggleLike = async (lessonId: string, reaction: "like" | "dislike" | null) => {
     try {
@@ -213,6 +239,8 @@ export default function ReviewCenterPage() {
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#01696F]" size={16} />
               <input
                 type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search topics, cases and formulas"
                 className="w-full bg-white border border-[#01696F]/30 rounded-full py-2.5 pl-11 pr-4 outline-none focus:border-[#01696F] focus:ring-2 focus:ring-[#01696F]/10 transition-all text-xs font-semibold placeholder:text-zinc-400 shadow-sm"
               />
@@ -244,8 +272,13 @@ export default function ReviewCenterPage() {
                       No topics yet. React to lessons while practicing to see them here.
                     </p>
                   </div>
+                ) : filteredTopicsList.length === 0 ? (
+                  <div className="flex flex-col items-center gap-2 py-8 text-center text-zinc-400">
+                    <Search size={28} className="opacity-30" />
+                    <p className="text-xs font-semibold leading-relaxed">No results for &ldquo;{searchQuery}&rdquo;</p>
+                  </div>
                 ) : (
-                  topicsList.map((topic) => {
+                  filteredTopicsList.map((topic) => {
                     const isSelected = topic.id === selectedTopicId;
                     return (
                       <button
@@ -307,7 +340,7 @@ export default function ReviewCenterPage() {
                   {selectedTopic?.name ?? "Topics"}
                 </h2>
 
-                {subtopicsList.length === 0 ? (
+                {filteredSubtopicsList.length === 0 ? (
                   <div className="flex flex-col items-center gap-2 py-8 text-center text-zinc-400">
                     <p className="text-xs font-semibold">
                       {topicsList.length === 0
@@ -317,7 +350,7 @@ export default function ReviewCenterPage() {
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {subtopicsList.map((sub) => {
+                    {filteredSubtopicsList.map((sub) => {
                       const isSelected = sub.id === selectedSubtopicId;
                       const isTopic = sub.type.toLowerCase() === "topic";
                       return (
@@ -358,11 +391,10 @@ export default function ReviewCenterPage() {
                 )}
               </div>
 
-              {/* Lessons Table Card — shown when a subtopic is selected */}
+              {/* Lessons Card — shown when a subtopic is selected */}
               {selectedSubtopicId && (
-                <div className="bg-white border border-zinc-200 rounded-3xl p-5 shadow-sm flex flex-col gap-4">
+                <div className="bg-white border border-zinc-200 rounded-3xl p-4 shadow-sm flex flex-col gap-3">
 
-                  {/* Subtext */}
                   <p className="text-xs text-zinc-600 leading-relaxed font-semibold">
                     <strong className="text-zinc-800 font-extrabold">
                       {selectedSubtopic?.name}
@@ -370,97 +402,72 @@ export default function ReviewCenterPage() {
                     — lessons ordered from learn to apply.
                   </p>
 
-                  {/* Table */}
-                  <div className="overflow-hidden rounded-2xl border border-zinc-200 shadow-sm">
-                    <table className="w-full border-collapse text-left bg-white">
-                      <thead>
-                        <tr className="bg-[#005B60] text-white select-none">
-                          <th className="px-6 py-4 font-bold text-sm">Lessons</th>
-                          <th className="px-6 py-4 font-bold text-sm">Format</th>
-                          <th className="px-6 py-4 font-bold text-sm">Status</th>
-                          <th className="px-6 py-4 font-bold text-sm">Like / Dislike</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-zinc-200">
-                        {lessonsToDisplay.length === 0 ? (
-                          <tr>
-                            <td colSpan={4} className="px-6 py-12 text-center text-zinc-400 text-sm font-medium">
-                              No lessons match this filter for this subtopic.
-                            </td>
-                          </tr>
-                        ) : (
-                          lessonsToDisplay.map((lesson, idx) => {
-                            const formatType = lesson.activityTypes.includes("quantus") ? "Quantus"
-                              : lesson.activityTypes.includes("mcq") ? "MCQ" : "Simulation";
-                            const isCompleted  = lesson.status === "completed";
-                            const isInProgress = lesson.status === "in_progress";
-
-                            return (
-                              <tr
-                                key={lesson.lessonId}
-                                onClick={() => router.push(`/activity/${lesson.lessonId}`)}
+                  <div className="space-y-3">
+                    {lessonsToDisplay.length === 0 ? (
+                      <div className="text-center py-8 text-zinc-400 text-sm font-medium">
+                        No lessons match this filter for this subtopic.
+                      </div>
+                    ) : (
+                      lessonsToDisplay.map((lesson, idx) => {
+                        const isCompleted  = lesson.status === "completed";
+                        const isInProgress = lesson.status === "in_progress";
+                        return (
+                          <div
+                            key={lesson.lessonId}
+                            onClick={() => router.push(`/activity/${lesson.lessonId}`)}
+                            className="flex items-center justify-between p-4 bg-[#F5F3EE] border border-transparent rounded-2xl hover:border-[#01696F]/30 hover:bg-white transition-all cursor-pointer shadow-sm group select-none"
+                          >
+                            <div className="space-y-1.5 flex-1 min-w-0 pr-4">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-xs font-extrabold text-[#01696F] tracking-tight">
+                                  Lesson {idx + 1} &middot; {lesson.name}
+                                </span>
+                                {isCompleted ? (
+                                  <span className="bg-emerald-100 text-emerald-700 text-[9px] font-extrabold px-2 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
+                                    <CheckCircle2 size={9} /> Completed
+                                  </span>
+                                ) : isInProgress ? (
+                                  <span className="bg-[#E6F0F1] text-[#01696F] text-[9px] font-extrabold px-2 py-0.5 rounded-full border border-[#01696F]/10">
+                                    In Progress
+                                  </span>
+                                ) : null}
+                              </div>
+                              {lesson.description && (
+                                <p className="text-[11px] text-zinc-500 font-semibold line-clamp-1">
+                                  {lesson.description}
+                                </p>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-3 shrink-0" onClick={(e) => e.stopPropagation()}>
+                              <button
+                                onClick={() => handleToggleLike(lesson.lessonId, lesson.reaction === "like" ? null : "like")}
                                 className={cn(
-                                  "group cursor-pointer hover:bg-[#E6F0F1]/20 transition-colors",
-                                  idx % 2 === 1 ? "bg-[#F5F3EE]/40" : "bg-white"
+                                  "inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl border transition-all active:scale-95 text-xs font-extrabold select-none shadow-sm",
+                                  lesson.reaction === "like"
+                                    ? "bg-emerald-50 border-emerald-300 text-emerald-700"
+                                    : "bg-white border-zinc-200 text-zinc-400 hover:bg-zinc-50 hover:border-zinc-300 hover:text-zinc-600"
                                 )}
                               >
-                                <td className="px-6 py-4 min-w-0">
-                                  <div className="font-extrabold text-zinc-800 text-sm group-hover:text-[#01696F] transition-colors">
-                                    {lesson.name}
-                                  </div>
-                                  {lesson.description && (
-                                    <div className="text-[11px] text-zinc-500 font-semibold line-clamp-1">
-                                      {lesson.description}
-                                    </div>
-                                  )}
-                                </td>
-                                <td className="px-6 py-4 text-xs font-semibold text-zinc-600">
-                                  {formatType}
-                                </td>
-                                <td className="px-6 py-4">
-                                  <span className={cn(
-                                    "text-xs font-bold",
-                                    isCompleted ? "text-emerald-600" :
-                                    isInProgress ? "text-amber-600" : "text-zinc-400"
-                                  )}>
-                                    {isCompleted ? "Completed" : isInProgress ? "In Progress" : "—"}
-                                  </span>
-                                </td>
-                                <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
-                                  <div className="flex items-center gap-2">
-                                    <button
-                                      onClick={() => handleToggleLike(lesson.lessonId, lesson.reaction === "like" ? null : "like")}
-                                      className={cn(
-                                        "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border transition-all active:scale-95 text-xs font-extrabold select-none shadow-sm",
-                                        lesson.reaction === "like"
-                                          ? "bg-emerald-50 border-emerald-300 text-emerald-700"
-                                          : "bg-white border-zinc-200 text-zinc-400 hover:bg-zinc-50 hover:border-zinc-300 hover:text-zinc-600"
-                                      )}
-                                      title="Like"
-                                    >
-                                      <ThumbsUp size={13} fill={lesson.reaction === "like" ? "currentColor" : "none"} />
-                                      <span>{lesson.likesCount}</span>
-                                    </button>
-                                    <button
-                                      onClick={() => handleToggleLike(lesson.lessonId, lesson.reaction === "dislike" ? null : "dislike")}
-                                      className={cn(
-                                        "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border transition-all active:scale-95 text-xs font-extrabold select-none shadow-sm",
-                                        lesson.reaction === "dislike"
-                                          ? "bg-rose-50 border-rose-300 text-rose-700"
-                                          : "bg-white border-zinc-200 text-zinc-400 hover:bg-zinc-50 hover:border-zinc-300 hover:text-zinc-600"
-                                      )}
-                                      title="Dislike"
-                                    >
-                                      <ThumbsDown size={13} fill={lesson.reaction === "dislike" ? "currentColor" : "none"} />
-                                    </button>
-                                  </div>
-                                </td>
-                              </tr>
-                            );
-                          })
-                        )}
-                      </tbody>
-                    </table>
+                                <ThumbsUp size={12} fill={lesson.reaction === "like" ? "currentColor" : "none"} />
+                                <span>{lesson.likesCount}</span>
+                              </button>
+                              <button
+                                onClick={() => handleToggleLike(lesson.lessonId, lesson.reaction === "dislike" ? null : "dislike")}
+                                className={cn(
+                                  "inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl border transition-all active:scale-95 text-xs font-extrabold select-none shadow-sm",
+                                  lesson.reaction === "dislike"
+                                    ? "bg-rose-50 border-rose-300 text-rose-700"
+                                    : "bg-white border-zinc-200 text-zinc-400 hover:bg-zinc-50 hover:border-zinc-300 hover:text-zinc-600"
+                                )}
+                              >
+                                <ThumbsDown size={12} fill={lesson.reaction === "dislike" ? "currentColor" : "none"} />
+                              </button>
+                              <ChevronRight className="w-4 h-4 text-zinc-400 group-hover:text-[#01696F] transition-colors" />
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
                   </div>
                 </div>
               )}

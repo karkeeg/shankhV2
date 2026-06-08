@@ -167,7 +167,10 @@ function normalizeSteps(rawSteps: any[]): any[] {
           instructions: d.instructions,
           contextText: d.context,
           explanation: q.explanation,
-          options: (q.options ?? []).map((o: any, idx: number) => ({
+          // Shuffle so the correct answer isn't always in its authored position
+          // (the builder defaults option A as correct). Stable for the session
+          // since normalizeSteps runs once on fetch and the result is stored in state.
+          options: fisherYates(q.options ?? []).map((o: any, idx: number) => ({
             id: o.id,                                // real UUID — selection + submit
             label: o.optionText,                     // answer text
             display: String.fromCharCode(65 + idx),  // A, B, C, D
@@ -238,7 +241,7 @@ function normalizeCaseSteps(caseActivities: any[]): any[] {
         instructions: d.instructions,
         contextText: d.context,
         explanation: q.explanation,
-        options: (q.options ?? []).map((o: any, oi: number) => ({
+        options: fisherYates(q.options ?? []).map((o: any, oi: number) => ({
           id: o.id,
           label: o.optionText,
           display: String.fromCharCode(65 + oi),
@@ -612,7 +615,7 @@ export default function UnifiedActivityPage() {
   // ── Answer state ────────────────────────────────────────────────────────────
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [spreadsheetGrid, setSpreadsheetGrid] = useState<Record<string, string>>({});
-  const [canvasElements, setCanvasElements] = useState<any[]>([]);
+  const [canvasElements, setCanvasElements] = useState<any>(null);
   const [submitting, setSubmitting] = useState(false);
 
   // ── Case mode: buffer MCQ answers until all questions in one activity are done
@@ -856,7 +859,7 @@ export default function UnifiedActivityPage() {
     } else if (step.type === "canvas") {
       // Draft for canvas is loaded via initialElements — reset elements to trigger re-mount
       const draft = !step.completed ? loadCanvasDraft(step.id) : null;
-      setCanvasElements(draft ? (draft as any) : (step.submittedCanvasData || []));
+      setCanvasElements(draft ?? (step.submittedCanvasData ?? null));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentStepIdx]);
@@ -872,8 +875,8 @@ export default function UnifiedActivityPage() {
   // ── Save Canvas draft locally whenever elements change ────────────────────────
   useEffect(() => {
     if (!step || step.type !== "canvas" || step.completed) return;
-    if (canvasElements.length === 0) return;
-    const t = setTimeout(() => saveCanvasDraft(step.id, canvasElements as any), 400);
+    if (!canvasElements?.nodes?.length && !canvasElements?.edges?.length) return;
+    const t = setTimeout(() => saveCanvasDraft(step.id, canvasElements), 400);
     return () => clearTimeout(t);
   }, [canvasElements, step]);
 
@@ -891,7 +894,7 @@ export default function UnifiedActivityPage() {
 
       if (step.type === "quantus" && Object.keys(spreadsheetGrid).length > 0) {
         draftState = spreadsheetGrid;
-      } else if (step.type === "canvas" && canvasElements.length > 0) {
+      } else if (step.type === "canvas" && canvasElements?.nodes?.length > 0) {
         draftState = canvasElements;
       } else if (step.type === "mcq" && selectedOption) {
         draftState = { selectedOptionId: selectedOption };
@@ -943,64 +946,32 @@ export default function UnifiedActivityPage() {
    * Returns { placedTokens: string[], edges: { from, to, slot? }[] }
    */
   const extractCanvasGraph = () => {
-    // Collect all placed token shapes (ignore zones, text labels, etc.)
-    const tokenElements = canvasElements.filter(
-      (el) => el.customData?.originalId && !el.customData?.isZone && el.type !== "text"
+    // canvasElements is now React Flow { nodes, edges } from CanvasExercise
+    const rfData = canvasElements as any;
+    if (!rfData?.nodes) return { placedTokens: [], edges: [] };
+
+    const nodeMap = new Map<string, string>(
+      (rfData.nodes as any[]).map((n: any) => [n.id, n.data?.tokenId as string])
     );
-    const placedTokens = tokenElements.map((el) => el.customData!.originalId as string);
-
-    // Collect arrows and resolve their connections
-    const arrows = canvasElements.filter((el) => el.type === "arrow");
-    const edges: { from: string; to: string; slot?: string }[] = [];
-
-    for (const arrow of arrows) {
-      const startBinding = (arrow as any).startBinding;
-      const endBinding = (arrow as any).endBinding;
-      if (!startBinding?.elementId || !endBinding?.elementId) continue;
-
-      // Resolve Excalidraw element IDs → original token IDs
-      const fromEl = canvasElements.find((el) => el.id === startBinding.elementId);
-      const toEl = canvasElements.find((el) => el.id === endBinding.elementId);
-      if (!fromEl?.customData?.originalId || !toEl?.customData?.originalId) continue;
-
-      const fromId = fromEl.customData.originalId as string;
-      const toId = toEl.customData.originalId as string;
-
-      // Infer slot from geometric position for sequence mode
-      // (left operand is to the left of the operator, right is to the right)
-      let slot: string | undefined;
-      if (step.assemblyMode === "sequence" || step.assemblyMode === "graph") {
-        const toToken = (step.tokens || []).find((t: any) => t.id === toId);
-        if (toToken && (toToken.tokenRole === "operator" || toToken.tokenRole === "relation")) {
-          // The from-element's center X relative to the to-element determines slot
-          const fromCx = (fromEl.x ?? 0) + (fromEl.width ?? 0) / 2;
-          const toCx = (toEl.x ?? 0) + (toEl.width ?? 0) / 2;
-          slot = fromCx < toCx ? "left" : "right";
-        }
-      }
-
-      edges.push({ from: fromId, to: toId, ...(slot ? { slot } : {}) });
-    }
-
-    // For sequence mode without explicit arrows, infer adjacency from left-to-right order
-    if (step.assemblyMode === "sequence" && edges.length === 0 && tokenElements.length > 1) {
-      const sorted = [...tokenElements].sort((a, b) => (a.x ?? 0) - (b.x ?? 0));
-      for (let i = 0; i < sorted.length - 1; i++) {
-        const fromId = sorted[i].customData!.originalId as string;
-        const toId = sorted[i + 1].customData!.originalId as string;
-        // Infer slot based on target token role
-        const toToken = (step.tokens || []).find((t: any) => t.id === toId);
+    const placedTokens = (rfData.nodes as any[])
+      .map((n: any) => n.data?.tokenId as string)
+      .filter(Boolean);
+    const edges = (rfData.edges as any[] ?? [])
+      .map((e: any) => {
+        const from = nodeMap.get(e.source);
+        const to   = nodeMap.get(e.target);
+        if (!from || !to) return null;
+        // Infer slot from node X positions for operator tokens
+        const srcNode = (rfData.nodes as any[]).find((n: any) => n.id === e.source);
+        const tgtNode = (rfData.nodes as any[]).find((n: any) => n.id === e.target);
         let slot: string | undefined;
-        if (toToken && (toToken.tokenRole === "operator" || toToken.tokenRole === "relation")) {
-          slot = "left"; // first operand connecting to operator
+        const toToken = (step?.tokens || []).find((t: any) => t.id === to);
+        if (toToken && (toToken.tokenRole === "operator" || toToken.tokenRole === "relation") && srcNode && tgtNode) {
+          slot = (srcNode.position?.x ?? 0) < (tgtNode.position?.x ?? 0) ? "left" : "right";
         }
-        const fromToken = (step.tokens || []).find((t: any) => t.id === fromId);
-        if (fromToken && (fromToken.tokenRole === "operator" || fromToken.tokenRole === "relation")) {
-          slot = "right"; // operator connecting to right operand
-        }
-        edges.push({ from: fromId, to: toId, ...(slot ? { slot } : {}) });
-      }
-    }
+        return { from, to, ...(slot ? { slot } : {}) };
+      })
+      .filter(Boolean);
 
     return { placedTokens, edges };
   };

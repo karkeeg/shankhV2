@@ -2,7 +2,8 @@
 
 import React, { useState, useCallback, useRef } from "react";
 import { cn } from "@/lib/utils";
-import { CanvasExercise, ExcalidrawSceneElement } from "@/components/exercise/CanvasExercise";
+import { CanvasExercise, CanvasGraph } from "@/components/exercise/CanvasExercise";
+import { CanvasToolkit } from "@/components/exercise/CanvasToolkit";
 import { Plus, Trash2, Save, GripVertical } from "lucide-react";
 
 // ─── Token types ──────────────────────────────────────────────────────────────
@@ -27,7 +28,7 @@ export interface CanvasActivityData {
   assemblyMode: "sequence" | "graph";
   scoringMode: "partial" | "exact";
   tokens: Token[];
-  initialElements: ExcalidrawSceneElement[];
+  initialElements: CanvasGraph | null;
 }
 
 interface Props {
@@ -67,19 +68,27 @@ function TokenPreview({ token }: { token: Token }) {
 }
 
 export function CanvasActivityBuilder({ value, onChange }: Props) {
-  const elementsRef = useRef<ExcalidrawSceneElement[]>(value.initialElements ?? []);
+  const graphRef = useRef<CanvasGraph | null>(value.initialElements ?? null);
 
   const set = useCallback(<K extends keyof CanvasActivityData>(key: K, val: CanvasActivityData[K]) => {
     onChange({ ...value, [key]: val });
   }, [value, onChange]);
 
-  const handleElementsChange = useCallback((els: ExcalidrawSceneElement[]) => {
-    elementsRef.current = els;
+  const handleElementsChange = useCallback((graph: CanvasGraph) => {
+    graphRef.current = graph;
   }, []);
 
   const handleSaveCanvas = () => {
-    onChange({ ...value, initialElements: elementsRef.current });
+    onChange({ ...value, initialElements: graphRef.current });
   };
+
+  // Convert admin tokens → DragCategory format for CanvasToolkit
+  const draggableElements = value.tokens.length > 0 ? [{
+    category: "Tokens",
+    items: value.tokens.map(t => ({
+      id: t.id, type: t.type, label: t.content, content: t.content,
+    })),
+  }] : [];
 
   // ── Token management ─────────────────────────────────────────────────────────
   const addToken = () => {
@@ -196,20 +205,29 @@ export function CanvasActivityBuilder({ value, onChange }: Props) {
             <Save size={12} /> Capture Canvas
           </button>
         </div>
-        <div className="rounded-2xl border border-zinc-200 overflow-hidden" style={{ height: "480px" }}>
-          <CanvasExercise
-            canvasBackgroundText={value.title || "Draw initial canvas state"}
-            onElementsChange={handleElementsChange}
-            initialElements={value.initialElements}
-            assemblyMode={value.assemblyMode}
-          />
+        <div className="rounded-2xl border border-zinc-200 overflow-hidden flex" style={{ height: "480px" }}>
+          {/* Token palette for admin to drag onto canvas */}
+          {draggableElements.length > 0 && (
+            <div className="w-48 border-r border-zinc-200 bg-zinc-50 overflow-y-auto p-3 shrink-0">
+              <CanvasToolkit draggableElements={draggableElements} />
+            </div>
+          )}
+          <div className="flex-1 min-w-0">
+            <CanvasExercise
+              canvasBackgroundText={value.title || "Place tokens to set initial layout"}
+              onElementsChange={handleElementsChange}
+              initialElements={value.initialElements}
+              tokens={value.tokens}
+              assemblyMode={value.assemblyMode}
+            />
+          </div>
         </div>
-        {elementsRef.current.length > 0 && (
+        {graphRef.current?.nodes?.length ? (
           <p className="text-[10px] text-zinc-400 font-semibold text-right">
-            {elementsRef.current.filter((e) => !e.isDeleted).length} elements on canvas
-            {value.initialElements.length > 0 ? " · canvas saved ✓" : " · click «Capture Canvas» to save"}
+            {graphRef.current.nodes.length} nodes · {graphRef.current.edges?.length ?? 0} edges
+            {value.initialElements ? " · canvas saved ✓" : " · click «Capture Canvas» to save"}
           </p>
-        )}
+        ) : null}
       </div>
     </div>
   );

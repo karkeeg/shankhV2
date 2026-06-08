@@ -276,10 +276,10 @@ export default function TestSessionPage() {
   // ── User input states ─────────────────────────────────────────────────────
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [spreadsheetGrid, setSpreadsheetGrid] = useState<Record<string, string>>({});
-  const [canvasElements, setCanvasElements] = useState<any[]>([]);
+  const [canvasElements, setCanvasElements] = useState<any>(null);
   // Separate initial snapshot passed to CanvasExercise — decoupled from the
   // live canvasElements so that user edits don't re-trigger initialisation.
-  const [initialCanvasElements, setInitialCanvasElements] = useState<any[]>([]);
+  const [initialCanvasElements, setInitialCanvasElements] = useState<any>(null);
   const [excelValidated, setExcelValidated] = useState(false);
   const [excelFeedback, setExcelFeedback] = useState<Record<string, boolean>>({});
 
@@ -333,6 +333,11 @@ export default function TestSessionPage() {
             body: JSON.stringify({ activityType }),
           }
         );
+        if (res.status === 409) {
+          // Session already completed — send straight to results
+          router.replace(`/skill/tests/${testId}/${activityType}/result`);
+          return;
+        }
         if (!res.ok) throw new Error("Failed to start session");
         const init = await res.json();
         data = {
@@ -431,8 +436,8 @@ export default function TestSessionPage() {
   // ── Persist Canvas draft locally ──────────────────────────────────────────
   useEffect(() => {
     if (!nextItem || activityType !== "canvas") return;
-    if ((canvasElements as any[]).length === 0) return;
-    const t = setTimeout(() => saveCanvasDraft(nextItem.id, canvasElements as any), 400);
+    if (!canvasElements?.nodes?.length && !canvasElements?.edges?.length) return;
+    const t = setTimeout(() => saveCanvasDraft(nextItem.id, canvasElements), 400);
     return () => clearTimeout(t);
   }, [canvasElements, nextItem, activityType]);
 
@@ -517,32 +522,23 @@ export default function TestSessionPage() {
     return result;
   };
 
-  const extractCanvasGraph = (step: any) => {
-    const tokenElements = canvasElements.filter(
-      (el) => el.customData?.originalId && !el.customData?.isZone && el.type !== "text"
+  const extractCanvasGraph = (_step: any) => {
+    // canvasElements is now a React Flow { nodes, edges } graph
+    const rfData = canvasElements as any;
+    if (!rfData?.nodes) return { placedTokens: [], edges: [] };
+    const nodeMap = new Map<string, string>(
+      (rfData.nodes as any[]).map((n: any) => [n.id, n.data?.tokenId as string])
     );
-    const placedTokens = tokenElements.map((el) => el.customData!.originalId as string);
-    const arrows = canvasElements.filter((el) => el.type === "arrow");
-    const edges: any[] = [];
-
-    for (const arrow of arrows) {
-      const sb = (arrow as any).startBinding;
-      const eb = (arrow as any).endBinding;
-      if (!sb?.elementId || !eb?.elementId) continue;
-      const fromEl = canvasElements.find((el) => el.id === sb.elementId);
-      const toEl = canvasElements.find((el) => el.id === eb.elementId);
-      if (!fromEl?.customData?.originalId || !toEl?.customData?.originalId) continue;
-      const fromId = fromEl.customData.originalId as string;
-      const toId = toEl.customData.originalId as string;
-      let slot: string | undefined;
-      const toToken = (step.tokens || []).find((t: any) => t.id === toId);
-      if (toToken && (toToken.tokenRole === "operator" || toToken.tokenRole === "relation")) {
-        const fromCx = (fromEl.x ?? 0) + (fromEl.width ?? 0) / 2;
-        const toCx = (toEl.x ?? 0) + (toEl.width ?? 0) / 2;
-        slot = fromCx < toCx ? "left" : "right";
-      }
-      edges.push({ from: fromId, to: toId, ...(slot ? { slot } : {}) });
-    }
+    const placedTokens = (rfData.nodes as any[])
+      .map((n: any) => n.data?.tokenId as string)
+      .filter(Boolean);
+    const edges = (rfData.edges as any[] ?? [])
+      .map((e: any) => {
+        const from = nodeMap.get(e.source);
+        const to   = nodeMap.get(e.target);
+        return from && to ? { from, to } : null;
+      })
+      .filter(Boolean);
     return { placedTokens, edges };
   };
 
@@ -956,6 +952,7 @@ export default function TestSessionPage() {
                 canvasBackgroundText={step.questionText || "Framework Drill"}
                 onElementsChange={setCanvasElements}
                 initialElements={initialCanvasElements}
+                tokens={step.tokens || []}
                 assemblyMode={step.assemblyMode}
               />
             </div>

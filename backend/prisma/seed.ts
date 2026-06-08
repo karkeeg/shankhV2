@@ -73,6 +73,11 @@ async function reset() {
     prisma.topic.deleteMany(),
     prisma.module.deleteMany(),
     prisma.profession.deleteMany(),
+    // Case simulations
+    prisma.userCaseSession.deleteMany(),
+    prisma.caseActivity.deleteMany(),
+    prisma.caseStudy.deleteMany(),
+    prisma.caseSimulation.deleteMany(),
     prisma.user.deleteMany(),
   ]);
 }
@@ -82,15 +87,26 @@ async function reset() {
 // ═══════════════════════════════════════════════════════════════════════════
 
 async function seedUser() {
-  const passwordHash = await bcrypt.hash("shankh-demo", 10);
-  return prisma.user.create({
+  const learnerHash = await bcrypt.hash("shankh-demo", 10);
+  const adminHash = await bcrypt.hash("shankh-admin", 10);
+  await prisma.user.create({
     data: {
       email: "demo@shankh.app",
       name: "Demo Learner",
-      passwordHash,
+      passwordHash: learnerHash,
       role: "learner",
       planType: "pro",
-      timezone: "Asia/Kathmandu",
+      timezone: "Asia/Kolkata",
+    },
+  });
+  await prisma.user.create({
+    data: {
+      email: "admin@shankh.app",
+      name: "Shankh Admin",
+      passwordHash: adminHash,
+      role: "admin",
+      planType: "pro",
+      timezone: "Asia/Kolkata",
     },
   });
 }
@@ -427,6 +443,133 @@ const FINANCE: ModuleDef = {
                   { from: "minus", to: "capex", role: "sequence", order: 2, slot: "right" },
                   { from: "capex", to: "eq", role: "sequence", order: 3 },
                   { from: "eq", to: "fcf", role: "sequence", order: 4 },
+                ],
+              },
+            },
+          ],
+        },
+        {
+          name: "DuPont Analysis & Return Metrics",
+          professionSlugs: ["ib", "ca", "fin_analyst"],
+          description: "Decompose return on equity into its operating, efficiency, and leverage drivers using the DuPont framework.",
+          lessons: [
+            {
+              name: "The 3-Factor DuPont Model", difficulty: "easy", estMins: 20,
+              description: "Decompose ROE into net profit margin, asset turnover, and equity multiplier.",
+              hints: [
+                "ROE can be broken into three drivers: profitability, efficiency, and leverage.",
+                "Net Profit Margin = Net Income ÷ Revenue. Asset Turnover = Revenue ÷ Total Assets. Equity Multiplier = Total Assets ÷ Equity.",
+                "ROE = Net Profit Margin × Asset Turnover × Equity Multiplier.",
+              ],
+              activity: {
+                kind: "canvas", assemblyMode: "graph",
+                title: "Map the DuPont Decomposition Tree",
+                instructions: "Build the 3-factor DuPont model as a hierarchy tree. Connect each building block — Net Income, Revenue, Total Assets, Equity — upward to their ratio node (Net Profit Margin, Asset Turnover, Equity Multiplier). Then connect those three ratio nodes upward to ROE. Revenue and Total Assets each feed two different ratios, so draw both connections from each shared node. Two sidebar tokens are distractors that do not appear in this identity. When every edge is in place, click Check Answer.",
+                context: "The three-factor DuPont model decomposes return on equity into three multiplicative drivers. Net Profit Margin captures profitability — how many cents of every rupee of revenue the firm keeps after all expenses. Asset Turnover measures efficiency — how much revenue each rupee of assets generates. Equity Multiplier reflects leverage — the ratio of total assets to equity, showing how much of the asset base is funded by debt. Multiplying the three always returns the ROE, making it immediately visible whether an improvement comes from better margins, faster asset utilisation, or increased leverage.",
+                tokens: [
+                  { ref: "roe",    text: "ROE",               role: "result",  shape: "pill" },
+                  { ref: "npm",    text: "Net Profit Margin",  role: "operand", shape: "rect" },
+                  { ref: "at",     text: "Asset Turnover",     role: "operand", shape: "rect" },
+                  { ref: "em",     text: "Equity Multiplier",  role: "operand", shape: "rect" },
+                  { ref: "ni",     text: "Net Income",         role: "operand", shape: "rect" },
+                  { ref: "rev",    text: "Revenue",            role: "operand", shape: "rect" },
+                  { ref: "ta",     text: "Total Assets",       role: "operand", shape: "rect" },
+                  { ref: "eq",     text: "Equity",             role: "operand", shape: "rect" },
+                  { ref: "ebitda", text: "EBITDA",             role: "operand", shape: "rect", distractor: true },
+                  { ref: "gp",     text: "Gross Profit",       role: "operand", shape: "rect", distractor: true },
+                ],
+                edges: [
+                  { from: "ni",  to: "npm", role: "connection", label: "component of" },
+                  { from: "rev", to: "npm", role: "connection", label: "component of" },
+                  { from: "rev", to: "at",  role: "connection", label: "component of" },
+                  { from: "ta",  to: "at",  role: "connection", label: "component of" },
+                  { from: "ta",  to: "em",  role: "connection", label: "component of" },
+                  { from: "eq",  to: "em",  role: "connection", label: "component of" },
+                  { from: "npm", to: "roe", role: "connection", label: "drives" },
+                  { from: "at",  to: "roe", role: "connection", label: "drives" },
+                  { from: "em",  to: "roe", role: "connection", label: "drives" },
+                ],
+              },
+            },
+            {
+              name: "Drivers of ROE Improvement", difficulty: "medium", estMins: 25,
+              description: "Extend to the 5-factor DuPont and diagnose what actually changes when ROE moves.",
+              hints: [
+                "The 5-factor model splits net profit margin into Tax Burden, Interest Burden, and Operating Margin.",
+                "Tax Burden = NI ÷ EBT; Interest Burden = EBT ÷ EBIT; Operating Margin = EBIT ÷ Revenue.",
+                "ROE = Tax Burden × Interest Burden × Operating Margin × Asset Turnover × Equity Multiplier.",
+              ],
+              activity: {
+                kind: "canvas", assemblyMode: "graph",
+                title: "Build the 5-Factor DuPont Tree",
+                instructions: "Construct the 5-factor DuPont model as a two-level hierarchy. At the bottom level, connect the raw financial inputs (Net Income, EBT, EBIT, Revenue, Total Assets, Equity) upward to the five DuPont ratios they define. At the top level, connect all five ratios upward to ROE. Several inputs feed two ratios — draw both connections. Two sidebar tokens are distractors. When all edges are correct, click Check Answer.",
+                context: "The 5-factor DuPont model splits the net profit margin from the 3-factor model into three separate levers: Tax Burden (share of pre-tax income surviving after tax), Interest Burden (share of EBIT surviving after interest), and Operating Margin (EBIT as a fraction of revenue). This finer decomposition lets analysts pinpoint whether an ROE change is driven by operating execution, financing costs, or tax management — each calling for a different strategic response. A company that improves ROE by cutting its tax rate is doing something structurally different from one that improves it by raising prices.",
+                tokens: [
+                  { ref: "roe",  text: "ROE",               role: "result",  shape: "pill" },
+                  { ref: "tb",   text: "Tax Burden",         role: "operand", shape: "rect" },
+                  { ref: "intb", text: "Interest Burden",    role: "operand", shape: "rect" },
+                  { ref: "om",   text: "Operating Margin",   role: "operand", shape: "rect" },
+                  { ref: "at",   text: "Asset Turnover",     role: "operand", shape: "rect" },
+                  { ref: "em",   text: "Equity Multiplier",  role: "operand", shape: "rect" },
+                  { ref: "ni",   text: "Net Income",         role: "operand", shape: "rect" },
+                  { ref: "ebt",  text: "EBT",                role: "operand", shape: "rect" },
+                  { ref: "ebit", text: "EBIT",               role: "operand", shape: "rect" },
+                  { ref: "rev",  text: "Revenue",            role: "operand", shape: "rect" },
+                  { ref: "ta",   text: "Total Assets",       role: "operand", shape: "rect" },
+                  { ref: "eq",   text: "Equity",             role: "operand", shape: "rect" },
+                  { ref: "dep",  text: "Depreciation",       role: "operand", shape: "rect", distractor: true },
+                  { ref: "cogs", text: "COGS",               role: "operand", shape: "rect", distractor: true },
+                ],
+                edges: [
+                  { from: "ni",   to: "tb",   role: "connection", label: "component of" },
+                  { from: "ebt",  to: "tb",   role: "connection", label: "component of" },
+                  { from: "ebt",  to: "intb", role: "connection", label: "component of" },
+                  { from: "ebit", to: "intb", role: "connection", label: "component of" },
+                  { from: "ebit", to: "om",   role: "connection", label: "component of" },
+                  { from: "rev",  to: "om",   role: "connection", label: "component of" },
+                  { from: "rev",  to: "at",   role: "connection", label: "component of" },
+                  { from: "ta",   to: "at",   role: "connection", label: "component of" },
+                  { from: "ta",   to: "em",   role: "connection", label: "component of" },
+                  { from: "eq",   to: "em",   role: "connection", label: "component of" },
+                  { from: "tb",   to: "roe",  role: "connection", label: "drives" },
+                  { from: "intb", to: "roe",  role: "connection", label: "drives" },
+                  { from: "om",   to: "roe",  role: "connection", label: "drives" },
+                  { from: "at",   to: "roe",  role: "connection", label: "drives" },
+                  { from: "em",   to: "roe",  role: "connection", label: "drives" },
+                ],
+              },
+            },
+            {
+              name: "ROCE & Capital Efficiency", difficulty: "hard", estMins: 30,
+              description: "Measure return on capital employed and compare it to ROE to separate operational performance from leverage effects.",
+              hints: [
+                "ROCE = EBIT ÷ Capital Employed. Capital Employed = Total Assets − Current Liabilities.",
+                "ROCE is capital-structure neutral — it excludes interest and tax, making it comparable across firms with different debt levels.",
+                "If ROCE < WACC, the business destroys value even when growing.",
+              ],
+              activity: {
+                kind: "canvas", assemblyMode: "graph",
+                title: "Build the ROCE Decomposition Tree",
+                instructions: "Construct the ROCE metric as a two-level tree. At the bottom level, connect Revenue and Operating Expenses upward to EBIT, and connect Total Assets and Current Liabilities upward to Capital Employed. At the top level, connect both EBIT and Capital Employed upward to ROCE. Two sidebar tokens are distractors. When the full tree is connected correctly, click Check Answer.",
+                context: "Return on Capital Employed (ROCE) measures how efficiently a business generates operating profit from the long-term capital it uses. The denominator, Capital Employed, equals Total Assets minus Current Liabilities — representing the asset base funded by long-term sources rather than short-term trade creditors. Because ROCE uses EBIT rather than net income, it strips out the effect of capital structure and tax. The critical benchmark is the firm's WACC: ROCE above WACC means the business creates value; ROCE below WACC means every unit of growth destroys value, no matter how good the income statement looks.",
+                tokens: [
+                  { ref: "roce",  text: "ROCE",                role: "result",  shape: "pill" },
+                  { ref: "ebit",  text: "EBIT",                role: "operand", shape: "rect" },
+                  { ref: "ce",    text: "Capital Employed",    role: "operand", shape: "rect" },
+                  { ref: "rev",   text: "Revenue",             role: "operand", shape: "rect" },
+                  { ref: "opex",  text: "Operating Expenses",  role: "operand", shape: "rect" },
+                  { ref: "ta",    text: "Total Assets",        role: "operand", shape: "rect" },
+                  { ref: "cl",    text: "Current Liabilities", role: "operand", shape: "rect" },
+                  { ref: "ni",    text: "Net Income",          role: "operand", shape: "rect", distractor: true },
+                  { ref: "int",   text: "Interest Expense",    role: "operand", shape: "rect", distractor: true },
+                ],
+                edges: [
+                  { from: "rev",  to: "ebit", role: "connection", label: "component of" },
+                  { from: "opex", to: "ebit", role: "connection", label: "component of" },
+                  { from: "ta",   to: "ce",   role: "connection", label: "component of" },
+                  { from: "cl",   to: "ce",   role: "connection", label: "component of" },
+                  { from: "ebit", to: "roce", role: "connection", label: "numerator" },
+                  { from: "ce",   to: "roce", role: "connection", label: "denominator" },
                 ],
               },
             },
@@ -1446,12 +1589,349 @@ const ext_quantus_fs_hard: ExtQuantusDef = {
   ],
 };
 
+// ── DuPont subtopic extra activities (finance/0/3/*) ─────────────────────────
+
+const ext_mcq_dupont_easy: ExtMcqDef = {
+  title: "DuPont Analysis — 3-Factor Model",
+  instructions: "Select the single best answer for each question.",
+  context: "The 3-factor DuPont model decomposes ROE into Net Profit Margin × Asset Turnover × Equity Multiplier. NPM = Net Income ÷ Revenue. AT = Revenue ÷ Total Assets. EM = Total Assets ÷ Equity. The decomposition reveals whether ROE is driven by margin, asset efficiency, or leverage.",
+  questions: [
+    {
+      questionText: "ROE = 20%, Asset Turnover = 1.6×, Equity Multiplier = 2.5×. What is the Net Profit Margin?",
+      explanation: "ROE = NPM × AT × EM → 20% = NPM × 1.6 × 2.5 → NPM = 20% ÷ 4 = 5%.",
+      hints: ["Rearrange: NPM = ROE ÷ (AT × EM).", "AT × EM = 1.6 × 2.5 = 4.0.", "20% ÷ 4.0 = 5%.", "NPM = 5%."],
+      orderIndex: 0,
+      options: [
+        { optionText: "5.0%", isCorrect: true, orderIndex: 0 },
+        { optionText: "8.0%", isCorrect: false, orderIndex: 1 },
+        { optionText: "12.5%", isCorrect: false, orderIndex: 2 },
+        { optionText: "3.2%", isCorrect: false, orderIndex: 3 },
+      ],
+    },
+    {
+      questionText: "Company A's ROE rises from 12% to 18% while Net Profit Margin and Asset Turnover stay unchanged. What drove it?",
+      explanation: "If NPM and AT are constant, only Equity Multiplier changed — meaning the firm took on more debt relative to equity.",
+      hints: ["Three DuPont factors: NPM, AT, EM.", "Two are constant — the third must have changed.", "EM = Total Assets ÷ Equity.", "Rising EM means more leverage."],
+      orderIndex: 1,
+      options: [
+        { optionText: "An increase in the Equity Multiplier (higher leverage)", isCorrect: true, orderIndex: 0 },
+        { optionText: "A reduction in COGS", isCorrect: false, orderIndex: 1 },
+        { optionText: "Faster inventory turnover", isCorrect: false, orderIndex: 2 },
+        { optionText: "A lower effective tax rate", isCorrect: false, orderIndex: 3 },
+      ],
+    },
+    {
+      questionText: "What does a rising Equity Multiplier indicate?",
+      explanation: "EM = Total Assets ÷ Equity. A higher ratio means the firm funds more assets per unit of equity — i.e., more of the asset base is financed by debt.",
+      hints: ["EM = Total Assets ÷ Equity.", "More assets per unit of equity = more debt.", "High EM = higher financial leverage.", "It is the leverage component of the DuPont identity."],
+      orderIndex: 2,
+      options: [
+        { optionText: "The firm is increasingly funded by debt relative to equity", isCorrect: true, orderIndex: 0 },
+        { optionText: "Operating efficiency of assets is improving", isCorrect: false, orderIndex: 1 },
+        { optionText: "The proportion of revenue that becomes profit is rising", isCorrect: false, orderIndex: 2 },
+        { optionText: "The dividend payout ratio is increasing", isCorrect: false, orderIndex: 3 },
+      ],
+    },
+    {
+      questionText: "Firm A: NPM 15%, AT 0.6×. Firm B: NPM 4%, AT 1.5×. Both have ROE = 18%. What can you infer?",
+      explanation: "Firm A earns its ROE through high margin (premium/pharma model). Firm B earns the same ROE through high turnover (retail/FMCG model). The same ROE can arise from structurally different business models.",
+      hints: ["Calculate EM for each: ROE ÷ (NPM × AT).", "Firm A EM = 18% ÷ (15% × 0.6) = 2.0×.", "Firm B EM = 18% ÷ (4% × 1.5) = 3.0×.", "Different levers, same ROE outcome."],
+      orderIndex: 3,
+      options: [
+        { optionText: "Firm A is margin-driven; Firm B is turnover-driven — different industry models producing equal ROE", isCorrect: true, orderIndex: 0 },
+        { optionText: "Firm B is less profitable and should be avoided by investors", isCorrect: false, orderIndex: 1 },
+        { optionText: "Firm A is more financially leveraged than Firm B", isCorrect: false, orderIndex: 2 },
+        { optionText: "Both firms must operate in the same sector", isCorrect: false, orderIndex: 3 },
+      ],
+    },
+    {
+      questionText: "A company collects receivables faster (days outstanding fall) with no change in revenue or net income. Which DuPont factor improves?",
+      explanation: "Faster collections mean accounts receivable (a current asset) shrinks, reducing Total Assets. Asset Turnover = Revenue ÷ Total Assets therefore rises — the same revenue is generated from a leaner asset base.",
+      hints: ["Which factor involves Total Assets?", "AT = Revenue ÷ Total Assets.", "Fewer assets for the same revenue = higher turnover.", "Asset Turnover improves."],
+      orderIndex: 4,
+      options: [
+        { optionText: "Asset Turnover", isCorrect: true, orderIndex: 0 },
+        { optionText: "Net Profit Margin", isCorrect: false, orderIndex: 1 },
+        { optionText: "Equity Multiplier", isCorrect: false, orderIndex: 2 },
+        { optionText: "All three factors improve equally", isCorrect: false, orderIndex: 3 },
+      ],
+    },
+  ],
+};
+
+const ext_mcq_dupont_medium: ExtMcqDef = {
+  title: "DuPont Analysis — 5-Factor Model & ROE Drivers",
+  instructions: "These questions deepen the DuPont analysis to the 5-factor model and its strategic implications.",
+  context: "The 5-factor DuPont: ROE = Tax Burden × Interest Burden × Operating Margin × Asset Turnover × Equity Multiplier. Tax Burden = NI ÷ EBT. Interest Burden = EBT ÷ EBIT. Operating Margin = EBIT ÷ Revenue. The model isolates tax and interest effects that the 3-factor model bundles together.",
+  questions: [
+    {
+      questionText: "Tax Burden = 0.72. What is the company's effective tax rate?",
+      explanation: "Tax Burden = NI ÷ EBT = 1 − effective tax rate. So 0.72 = 1 − ETR → ETR = 28%.",
+      hints: ["Tax Burden = NI ÷ EBT = 1 − tax rate.", "0.72 = 1 − tax rate.", "Tax rate = 1 − 0.72 = 0.28 = 28%.", "Higher Tax Burden = lower effective tax."],
+      orderIndex: 0,
+      options: [
+        { optionText: "28% — the company retains 72% of pre-tax income after tax", isCorrect: true, orderIndex: 0 },
+        { optionText: "72% — the company pays 72% of pre-tax income as tax", isCorrect: false, orderIndex: 1 },
+        { optionText: "72% of revenue becomes pre-tax income", isCorrect: false, orderIndex: 2 },
+        { optionText: "EBIT equals 72% of EBT", isCorrect: false, orderIndex: 3 },
+      ],
+    },
+    {
+      questionText: "A firm issues new long-term debt and uses proceeds for a share buyback. Which two 5-factor components change immediately?",
+      explanation: "More debt → higher interest expense → EBT falls → Interest Burden (EBT ÷ EBIT) falls. Fewer shares → lower equity → Equity Multiplier (Assets ÷ Equity) rises. Operating Margin, Asset Turnover, and Tax Burden are unaffected.",
+      hints: ["Which factor contains interest?", "Interest Burden = EBT ÷ EBIT: more interest → lower EBT.", "Buyback reduces equity → EM rises.", "Interest Burden falls; Equity Multiplier rises."],
+      orderIndex: 1,
+      options: [
+        { optionText: "Interest Burden (falls) and Equity Multiplier (rises)", isCorrect: true, orderIndex: 0 },
+        { optionText: "Operating Margin (falls) and Tax Burden (rises)", isCorrect: false, orderIndex: 1 },
+        { optionText: "Asset Turnover (rises) and Operating Margin (rises)", isCorrect: false, orderIndex: 2 },
+        { optionText: "Tax Burden (falls) and Asset Turnover (falls)", isCorrect: false, orderIndex: 3 },
+      ],
+    },
+    {
+      questionText: "Interest Burden is closest to 1.0 when:",
+      explanation: "Interest Burden = EBT ÷ EBIT. If interest expense is near zero (debt-free firm), EBT ≈ EBIT and the ratio approaches 1.0.",
+      hints: ["IB = EBT ÷ EBIT.", "If interest = 0, EBT = EBIT → IB = 1.0.", "A debt-free company has IB exactly 1.0.", "Higher debt → more interest → lower IB."],
+      orderIndex: 2,
+      options: [
+        { optionText: "The company has minimal or no debt and negligible interest expense", isCorrect: true, orderIndex: 0 },
+        { optionText: "The company is heavily leveraged with high interest payments", isCorrect: false, orderIndex: 1 },
+        { optionText: "Operating Margin is at its maximum", isCorrect: false, orderIndex: 2 },
+        { optionText: "The effective tax rate is near zero", isCorrect: false, orderIndex: 3 },
+      ],
+    },
+    {
+      questionText: "A company negotiates a lower effective tax rate from 30% to 20%. All else equal, which single 5-factor component improves?",
+      explanation: "A lower tax rate means more EBT is retained as NI. Tax Burden = NI ÷ EBT rises from 0.70 to 0.80. None of the other four factors involves the tax rate.",
+      hints: ["Which factor = NI ÷ EBT?", "Tax Burden = 1 − effective tax rate.", "Lower tax → higher NI for same EBT → Tax Burden rises.", "Only Tax Burden changes."],
+      orderIndex: 3,
+      options: [
+        { optionText: "Tax Burden", isCorrect: true, orderIndex: 0 },
+        { optionText: "Interest Burden", isCorrect: false, orderIndex: 1 },
+        { optionText: "Operating Margin", isCorrect: false, orderIndex: 2 },
+        { optionText: "Equity Multiplier", isCorrect: false, orderIndex: 3 },
+      ],
+    },
+    {
+      questionText: "A software company and a supermarket both have 20% ROE. The software firm has 30% Operating Margin; the supermarket has 2%. Which factor compensates for the supermarket's thin margin?",
+      explanation: "The supermarket compensates with extremely high Asset Turnover — it cycles through large sales volumes on a relatively lean asset base. Low margin × very high turnover can match high margin × low turnover.",
+      hints: ["ROE = Tax Burden × IB × Operating Margin × AT × EM.", "Supermarket: thin margin but enormous volume relative to assets.", "AT = Revenue ÷ Total Assets.", "High Asset Turnover compensates for thin Operating Margin."],
+      orderIndex: 4,
+      options: [
+        { optionText: "Asset Turnover — supermarkets generate high revenue relative to their asset base", isCorrect: true, orderIndex: 0 },
+        { optionText: "Tax Burden — supermarkets pay very low effective tax rates", isCorrect: false, orderIndex: 1 },
+        { optionText: "Interest Burden — supermarkets carry no debt", isCorrect: false, orderIndex: 2 },
+        { optionText: "Equity Multiplier — supermarkets use virtually no leverage", isCorrect: false, orderIndex: 3 },
+      ],
+    },
+  ],
+};
+
+const ext_mcq_dupont_hard: ExtMcqDef = {
+  title: "DuPont Analysis — ROCE, Value Creation & Advanced Diagnostics",
+  instructions: "Advanced questions on ROCE, the ROCE vs WACC test, and cross-company return analysis.",
+  context: "ROCE = EBIT ÷ Capital Employed. Capital Employed = Total Assets − Current Liabilities. The central value-creation test: ROCE > WACC creates value; ROCE < WACC destroys it regardless of growth. ROCE and ROE tell different stories — ROCE is capital-structure neutral; ROE rewards leverage.",
+  questions: [
+    {
+      questionText: "Capital Employed = ?",
+      explanation: "Capital Employed = Total Assets − Current Liabilities. It represents the long-term funding base: equity plus long-term debt. Subtracting current liabilities removes the short-term trade-financed portion of assets.",
+      hints: ["CE excludes short-term creditor funding.", "Short-term funding = current liabilities.", "CE = Total Assets − Current Liabilities.", "CE also equals Long-term Debt + Equity."],
+      orderIndex: 0,
+      options: [
+        { optionText: "Total Assets − Current Liabilities", isCorrect: true, orderIndex: 0 },
+        { optionText: "Equity + Short-term Debt", isCorrect: false, orderIndex: 1 },
+        { optionText: "Total Assets − Total Debt", isCorrect: false, orderIndex: 2 },
+        { optionText: "Fixed Assets + Cash", isCorrect: false, orderIndex: 3 },
+      ],
+    },
+    {
+      questionText: "Company A: ROCE 9%, WACC 12%. Company B: ROCE 16%, WACC 11%. Which is creating value?",
+      explanation: "Value is created only when ROCE > WACC. Company A (9% < 12%) destroys value on each invested rupee. Company B (16% > 11%) creates value. Growth at Company A only accelerates destruction.",
+      hints: ["ROCE > WACC = value creation.", "ROCE < WACC = value destruction.", "Company A: 9% < 12% → destroys value.", "Company B: 16% > 11% → creates value."],
+      orderIndex: 1,
+      options: [
+        { optionText: "Company B creates value; Company A destroys it", isCorrect: true, orderIndex: 0 },
+        { optionText: "Company A creates value; Company B destroys it", isCorrect: false, orderIndex: 1 },
+        { optionText: "Both create value since ROCE is positive", isCorrect: false, orderIndex: 2 },
+        { optionText: "Neither — ROCE always equals WACC at equilibrium", isCorrect: false, orderIndex: 3 },
+      ],
+    },
+    {
+      questionText: "A company sells a non-core property for cash at book value. What happens to ROCE?",
+      explanation: "The asset sale removes PP&E from Total Assets, reducing Capital Employed. EBIT is unchanged (non-operating asset). ROCE = EBIT ÷ CE rises because the denominator shrinks.",
+      hints: ["ROCE = EBIT ÷ Capital Employed.", "Selling an asset reduces Total Assets → lower CE.", "EBIT unchanged — the property was non-operating.", "Smaller denominator → ROCE rises."],
+      orderIndex: 2,
+      options: [
+        { optionText: "ROCE rises — Capital Employed shrinks while EBIT stays the same", isCorrect: true, orderIndex: 0 },
+        { optionText: "ROCE falls — the asset sale removes productive capacity", isCorrect: false, orderIndex: 1 },
+        { optionText: "ROCE is unchanged — numerator and denominator adjust proportionally", isCorrect: false, orderIndex: 2 },
+        { optionText: "ROCE falls — cash is a lower-return asset than PP&E", isCorrect: false, orderIndex: 3 },
+      ],
+    },
+    {
+      questionText: "Levered firm: ROE 22%, ROCE 10%. Ungeared peer: ROE 11%, ROCE 10%. What does the comparison reveal?",
+      explanation: "Identical ROCE means identical operational performance. The levered firm's higher ROE is entirely explained by debt amplifying returns to equity holders — not by superior operations. The Equity Multiplier captures this.",
+      hints: ["ROCE strips out capital structure.", "Same ROCE = same operational efficiency.", "Higher ROE for levered firm = leverage amplification.", "The Equity Multiplier bridges the gap."],
+      orderIndex: 3,
+      options: [
+        { optionText: "Both firms have identical operations; the levered firm's higher ROE is purely a leverage effect", isCorrect: true, orderIndex: 0 },
+        { optionText: "The levered firm is operationally superior because ROE is double", isCorrect: false, orderIndex: 1 },
+        { optionText: "The ungeared firm is in a declining sector since ROE is half", isCorrect: false, orderIndex: 2 },
+        { optionText: "The comparison is invalid — ROCE and ROE cannot be compared directly", isCorrect: false, orderIndex: 3 },
+      ],
+    },
+    {
+      questionText: "Capital-intensive industries (steel, utilities) have structurally lower ROCE than asset-light businesses (software, consulting). Why?",
+      explanation: "ROCE = EBIT ÷ Capital Employed. Steel and utilities hold massive PP&E, making CE very large relative to EBIT. Asset-light firms deliver high EBIT from a tiny capital base. Same EBIT divided by a far larger denominator produces lower ROCE — a structural fact, not a management failure.",
+      hints: ["ROCE = EBIT ÷ CE.", "Steel, utilities: huge PP&E → very large CE.", "Software: minimal fixed assets → small CE.", "Large denominator → lower ROCE, structurally."],
+      orderIndex: 4,
+      options: [
+        { optionText: "Large PP&E makes Capital Employed high relative to EBIT, mathematically compressing ROCE", isCorrect: true, orderIndex: 0 },
+        { optionText: "Capital-intensive firms have weaker pricing power and hence lower EBIT margins", isCorrect: false, orderIndex: 1 },
+        { optionText: "Asset-light firms pay less tax, inflating their EBIT numerator", isCorrect: false, orderIndex: 2 },
+        { optionText: "Regulation forces capital-intensive firms to hold more current liabilities", isCorrect: false, orderIndex: 3 },
+      ],
+    },
+  ],
+};
+
+const ext_quantus_dupont_easy: ExtQuantusDef = {
+  title: "3-Factor DuPont Calculation",
+  instructions: "Calculate the three DuPont components and verify ROE. Enter formulas in the yellow editable cells. Values in $m.",
+  context: "Given: Net Income $120m, Revenue $2,400m, Total Assets $1,800m, Equity $900m. Apply the 3-factor DuPont: ROE = Net Profit Margin × Asset Turnover × Equity Multiplier.",
+  columnGroups: [
+    { label: "Input Data", colStart: 1, colEnd: 1, bgColor: "#f0f0f0", textColor: "#555555", orderIndex: 0 },
+    { label: "DuPont Result", colStart: 2, colEnd: 2, bgColor: "#e8e8ff", textColor: "#1a1a8a", orderIndex: 1 },
+  ],
+  columns: [
+    { label: "Line Item", colIndex: 0, widthPx: 240 },
+    { label: "Value ($m)", colIndex: 1, widthPx: 110 },
+    { label: "Formula / Result", colIndex: 2, widthPx: 160 },
+  ],
+  cells: [
+    { rowIndex: 0, colIndex: 0, cellType: "header", displayValue: "INPUT DATA", isEditable: false },
+    { rowIndex: 1, colIndex: 0, cellType: "prefilled", displayValue: "Net Income", isEditable: false },
+    { rowIndex: 1, colIndex: 1, cellType: "prefilled", displayValue: "120", isEditable: false },
+    { rowIndex: 2, colIndex: 0, cellType: "prefilled", displayValue: "Revenue", isEditable: false },
+    { rowIndex: 2, colIndex: 1, cellType: "prefilled", displayValue: "2400", isEditable: false },
+    { rowIndex: 3, colIndex: 0, cellType: "prefilled", displayValue: "Total Assets", isEditable: false },
+    { rowIndex: 3, colIndex: 1, cellType: "prefilled", displayValue: "1800", isEditable: false },
+    { rowIndex: 4, colIndex: 0, cellType: "prefilled", displayValue: "Equity", isEditable: false },
+    { rowIndex: 4, colIndex: 1, cellType: "prefilled", displayValue: "900", isEditable: false },
+    { rowIndex: 5, colIndex: 0, cellType: "header", displayValue: "DUPONT COMPONENTS", isEditable: false },
+    { rowIndex: 6, colIndex: 0, cellType: "prefilled", displayValue: "Net Profit Margin (NI ÷ Rev)", isEditable: false },
+    { rowIndex: 6, colIndex: 2, cellType: "editable", expectedValue: "5.0", formula: "=B1/B2*100", formatType: "percent", isEditable: true, tolerancePct: 1, hintText: "Net Income ÷ Revenue × 100" },
+    { rowIndex: 7, colIndex: 0, cellType: "prefilled", displayValue: "Asset Turnover (Rev ÷ Assets)", isEditable: false },
+    { rowIndex: 7, colIndex: 2, cellType: "editable", expectedValue: "1.33", formula: "=B2/B3", formatType: "number", isEditable: true, tolerancePct: 2, hintText: "Revenue ÷ Total Assets" },
+    { rowIndex: 8, colIndex: 0, cellType: "prefilled", displayValue: "Equity Multiplier (Assets ÷ Equity)", isEditable: false },
+    { rowIndex: 8, colIndex: 2, cellType: "editable", expectedValue: "2.0", formula: "=B3/B4", formatType: "number", isEditable: true, tolerancePct: 1, hintText: "Total Assets ÷ Equity" },
+    { rowIndex: 9, colIndex: 0, cellType: "header", displayValue: "ROE — DuPont Cross-Check (NI ÷ Equity)", isEditable: false },
+    { rowIndex: 9, colIndex: 2, cellType: "formula", expectedValue: "13.3", formula: "=B1/B4*100", formatType: "percent", isEditable: false },
+  ],
+};
+
+const ext_quantus_dupont_medium: ExtQuantusDef = {
+  title: "5-Factor DuPont — Two Companies, Same ROE",
+  instructions: "Compute all five DuPont factors for both companies. Notice how two businesses arrive at identical ROE through completely different operational and financial profiles. Enter ratios in the yellow editable cells (Operating Margin as a %, others as plain ratios).",
+  context: "Company A (High-Margin): NI $300m, EBT $360m, EBIT $400m, Revenue $2,000m, Total Assets $3,000m, Equity $1,500m. Company B (Asset-Light): NI $80m, EBT $100m, EBIT $110m, Revenue $4,000m, Total Assets $800m, Equity $400m. Both target 20% ROE via different paths.",
+  columnGroups: [
+    { label: "Company A — High Margin", colStart: 1, colEnd: 1, bgColor: "#e8f5e8", textColor: "#1a5c1a", orderIndex: 0 },
+    { label: "Company B — Asset-Light", colStart: 2, colEnd: 2, bgColor: "#fff0e8", textColor: "#7a3300", orderIndex: 1 },
+  ],
+  columns: [
+    { label: "DuPont Factor", colIndex: 0, widthPx: 260 },
+    { label: "Company A", colIndex: 1, widthPx: 130 },
+    { label: "Company B", colIndex: 2, widthPx: 130 },
+  ],
+  cells: [
+    { rowIndex: 0, colIndex: 0, cellType: "header", displayValue: "INPUT: Net Income ($m)", isEditable: false },
+    { rowIndex: 0, colIndex: 1, cellType: "prefilled", displayValue: "300", isEditable: false },
+    { rowIndex: 0, colIndex: 2, cellType: "prefilled", displayValue: "80", isEditable: false },
+    { rowIndex: 1, colIndex: 0, cellType: "prefilled", displayValue: "EBT ($m)", isEditable: false },
+    { rowIndex: 1, colIndex: 1, cellType: "prefilled", displayValue: "360", isEditable: false },
+    { rowIndex: 1, colIndex: 2, cellType: "prefilled", displayValue: "100", isEditable: false },
+    { rowIndex: 2, colIndex: 0, cellType: "prefilled", displayValue: "EBIT ($m)", isEditable: false },
+    { rowIndex: 2, colIndex: 1, cellType: "prefilled", displayValue: "400", isEditable: false },
+    { rowIndex: 2, colIndex: 2, cellType: "prefilled", displayValue: "110", isEditable: false },
+    { rowIndex: 3, colIndex: 0, cellType: "prefilled", displayValue: "Revenue ($m)", isEditable: false },
+    { rowIndex: 3, colIndex: 1, cellType: "prefilled", displayValue: "2000", isEditable: false },
+    { rowIndex: 3, colIndex: 2, cellType: "prefilled", displayValue: "4000", isEditable: false },
+    { rowIndex: 4, colIndex: 0, cellType: "prefilled", displayValue: "Total Assets ($m)", isEditable: false },
+    { rowIndex: 4, colIndex: 1, cellType: "prefilled", displayValue: "3000", isEditable: false },
+    { rowIndex: 4, colIndex: 2, cellType: "prefilled", displayValue: "800", isEditable: false },
+    { rowIndex: 5, colIndex: 0, cellType: "prefilled", displayValue: "Equity ($m)", isEditable: false },
+    { rowIndex: 5, colIndex: 1, cellType: "prefilled", displayValue: "1500", isEditable: false },
+    { rowIndex: 5, colIndex: 2, cellType: "prefilled", displayValue: "400", isEditable: false },
+    { rowIndex: 6, colIndex: 0, cellType: "header", displayValue: "5-FACTOR DUPONT", isEditable: false },
+    { rowIndex: 7, colIndex: 0, cellType: "prefilled", displayValue: "Tax Burden (NI ÷ EBT)", isEditable: false },
+    { rowIndex: 7, colIndex: 1, cellType: "editable", expectedValue: "0.833", formula: "=B0/B1", formatType: "number", isEditable: true, tolerancePct: 2, hintText: "Net Income ÷ EBT" },
+    { rowIndex: 7, colIndex: 2, cellType: "editable", expectedValue: "0.800", formula: "=C0/C1", formatType: "number", isEditable: true, tolerancePct: 2, hintText: "Net Income ÷ EBT" },
+    { rowIndex: 8, colIndex: 0, cellType: "prefilled", displayValue: "Interest Burden (EBT ÷ EBIT)", isEditable: false },
+    { rowIndex: 8, colIndex: 1, cellType: "editable", expectedValue: "0.900", formula: "=B1/B2", formatType: "number", isEditable: true, tolerancePct: 1, hintText: "EBT ÷ EBIT" },
+    { rowIndex: 8, colIndex: 2, cellType: "editable", expectedValue: "0.909", formula: "=C1/C2", formatType: "number", isEditable: true, tolerancePct: 2, hintText: "EBT ÷ EBIT" },
+    { rowIndex: 9, colIndex: 0, cellType: "prefilled", displayValue: "Operating Margin — % (EBIT ÷ Rev)", isEditable: false },
+    { rowIndex: 9, colIndex: 1, cellType: "editable", expectedValue: "20.0", formula: "=B2/B3*100", formatType: "percent", isEditable: true, tolerancePct: 1, hintText: "EBIT ÷ Revenue × 100" },
+    { rowIndex: 9, colIndex: 2, cellType: "editable", expectedValue: "2.75", formula: "=C2/C3*100", formatType: "percent", isEditable: true, tolerancePct: 2, hintText: "EBIT ÷ Revenue × 100" },
+    { rowIndex: 10, colIndex: 0, cellType: "prefilled", displayValue: "Asset Turnover (Rev ÷ Assets)", isEditable: false },
+    { rowIndex: 10, colIndex: 1, cellType: "editable", expectedValue: "0.667", formula: "=B3/B4", formatType: "number", isEditable: true, tolerancePct: 2, hintText: "Revenue ÷ Total Assets" },
+    { rowIndex: 10, colIndex: 2, cellType: "editable", expectedValue: "5.0", formula: "=C3/C4", formatType: "number", isEditable: true, tolerancePct: 1, hintText: "Revenue ÷ Total Assets" },
+    { rowIndex: 11, colIndex: 0, cellType: "prefilled", displayValue: "Equity Multiplier (Assets ÷ Equity)", isEditable: false },
+    { rowIndex: 11, colIndex: 1, cellType: "editable", expectedValue: "2.0", formula: "=B4/B5", formatType: "number", isEditable: true, tolerancePct: 1, hintText: "Total Assets ÷ Equity" },
+    { rowIndex: 11, colIndex: 2, cellType: "editable", expectedValue: "2.0", formula: "=C4/C5", formatType: "number", isEditable: true, tolerancePct: 1, hintText: "Total Assets ÷ Equity" },
+    { rowIndex: 12, colIndex: 0, cellType: "header", displayValue: "ROE — Direct Check (NI ÷ Equity)", isEditable: false },
+    { rowIndex: 12, colIndex: 1, cellType: "formula", expectedValue: "20.0", formula: "=B0/B5*100", formatType: "percent", isEditable: false },
+    { rowIndex: 12, colIndex: 2, cellType: "formula", expectedValue: "20.0", formula: "=C0/C5*100", formatType: "percent", isEditable: false },
+  ],
+};
+
+const ext_quantus_dupont_hard: ExtQuantusDef = {
+  title: "ROCE Trend Analysis — 3-Year Bridge",
+  instructions: "Calculate Capital Employed and ROCE for each year, then measure the improvement over the period. Enter formulas in the yellow editable cells.",
+  context: "A manufacturing company's financials over three years: EBIT grows from $180m to $252m while total assets and current liabilities also change. Track whether ROCE improves or deteriorates and by how many percentage points.",
+  columnGroups: [
+    { label: "FY2021", colStart: 1, colEnd: 1, bgColor: "#f0f0f0", textColor: "#555555", orderIndex: 0 },
+    { label: "FY2022", colStart: 2, colEnd: 2, bgColor: "#f0f0f0", textColor: "#555555", orderIndex: 1 },
+    { label: "FY2023", colStart: 3, colEnd: 3, bgColor: "#fffbe6", textColor: "#8a6a00", orderIndex: 2 },
+    { label: "3-Year Change", colStart: 4, colEnd: 4, bgColor: "#e8f5e8", textColor: "#1a5c1a", orderIndex: 3 },
+  ],
+  columns: [
+    { label: "Metric", colIndex: 0, widthPx: 240 },
+    { label: "FY2021 ($m)", colIndex: 1, widthPx: 110 },
+    { label: "FY2022 ($m)", colIndex: 2, widthPx: 110 },
+    { label: "FY2023 ($m)", colIndex: 3, widthPx: 110 },
+    { label: "Change (pp)", colIndex: 4, widthPx: 110 },
+  ],
+  cells: [
+    { rowIndex: 0, colIndex: 0, cellType: "prefilled", displayValue: "EBIT", isEditable: false },
+    { rowIndex: 0, colIndex: 1, cellType: "prefilled", displayValue: "180", isEditable: false },
+    { rowIndex: 0, colIndex: 2, cellType: "prefilled", displayValue: "210", isEditable: false },
+    { rowIndex: 0, colIndex: 3, cellType: "prefilled", displayValue: "252", isEditable: false },
+    { rowIndex: 1, colIndex: 0, cellType: "prefilled", displayValue: "Total Assets", isEditable: false },
+    { rowIndex: 1, colIndex: 1, cellType: "prefilled", displayValue: "2400", isEditable: false },
+    { rowIndex: 1, colIndex: 2, cellType: "prefilled", displayValue: "2520", isEditable: false },
+    { rowIndex: 1, colIndex: 3, cellType: "prefilled", displayValue: "2600", isEditable: false },
+    { rowIndex: 2, colIndex: 0, cellType: "prefilled", displayValue: "Current Liabilities", isEditable: false },
+    { rowIndex: 2, colIndex: 1, cellType: "prefilled", displayValue: "600", isEditable: false },
+    { rowIndex: 2, colIndex: 2, cellType: "prefilled", displayValue: "630", isEditable: false },
+    { rowIndex: 2, colIndex: 3, cellType: "prefilled", displayValue: "700", isEditable: false },
+    { rowIndex: 3, colIndex: 0, cellType: "header", displayValue: "Capital Employed (TA − CL)", isEditable: false },
+    { rowIndex: 3, colIndex: 1, cellType: "editable", expectedValue: "1800", formula: "=B1-B2", formatType: "number", isEditable: true, tolerancePct: 0, hintText: "Total Assets − Current Liabilities" },
+    { rowIndex: 3, colIndex: 2, cellType: "editable", expectedValue: "1890", formula: "=C1-C2", formatType: "number", isEditable: true, tolerancePct: 0, hintText: "Total Assets − Current Liabilities" },
+    { rowIndex: 3, colIndex: 3, cellType: "editable", expectedValue: "1900", formula: "=D1-D2", formatType: "number", isEditable: true, tolerancePct: 0, hintText: "Total Assets − Current Liabilities" },
+    { rowIndex: 4, colIndex: 0, cellType: "header", displayValue: "ROCE (%)", isEditable: false },
+    { rowIndex: 4, colIndex: 1, cellType: "editable", expectedValue: "10.0", formula: "=B0/B3*100", formatType: "percent", isEditable: true, tolerancePct: 1, hintText: "EBIT ÷ Capital Employed × 100" },
+    { rowIndex: 4, colIndex: 2, cellType: "editable", expectedValue: "11.1", formula: "=C0/C3*100", formatType: "percent", isEditable: true, tolerancePct: 1, hintText: "EBIT ÷ Capital Employed × 100" },
+    { rowIndex: 4, colIndex: 3, cellType: "editable", expectedValue: "13.3", formula: "=D0/D3*100", formatType: "percent", isEditable: true, tolerancePct: 1, hintText: "EBIT ÷ Capital Employed × 100" },
+    { rowIndex: 4, colIndex: 4, cellType: "editable", expectedValue: "3.3", formula: "=D4-B4", formatType: "number", isEditable: true, tolerancePct: 5, hintText: "FY2023 ROCE − FY2021 ROCE (percentage points)" },
+  ],
+};
+
 // ═══════════════════════════════════════════════════════════════════════════
 // MAIN LEARNING TREE SEED
 // ═══════════════════════════════════════════════════════════════════════════
 
 async function seedLearningTree(professions: Record<string, { id: string; slug: string }>) {
-  const lessonIndex: Record<string, { id: string; name: string; difficulty: Difficulty; activityType: ActivityType }> = {};
+  const lessonIndex: Record<string, { id: string; name: string; difficulty: Difficulty; activityType: ActivityType; activityId: string }> = {};
   const subtopicTags: { subtopicId: string; professionSlugs: string[] }[] = [];
 
   for (let mi = 0; mi < MODULES.length; mi++) {
@@ -1489,11 +1969,11 @@ async function seedLearningTree(professions: Record<string, { id: string; slug: 
             data: { lessonId: lessonRow.id, activityType: l.activity.kind, orderIndex: 0 },
           });
 
-          await createActivity(lessonRow.id, l.activity);
+          const act = await createActivity(lessonRow.id, l.activity);
           await seedHints(lessonRow.id, l.activity, l.hints);
 
           lessonIndex[`${m.slug}/${ti}/${si}/${l.difficulty}`] = {
-            id: lessonRow.id, name: l.name, difficulty: l.difficulty, activityType: l.activity.kind,
+            id: lessonRow.id, name: l.name, difficulty: l.difficulty, activityType: l.activity.kind, activityId: act.id,
           };
         }
       }
@@ -1514,6 +1994,8 @@ async function seedLearningTree(professions: Record<string, { id: string; slug: 
 
   // Add extra MCQ + Quantus activities from the second seed file
   await seedExtraActivities(lessonIndex);
+
+  return lessonIndex;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1537,7 +2019,659 @@ async function seedExtraActivities(
   await upsertExtMcq(lid("finance/0/0/hard"), ext_mcq_fs_hard); console.log("    ✓ fs/hard extra MCQ");
   await upsertExtQuantus(lid("finance/0/0/hard"), ext_quantus_fs_hard); console.log("    ✓ fs/hard extra Quantus (P&L model)");
 
+  // DuPont subtopic (finance/0/3/*)
+  await upsertExtMcq(lid("finance/0/3/easy"),   ext_mcq_dupont_easy);     console.log("    ✓ dupont/easy extra MCQ");
+  await upsertExtQuantus(lid("finance/0/3/easy"),   ext_quantus_dupont_easy); console.log("    ✓ dupont/easy extra Quantus");
+  await upsertExtMcq(lid("finance/0/3/medium"), ext_mcq_dupont_medium);   console.log("    ✓ dupont/medium extra MCQ");
+  await upsertExtQuantus(lid("finance/0/3/medium"), ext_quantus_dupont_medium); console.log("    ✓ dupont/medium extra Quantus");
+  await upsertExtMcq(lid("finance/0/3/hard"),   ext_mcq_dupont_hard);     console.log("    ✓ dupont/hard extra MCQ");
+  await upsertExtQuantus(lid("finance/0/3/hard"),   ext_quantus_dupont_hard); console.log("    ✓ dupont/hard extra Quantus");
+
   console.log("  ✅ Extra activities complete");
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CASE SIMULATIONS
+// ═══════════════════════════════════════════════════════════════════════════
+
+async function seedCaseSimulations() {
+  console.log("  Seeding case simulations...");
+
+  // ── CASE 1: Zomato UAE Market Entry (Strategy — medium) ──────────────────
+  const zomato = await prisma.caseSimulation.create({
+    data: {
+      title: "Zomato's UAE Market Entry",
+      description: "Evaluate Zomato's strategic options to enter the UAE food delivery market, dominated by Talabat (60% share) and Deliveroo. Analyse competitive forces, regulatory constraints and unit economics to recommend the optimal entry strategy.",
+      difficulty: "medium",
+      isPublished: true,
+      orderIndex: 0,
+    },
+  });
+
+  await prisma.caseStudy.createMany({
+    data: [
+      {
+        caseSimulationId: zomato.id,
+        title: "Zomato's India Playbook & Business Model",
+        orderIndex: 0,
+        content: `Zomato Limited is an Indian multinational food-service marketplace founded in 2008. By 2022, it was operating in 850 cities in India, with a Gross Order Value (GOV) run-rate of ~$3.0 billion annualised and ~80 million monthly active users.
+
+BUSINESS MODEL (India)
+Zomato's core India model operates on a three-sided marketplace:
+
+1. RESTAURANTS: ~350,000 restaurant partners listed. Zomato charges a commission of 18–25% on delivery orders. Restaurants also pay for "Gold" visibility and sponsored listing packages. Many restaurants rely on Zomato for 30–60% of their delivery revenue.
+
+2. DELIVERY FLEET: ~200,000 active delivery partners (gig economy workers) in India. Average 4–6 deliveries per hour during peak, ~₹15–25 per delivery payment. Zomato does not classify these as employees (platform economy structure), reducing fixed labour costs.
+
+3. CONSUMERS: Core cohort is 25–40 year urban professionals. Average Order Value (AOV) in India: ~₹320 ($4). Consumer subsidies (discounts, free delivery coupons) remain a significant operating cost.
+
+UNIT ECONOMICS (FY2023 — India food delivery)
+GOV:                      ₹28,600 Crore (~$3.5bn)
+Revenue (take rate ~20%): ₹5,720 Crore
+Contribution Margin:       ~4.5% of GOV
+Adjusted EBITDA:           ~₹250 Crore (positive for first time, Q4 FY2023)
+
+GROWTH DRIVERS IN INDIA
+• Tier 2/3 city expansion: Penetrating 300+ cities beyond the top 8 metro markets
+• Hyperpure (B2B ingredient supply to restaurants): ₹2,600 Crore GOV, growing 80% YoY
+• Blinkit (10-minute grocery delivery): Strategic acquisition for ₹4,447 Crore (2022)
+
+TRANSFERABLE ADVANTAGES
+(a) Deep logistics technology and demand prediction algorithms built on 500M+ Indian orders
+(b) Restaurant relationship management playbook and onboarding infrastructure
+(c) Hyperpure B2B supply chain platform — adaptable to new geographies`,
+      },
+      {
+        caseSimulationId: zomato.id,
+        title: "UAE Market Landscape & Competitive Dynamics",
+        orderIndex: 1,
+        content: `The UAE food delivery market was estimated at $1.8–2.2 billion in GMV (2022), growing at ~18% CAGR. Dubai and Abu Dhabi collectively account for ~85% of market GMV.
+
+COMPETITIVE LANDSCAPE (2022)
+
+TALABAT (Delivery Hero): Dominant market leader. ~60–65% market share in UAE. Pan-GCC presence across 9 markets. Deep restaurant exclusivity arrangements. Charges restaurants 20–27% commission.
+
+DELIVEROO: UK-based. ~20–25% UAE market share. Premium positioning — focused on upscale restaurants. Higher AOVs (~AED 95 vs. Talabat's ~AED 78). Strong with European expat segments.
+
+CAREEM (Uber subsidiary): Multi-service super-app (rides, food, grocery). Food delivery ~8–10% share. Unique: existing customer relationship through ride-hailing.
+
+STRUCTURAL CONSTRAINTS FOR A NEW ENTRANT
+• Top-2 players control ~85% share — entrenched positions, restaurant exclusivity as a moat
+• UAE's kafala (sponsorship) system: Delivery riders must be under sponsored employment visas. This converts variable gig costs into fixed employment obligations (AED 3,500–4,500/month per rider including salary + accommodation + visa). India's per-rider cost is ~AED 800 equivalent
+• Consumer expectations: Average delivery time expectation is 25–30 minutes (vs. 40–45 in India tier 1)
+• Payment gateway fees: ~2.5% vs. ~0.9% UPI in India
+• UAE Average Order Value: ~AED 78 (~$21) vs. India ~₹320 (~$4) — higher absolute commission, but operating costs are proportionally higher
+
+ENTRY OPTIONS
+Option A — ORGANIC BUILD: Invest AED 500M+ over 3 years. Risk: high, timeline: slow, full control.
+Option B — ACQUISITION: Acquire a mid-size UAE player (e.g., Noon Food). Faster market access, existing regulatory licenses. Integration challenges.
+Option C — JV/PARTNERSHIP: White-label arrangement with UAE conglomerate. Lower risk, limited upside.`,
+      },
+      {
+        caseSimulationId: zomato.id,
+        title: "Regulatory Environment & Unit Economics Deep Dive",
+        orderIndex: 2,
+        content: `REGULATORY ENVIRONMENT
+BUSINESS STRUCTURE: Foreign companies can operate in UAE through:
+(a) Mainland LLC — requires UAE national partner OR full ownership in designated sectors post-2021 Foreign Ownership Law
+(b) Free Zone Entity — 100% foreign ownership, but restricted to free zone geography
+(c) Branch Office — extends the Indian entity, subject to 9% corporate tax (effective 2023)
+
+DATA LOCALISATION: UAE's Federal Decree Law No. 45 of 2021 requires customer data of UAE residents to be stored on UAE servers. This affects Zomato's AWS-based India infrastructure — requiring either a UAE data centre or an approved cloud provider.
+
+PAYMENT REGULATION: Zomato's wallet/UPI infrastructure used in India would require a fresh Payment Services License from the UAE Central Bank. Process: 9–18 months.
+
+CULTURAL CONTEXT
+• UAE's 89% expatriate population creates a diverse, segmented food market (South Asian 38%, Arab non-UAE 27%, European 10%, Filipino 10%)
+• Halal certification mandatory for all food businesses
+• Ramadan season: late-night delivery spikes 200–300% — requires pre-positioned rider capacity (3–4 month visa processing lead time)
+• Arabic-language interface required for UAE national and Arab expat segments
+
+UAE UNIT ECONOMICS (Estimated, Year 1)
+Average Order Value (AOV):       AED 78.0  (~$21)
+Take Rate (commission):          20%
+Revenue per Order:               AED 15.6
+Delivery Cost per Order:         AED 32.0  (fixed employment cost ÷ ~110 orders/day)
+Payment Gateway Fee:             AED 2.0   (2.5% of AOV)
+Customer Acquisition Cost:       AED 8.0   (amortised over 18-month LTV)
+Marketing & Promotions:          AED 5.0   (per order, Year 1 growth phase)
+Contribution Margin per Order:   AED (31.4) — negative in Year 1 (investment phase)
+
+YEAR 3 TARGETS (assuming 25% market share, scale benefits)
+Delivery Cost per Order:         AED 22.0  (higher rider density, more orders/hour)
+Marketing per Order:             AED 2.5   (reduced promotions at scale)
+Contribution Margin per Order:   AED (10.9) — still negative but narrowing rapidly`,
+      },
+    ],
+  });
+
+  // Zomato activities
+  await prisma.caseActivity.create({
+    data: {
+      caseSimulationId: zomato.id,
+      activityType: "canvas",
+      orderIndex: 0,
+      activityData: {
+        title: "Porter's Five Forces — UAE Food Delivery",
+        instructions: "Map the competitive intensity of the UAE food delivery market using Porter's Five Forces. Drag each force from the palette onto the canvas, then draw arrows connecting each force to the 'Industry Attractiveness' node in the centre. When all five connections are in place, click Check Answer.",
+        context: "Apply Porter's Five Forces to Zomato's UAE market entry decision. Consider: buyer power (consumers switching between apps + restaurants' dependency on platforms), supplier power (delivery riders under kafala employment + brand restaurant exclusivity), competitive rivalry (Talabat 60% + Deliveroo 25%), threat of new entrants (high capital requirements + regulatory licenses), and threat of substitutes (dine-in, dark kitchens, corporate canteens).",
+        scoringMode: "partial",
+        paletteItems: [
+          { id: "pf-buyer", label: "Buyer Power\n(Consumers & Restaurants)", shape: "rectangle", color: "#dbeafe" },
+          { id: "pf-supplier", label: "Supplier Power\n(Riders & Restaurant Brands)", shape: "rectangle", color: "#dbeafe" },
+          { id: "pf-rivalry", label: "Competitive Rivalry\n(Talabat, Deliveroo, Careem)", shape: "rectangle", color: "#ffe4e6" },
+          { id: "pf-entry", label: "Threat of New Entrants\n(Capital + Licenses Required)", shape: "rectangle", color: "#f3e8ff" },
+          { id: "pf-subs", label: "Threat of Substitutes\n(Dine-in, Dark Kitchens)", shape: "rectangle", color: "#f3e8ff" },
+          { id: "pf-attract", label: "Industry Attractiveness", shape: "ellipse", color: "#fef3c7" },
+        ],
+        solutionSnapshot: {
+          edges: [
+            { sourceId: "pf-buyer", targetId: "pf-attract" },
+            { sourceId: "pf-supplier", targetId: "pf-attract" },
+            { sourceId: "pf-rivalry", targetId: "pf-attract" },
+            { sourceId: "pf-entry", targetId: "pf-attract" },
+            { sourceId: "pf-subs", targetId: "pf-attract" },
+          ],
+          nodePositions: [
+            { id: "pf-buyer", x: 50, y: 50 },
+            { id: "pf-supplier", x: 50, y: 200 },
+            { id: "pf-rivalry", x: 50, y: 350 },
+            { id: "pf-entry", x: 580, y: 50 },
+            { id: "pf-subs", x: 580, y: 350 },
+            { id: "pf-attract", x: 290, y: 200 },
+          ],
+        },
+      },
+    },
+  });
+
+  await prisma.caseActivity.create({
+    data: {
+      caseSimulationId: zomato.id,
+      activityType: "mcq",
+      orderIndex: 1,
+      activityData: {
+        instructions: "Answer all questions based on the case studies you have read. Each question has exactly one correct answer.",
+        context: "UAE food delivery GMV: ~$2bn, growing 18% CAGR. Talabat: 60–65% share. Deliveroo: 20–25% share. UAE AOV: ~AED 78 (~$21). India AOV: ~₹320 (~$4). Delivery cost per order: UAE AED 32, India equivalent ~AED 5. Payment fees: UAE 2.5%, India 0.9%.",
+        questions: [
+          {
+            id: "zom-q1",
+            questionText: "What is Zomato's most defensible competitive advantage from India that UAE incumbents would find hardest to replicate quickly?",
+            explanation: "Zomato's deep logistics technology — demand prediction algorithms, dynamic pricing, and restaurant supply chain tools (Hyperpure) — was built on 500M+ orders over 15 years. Restaurant commission rates and consumer discounts can be matched immediately by well-capitalised incumbents like Talabat; the underlying technology stack and B2B supply chain integration represent years of operational learning.",
+            options: [
+              { id: "zom-q1-a", optionText: "Ability to offer lower restaurant commissions (18% vs Talabat's 27%)", isCorrect: false },
+              { id: "zom-q1-b", optionText: "Deep logistics technology and demand prediction algorithms built on 500M+ Indian orders", isCorrect: true },
+              { id: "zom-q1-c", optionText: "Strong brand recognition among UAE's South Asian expat population", isCorrect: false },
+              { id: "zom-q1-d", optionText: "Access to Blinkit's 10-minute quick-commerce capabilities", isCorrect: false },
+            ],
+          },
+          {
+            id: "zom-q2",
+            questionText: "The UAE's kafala (sponsorship) system most directly impacts Zomato's unit economics by:",
+            explanation: "In India, Zomato's delivery riders are gig workers — independent contractors paid per delivery. The kafala system requires UAE delivery riders to be under sponsored employment visas, making Zomato their legal employer with full obligations (salary AED 2,000 + accommodation AED 1,200 + visa fees). This converts a variable per-delivery cost into a largely fixed monthly employment cost, dramatically increasing cost per order at low delivery density.",
+            options: [
+              { id: "zom-q2-a", optionText: "Limiting the number of restaurants Zomato can onboard to licensed halal food businesses only", isCorrect: false },
+              { id: "zom-q2-b", optionText: "Converting delivery labour from variable gig costs to fixed employment obligations, inflating cost per order", isCorrect: true },
+              { id: "zom-q2-c", optionText: "Requiring Zomato to cede 51% of its UAE subsidiary to a UAE national partner", isCorrect: false },
+              { id: "zom-q2-d", optionText: "Mandating Arabic-language customer interfaces and halal certification audits at significant cost", isCorrect: false },
+            ],
+          },
+          {
+            id: "zom-q3",
+            questionText: "Among organic build, acquisition, and JV/partnership, which entry strategy best balances speed-to-market with strategic control for Zomato's UAE entry?",
+            explanation: "Acquiring a mid-size UAE player (e.g., Noon Food) transfers existing Payment Service Licenses (critical given 9–18 month processing timelines), an existing restaurant network, and kafala-compliant rider workforce — compressing time to operational scale. Organic build gives full control but a 3+ year timeline burning cash against entrenched competitors. JV limits upside and creates governance friction.",
+            options: [
+              { id: "zom-q3-a", optionText: "Organic build — maintains brand purity and avoids integration risk", isCorrect: false },
+              { id: "zom-q3-b", optionText: "Acquisition — transfers regulatory licenses, restaurant relationships, and compliant workforce rapidly", isCorrect: true },
+              { id: "zom-q3-c", optionText: "JV/partnership — zero capital risk with a UAE conglomerate absorbing all regulatory complexity", isCorrect: false },
+              { id: "zom-q3-d", optionText: "Franchise model — license the Zomato brand to a UAE operator with no equity commitment", isCorrect: false },
+            ],
+          },
+          {
+            id: "zom-q4",
+            questionText: "Zomato's UAE AOV (~AED 78, $21) is roughly 5× its India AOV (~$4). Why does higher UAE AOV NOT automatically mean higher per-order profitability?",
+            explanation: "Higher AOV generates higher absolute commission revenue (20% × AED 78 = AED 15.6 per order). But UAE delivery costs per order are AED 32 (kafala employment fixed costs) versus India's AED ~5 equivalent. Payment gateway fees are 2.5% vs 0.9%. Combined, the cost base per order is 6–7× higher than India's, completely offsetting the AOV advantage in the early years.",
+            options: [
+              { id: "zom-q4-a", optionText: "UAE imposes 9% corporate tax on profits, wiping out the AOV advantage net of tax", isCorrect: false },
+              { id: "zom-q4-b", optionText: "UAE delivery costs per order (AED 32) are disproportionately higher than India, compressing margins despite 5× AOV", isCorrect: true },
+              { id: "zom-q4-c", optionText: "UAE restaurants demand lower commission rates because orders are larger, reducing Zomato's take-rate", isCorrect: false },
+              { id: "zom-q4-d", optionText: "UAE consumers tip less, increasing rider churn and replacement costs", isCorrect: false },
+            ],
+          },
+        ],
+      },
+    },
+  });
+
+  await prisma.caseActivity.create({
+    data: {
+      caseSimulationId: zomato.id,
+      activityType: "quantus",
+      orderIndex: 2,
+      activityData: {
+        title: "Zomato UAE — Unit Economics Model",
+        instructions: "Complete the unit economics model for Zomato's UAE market entry. Yellow cells are editable. Enter numbers as AED values (no currency symbols, decimals allowed). Work through from revenue per order down to contribution margin. Negative contributions should be entered as negative numbers.",
+        context: "Zomato UAE Year 1 assumptions: Average Order Value (AOV) = AED 78.0, Commission Take Rate = 20%, Delivery Cost per Order = AED 32.0 (kafala employment), Payment Gateway Fee = 2.5% of AOV, Customer Acquisition Cost (amortised) = AED 8.0 per order, Marketing & Promotions = AED 5.0 per order. Targets for Year 3: Delivery Cost falls to AED 22.0 at scale, Marketing reduces to AED 2.5.",
+        gridRows: 9,
+        gridCols: 3,
+        gridValues: {
+          "0-0": "Metric", "0-1": "Year 1", "0-2": "Year 3 Target",
+          "1-0": "Average Order Value (AOV)", "1-1": "78.0", "1-2": "82.0",
+          "2-0": "Take Rate (Commission)", "2-1": "20%", "2-2": "21%",
+          "3-0": "Revenue per Order (AED)", "3-2": "17.2",
+          "4-0": "Delivery Cost per Order (AED)", "4-1": "32.0", "4-2": "22.0",
+          "5-0": "Payment Gateway Fee (AED)", "5-2": "2.1",
+          "6-0": "Customer Acquisition Cost (AED)", "6-1": "8.0", "6-2": "3.0",
+          "7-0": "Marketing & Promotions (AED)", "7-1": "5.0", "7-2": "2.5",
+          "8-0": "Contribution Margin per Order (AED)",
+        },
+        correctAnswers: {
+          "3-1": "15.6",
+          "5-1": "1.95",
+          "8-1": "-31.35",
+          "8-2": "-12.4",
+        },
+      },
+    },
+  });
+
+  // ── CASE 2: Tata Steel Acquires Corus (Finance — hard) ────────────────────
+  const tata = await prisma.caseSimulation.create({
+    data: {
+      title: "Tata Steel Acquires Corus — M&A Deep Dive",
+      description: "Analyse the $12.1 billion acquisition of Corus Group by Tata Steel in 2007 — one of India's largest outbound M&A deals. Assess strategic rationale, valuation multiples, synergy assumptions, and the post-acquisition reality in a commodity downturn.",
+      difficulty: "hard",
+      isPublished: true,
+      orderIndex: 1,
+    },
+  });
+
+  await prisma.caseStudy.createMany({
+    data: [
+      {
+        caseSimulationId: tata.id,
+        title: "The Deal: Strategic Rationale & Bidding Process",
+        orderIndex: 0,
+        content: `In January 2007, Tata Steel completed the acquisition of Corus Group plc for approximately $12.1 billion, making it one of the largest overseas acquisitions by an Indian company at the time.
+
+BACKGROUND
+Corus Group was formed in 1999 through the merger of British Steel and Hoogovens (Netherlands). By 2006, Corus was the second-largest steelmaker in Europe with ~18 million tonnes annual capacity and revenues of approximately £9.2 billion.
+
+Tata Steel was India's largest steel producer with ~5 million tonnes capacity and revenues of ~$4.4 billion. Highly profitable on a per-tonne basis due to low-cost Indian operations, but a fraction of the size of global players.
+
+STRATEGIC RATIONALE (Three Drivers)
+1. SCALE & GLOBAL REACH: Combined entity = world's fifth-largest steelmaker (~24 million tonnes). Enables participation in large-scale global tenders with multinationals like Jaguar Land Rover, Airbus, Ford.
+
+2. PRODUCT MIX UPGRADE: Corus's Strip Products division had deep R&D in high-value automotive steels, aerospace alloys, specialty packaging — 2–3× the margin of commodity steel. Tata's Indian plants primarily produced commodity-grade flat steel.
+
+3. RAW MATERIAL ARBITRAGE: Tata Steel's Indian operations had captive iron ore and coal mines (~$100–120/tonne raw material cost vs. Corus's ~$240–260/tonne). Routing semi-finished slabs from India to Corus's European finishing mills targeted $400–600M in annual savings.
+
+THE BIDDING PROCESS
+Brazilian steelmaker CSN launched a competing bid in November 2006, triggering a nine-round auction. Tata Steel's final winning bid of 608 pence per share represented a ~34% premium to Corus's undisturbed share price and an EV/EBITDA multiple of approximately 9.2× on trailing EBITDA — a significant premium to the sector average of 6–8×.`,
+      },
+      {
+        caseSimulationId: tata.id,
+        title: "Corus Valuation & The Hidden Pension Liability",
+        orderIndex: 1,
+        content: `INCOME STATEMENT SNAPSHOT (FY2006, £ millions)
+Revenue:                 9,200
+Raw Materials:          (5,060)   — 55% of revenue
+Labour & Overheads:    (1,472)   — 16% of revenue
+EBITDA:                 1,380    — 15% EBITDA margin
+D&A:                     (480)
+EBIT:                      900
+Net Interest:             (220)
+PBT:                       680
+Tax (30%):                (204)
+Net Profit:                476
+
+BALANCE SHEET HIGHLIGHTS (FY2006, £ millions)
+Total Assets:            8,400
+Net Debt:                1,320   (Debt: 2,100 | Cash: 780)
+Pension Deficit:         1,300   (the "hidden liability")
+Equity:                  3,200
+
+VALUATION AT BID PRICE
+Equity Value:    £4.3bn  (708m shares × 608p)
+Add: Net Debt:   £1.3bn
+Add: Pension:    £1.3bn
+Enterprise Value:£6.9bn  (~$13.5bn)
+EV/EBITDA:       ~9.2× (including pension) | ~5.0× (excluding pension)
+
+THE PENSION DEBATE
+The £1.3bn pension deficit was an off-balance-sheet liability — not included in Corus's reported net debt. Analysts who evaluated the deal on EV/EBITDA using reported net debt only significantly underestimated true enterprise value. Post-acquisition, this liability constrained Tata Steel Europe's restructuring options and required direct UK government intervention in 2017.`,
+      },
+      {
+        caseSimulationId: tata.id,
+        title: "Post-Acquisition Reality: Commodity Cycle & Integration",
+        orderIndex: 2,
+        content: `THE 2008–2009 STRESS TEST
+Within 18 months of closing, global steel demand collapsed:
+• HRC (Hot Rolled Coil) spot prices fell from $1,100/tonne (mid-2008) to $380/tonne (early 2009) — a 65% decline
+• Corus's UK operations were running at ~60% utilisation
+• Tata Steel Group's net debt peaked at $10+ billion
+• Blast furnaces temporarily shut at Llanwern and Teesside
+
+This stress test revealed that the acquisition debt load was sustainable only in a benign commodity environment.
+
+SYNERGY REALISATION (2007–2012)
+Management targeted $400–600M/year in synergies by Year 5. Actual realisation was mixed:
+
+COST SYNERGIES (partially achieved):
+• Raw material procurement: Combined scale generated ~$80M/year
+• Slab routing (India → Europe): Only ~0.5M tonnes/year by 2010 vs. 3M tonne target (blast furnace grade compatibility issues)
+• Shared services: ~$50M/year achieved on schedule
+
+REVENUE SYNERGIES (largely unrealised):
+• Cross-selling Corus high-grade steel in Indian automotive: Limited by OEM preference for local supply
+• Joint R&D: Strong — "Tata Steel Europe" became a leader in Docol® and Ympress® advanced steels
+
+FINANCIAL OUTCOME BY 2015
+Net synergies realised: ~$250–300M/year (vs. $500M target)
+Total impairment charges on Corus assets: ~$3–4 billion (2012–2016)
+Tata Steel Europe consistently loss-making post-2009; Indian operations cross-subsidising
+
+KEY LESSONS
+1. Cyclical industry acquisitions require conservative leverage — peak-cycle premiums are dangerous
+2. "Slab arbitrage" synergies depend on operational compatibility that is hard to assess pre-close
+3. Pension liabilities in mature industrial companies are larger and stickier than headline numbers suggest`,
+      },
+    ],
+  });
+
+  await prisma.caseActivity.create({
+    data: {
+      caseSimulationId: tata.id,
+      activityType: "canvas",
+      orderIndex: 0,
+      activityData: {
+        title: "Synergy Value Framework — Tata-Corus Deal",
+        instructions: "Map how the four synergy drivers and one cost drag combine to determine the net synergy value, which in turn determines acquisition payback. Drag all six nodes from the palette onto the canvas. Draw arrows from each synergy source and integration cost into the 'Net Synergy Value' node, then connect 'Net Synergy Value' to 'Acquisition Payback Period'. When all connections are correct, click Check Answer.",
+        context: "Tata Steel identified four value-creation levers: Revenue Synergies (cross-selling, new markets), Cost Synergies (procurement, logistics), Working Capital Savings (supply chain optimisation), and Tax Synergies (cross-border structure). These are offset by Integration Costs (severance, IT migration, management bandwidth). The net of these determines how quickly the premium paid is recovered.",
+        scoringMode: "partial",
+        paletteItems: [
+          { id: "s-rev", label: "Revenue Synergies\n(Cross-sell, New Markets)", shape: "rectangle", color: "#d1fae5" },
+          { id: "s-cost", label: "Cost Synergies\n(Procurement, Slab Routing)", shape: "rectangle", color: "#d1fae5" },
+          { id: "s-wc", label: "Working Capital Savings\n(Supply Chain Optimisation)", shape: "rectangle", color: "#d1fae5" },
+          { id: "s-int", label: "Integration Costs\n(Severance + IT + Management)", shape: "rectangle", color: "#ffe4e6" },
+          { id: "s-net", label: "Net Synergy Value", shape: "ellipse", color: "#fef3c7" },
+          { id: "s-pay", label: "Acquisition Payback Period", shape: "diamond", color: "#e0f2fe" },
+        ],
+        solutionSnapshot: {
+          edges: [
+            { sourceId: "s-rev", targetId: "s-net" },
+            { sourceId: "s-cost", targetId: "s-net" },
+            { sourceId: "s-wc", targetId: "s-net" },
+            { sourceId: "s-int", targetId: "s-net" },
+            { sourceId: "s-net", targetId: "s-pay" },
+          ],
+          nodePositions: [
+            { id: "s-rev", x: 60, y: 60 },
+            { id: "s-cost", x: 280, y: 60 },
+            { id: "s-wc", x: 500, y: 60 },
+            { id: "s-int", x: 280, y: 260 },
+            { id: "s-net", x: 280, y: 420 },
+            { id: "s-pay", x: 380, y: 560 },
+          ],
+        },
+      },
+    },
+  });
+
+  await prisma.caseActivity.create({
+    data: {
+      caseSimulationId: tata.id,
+      activityType: "mcq",
+      orderIndex: 1,
+      activityData: {
+        instructions: "Answer all questions based on the Tata Steel–Corus case studies. Each question has exactly one correct answer.",
+        context: "Tata Steel acquired Corus for $12.1 billion (608 pence/share, ~34% premium). Corus FY2006: Revenue £9.2bn, EBITDA £1.38bn (15% margin), Net Debt £1.32bn, Pension Deficit £1.3bn. HRC prices: peak $1,100/tonne (mid-2008) → $380/tonne (early 2009).",
+        questions: [
+          {
+            id: "tata-q1",
+            questionText: "At the winning bid price, what EV/EBITDA multiple was Tata Steel paying when the pension deficit IS included in enterprise value?",
+            explanation: "Enterprise Value = Equity Value + Net Debt + Pension Deficit. Equity = 708M shares × 608p = £4.3bn. EV = £4.3bn + £1.32bn + £1.3bn = £6.92bn. EV/EBITDA = £6.92bn ÷ £1.38bn ≈ 9.2× — which is the figure cited in case study 1. Without pension, EV = £5.62bn, multiple ≈ 5.0×.",
+            options: [
+              { id: "tata-q1-a", optionText: "Approximately 5.0× (excluding pension deficit from EV)", isCorrect: false },
+              { id: "tata-q1-b", optionText: "Approximately 9.2× (including pension deficit in EV)", isCorrect: true },
+              { id: "tata-q1-c", optionText: "Approximately 6.5× (equity only, no debt adjustments)", isCorrect: false },
+              { id: "tata-q1-d", optionText: "Approximately 12.0× (including goodwill intangibles)", isCorrect: false },
+            ],
+          },
+          {
+            id: "tata-q2",
+            questionText: "Why is EV/EBITDA preferred over P/E when comparing companies with different capital structures?",
+            explanation: "EBITDA is a pre-interest, pre-tax metric — it measures operating cash generation before the effects of financing decisions. EV/EBITDA therefore allows comparison of companies regardless of whether they are debt-heavy or equity-funded. P/E is post-interest, so a highly-leveraged company like Corus (significant debt interest) shows artificially low earnings relative to its operating performance, making P/E comparison misleading.",
+            options: [
+              { id: "tata-q2-a", optionText: "EBITDA is always higher than earnings, so EV/EBITDA gives a more conservative multiple", isCorrect: false },
+              { id: "tata-q2-b", optionText: "EV/EBITDA strips out financing (interest) and tax effects, enabling operating comparison across capital structures", isCorrect: true },
+              { id: "tata-q2-c", optionText: "P/E ratios are unavailable for private companies, so EV/EBITDA is used by default", isCorrect: false },
+              { id: "tata-q2-d", optionText: "EV/EBITDA includes depreciation, which provides a more accurate picture of asset quality", isCorrect: false },
+            ],
+          },
+          {
+            id: "tata-q3",
+            questionText: "The acquisition debt load proved most dangerous when which specific market condition materialised in 2008–2009?",
+            explanation: "HRC spot prices collapsed from ~$1,100/tonne to ~$380/tonne — a 65% decline. This destroyed Corus's EBITDA generation precisely when debt service obligations were highest. This illustrates the fundamental danger of peak-cycle leverage in commodity industries: debt was sized against peak-year EBITDA, not through-the-cycle cash flows.",
+            options: [
+              { id: "tata-q3-a", optionText: "Indian rupee appreciated sharply, eliminating raw material cost advantages", isCorrect: false },
+              { id: "tata-q3-b", optionText: "UK government imposed windfall taxes on steel profits, reducing EBITDA", isCorrect: false },
+              { id: "tata-q3-c", optionText: "Global steel prices collapsed ~65%, destroying EBITDA while acquisition debt obligations remained fixed", isCorrect: true },
+              { id: "tata-q3-d", optionText: "CSN (Brazil) launched competing products that eroded Corus's European market share", isCorrect: false },
+            ],
+          },
+        ],
+      },
+    },
+  });
+
+  await prisma.caseActivity.create({
+    data: {
+      caseSimulationId: tata.id,
+      activityType: "quantus",
+      orderIndex: 2,
+      activityData: {
+        title: "Corus Valuation — EV/EBITDA Bridge at Different Multiples",
+        instructions: "Complete the Corus valuation model. Calculate Enterprise Value at both 6× and 8× EBITDA multiples for FY2006A and FY2007E, then derive Equity Value by subtracting Net Debt. Enter numbers in £ millions (no commas, decimals allowed).",
+        context: "Corus FY2006A: Revenue £9,200m, EBITDA £1,380m, Net Debt £1,320m. FY2007E: Revenue £9,960m, EBITDA £1,295m (lower margin due to input cost pressure), Net Debt £1,150m. The sector average EV/EBITDA was 6–8× in 2006–2007. Tata paid 9.2× (pension-inclusive).",
+        gridRows: 6,
+        gridCols: 3,
+        gridValues: {
+          "0-0": "Metric", "0-1": "FY2006A (£m)", "0-2": "FY2007E (£m)",
+          "1-0": "EBITDA", "1-1": "1380", "1-2": "1295",
+          "2-0": "EV at 6× EBITDA", "2-1": "", "2-2": "",
+          "3-0": "EV at 8× EBITDA", "3-1": "", "3-2": "",
+          "4-0": "Net Debt", "4-1": "1320", "4-2": "1150",
+          "5-0": "Implied Equity Value at 6×",
+        },
+        correctAnswers: {
+          "2-1": "8280",
+          "2-2": "7770",
+          "3-1": "11040",
+          "3-2": "10360",
+          "5-1": "6960",
+          "5-2": "6620",
+        },
+      },
+    },
+  });
+
+  console.log("  ✅ Case simulations seeded: Zomato UAE + Tata-Corus");
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SKILL TESTS (Skill Building)
+// ═══════════════════════════════════════════════════════════════════════════
+
+async function seedSkillTests(
+  lessonIndex: Record<string, { id: string; name: string; difficulty: Difficulty; activityType: ActivityType; activityId: string }>,
+  professions: Record<string, { id: string; slug: string }>
+) {
+  console.log("  Seeding skill tests...");
+
+  // ── Investment Banking Analyst — Financial Statements & Valuation ─────────
+  const ibProf = professions["ib"];
+  if (!ibProf) throw new Error("IB profession not found");
+
+  const ibTopic = await prisma.skillTopic.create({
+    data: {
+      professionId: ibProf.id,
+      name: "Financial Statements & Valuation",
+      description: "Master the three financial statements, cash flow analysis, and core valuation multiples — the quantitative foundation of every IB role.",
+      orderIndex: 0,
+      isActive: true,
+    },
+  });
+
+  const ibTest = await prisma.skillTest.create({
+    data: {
+      professionId: ibProf.id,
+      topicId: ibTopic.id,
+      name: "IB Foundation — Set 1",
+      description: "Three activities covering gross-profit identity (Canvas), working capital concepts (MCQ), and operating cash flow construction (Quantus). Complete all three to benchmark your financial statement fluency.",
+      isPublished: true,
+      isActive: true,
+      orderIndex: 0,
+    },
+  });
+
+  // Look up the extra MCQ activity IDs (seeded by seedExtraActivities)
+  // finance/0/0/easy = Revenue to Gross Profit (primary = canvas, extra MCQ also exists)
+  // finance/0/1/medium = Working Capital (primary = mcq)
+  // finance/0/2/medium = Building Cash From Operations (primary = quantus)
+  const gpLesson    = lessonIndex["finance/0/0/easy"];   // canvas
+  const wcLesson    = lessonIndex["finance/0/1/medium"]; // mcq
+  const cfoLesson   = lessonIndex["finance/0/2/medium"]; // quantus
+
+  if (!gpLesson || !wcLesson || !cfoLesson) {
+    throw new Error("Required lesson keys not found in lessonIndex. Check FINANCE module layout.");
+  }
+
+  // Fetch the extra MCQ activity for the gross-profit lesson (added by seedExtraActivities)
+  const gpExtraMcq = await prisma.mcqActivity.findUnique({ where: { lessonId: gpLesson.id } });
+  const wcMcq      = await prisma.mcqActivity.findUnique({ where: { lessonId: wcLesson.id } });
+  const cfoQuantus = await prisma.quantusActivity.findUnique({ where: { lessonId: cfoLesson.id } });
+  const gpCanvas   = await prisma.canvasActivity.findUnique({ where: { lessonId: gpLesson.id } });
+
+  if (!wcMcq || !cfoQuantus || !gpCanvas) {
+    throw new Error("Could not find required activities for skill test items.");
+  }
+
+  // Type configs: one row per activity type present in this test
+  await prisma.skillTestTypeConfig.createMany({
+    data: [
+      { testId: ibTest.id, activityType: "canvas",  timeLimitMins: 25 },
+      { testId: ibTest.id, activityType: "mcq",     timeLimitMins: 20 },
+      { testId: ibTest.id, activityType: "quantus", timeLimitMins: 30 },
+    ],
+  });
+
+  // Test items
+  await prisma.skillTestItem.createMany({
+    data: [
+      {
+        testId: ibTest.id,
+        lessonId: gpLesson.id,
+        activityType: "canvas",
+        activityId: gpCanvas.id,
+        orderIndex: 0,
+      },
+      {
+        testId: ibTest.id,
+        lessonId: wcLesson.id,
+        activityType: "mcq",
+        activityId: wcMcq.id,
+        orderIndex: 1,
+      },
+      {
+        testId: ibTest.id,
+        lessonId: cfoLesson.id,
+        activityType: "quantus",
+        activityId: cfoQuantus.id,
+        orderIndex: 2,
+      },
+    ],
+  });
+
+  // ── Chartered Accountant — Financial Statements ────────────────────────────
+  const caProf = professions["ca"];
+  if (!caProf) throw new Error("CA profession not found");
+
+  const caTopic = await prisma.skillTopic.create({
+    data: {
+      professionId: caProf.id,
+      name: "Financial Statements & Analysis",
+      description: "Build proficiency in reading and interpreting financial statements — income statement, balance sheet, cash flow — as required in CA Foundation and Intermediate examinations.",
+      orderIndex: 0,
+      isActive: true,
+    },
+  });
+
+  const caTest = await prisma.skillTest.create({
+    data: {
+      professionId: caProf.id,
+      topicId: caTopic.id,
+      name: "CA Foundation — Financial Statements Set 1",
+      description: "Covers income statement structure (Canvas), balance sheet linkages (MCQ), and common-size analysis (Quantus). Aligned to ICAI Foundation Paper 1 competencies.",
+      isPublished: true,
+      isActive: true,
+      orderIndex: 0,
+    },
+  });
+
+  // finance/0/0/medium = Operating Income & EBIT (canvas)
+  // finance/0/1/easy   = Accounting Equation (canvas) — but this is also canvas, need mcq
+  // Use: finance/0/0/medium = EBIT canvas, finance/0/0/easy extra mcq, finance/0/1/hard = asset composition quantus
+  const ebitLesson = lessonIndex["finance/0/0/medium"];  // canvas
+  const acaLesson  = lessonIndex["finance/0/1/hard"];    // quantus (Asset Composition Analysis)
+
+  if (!ebitLesson || !acaLesson) {
+    throw new Error("Required lesson keys for CA test not found in lessonIndex.");
+  }
+
+  const ebitCanvas  = await prisma.canvasActivity.findUnique({ where: { lessonId: ebitLesson.id } });
+  const acaQuantus  = await prisma.quantusActivity.findUnique({ where: { lessonId: acaLesson.id } });
+  const ebitExtraMcq = gpExtraMcq; // use the extra MCQ from the easy lesson for variety
+
+  if (!ebitCanvas || !acaQuantus) {
+    throw new Error("Could not find required activities for CA skill test items.");
+  }
+
+  await prisma.skillTestTypeConfig.createMany({
+    data: [
+      { testId: caTest.id, activityType: "canvas",  timeLimitMins: 20 },
+      { testId: caTest.id, activityType: "quantus", timeLimitMins: 30 },
+      ...(ebitExtraMcq ? [{ testId: caTest.id, activityType: "mcq" as const, timeLimitMins: 20 }] : []),
+    ],
+  });
+
+  await prisma.skillTestItem.createMany({
+    data: [
+      {
+        testId: caTest.id,
+        lessonId: ebitLesson.id,
+        activityType: "canvas",
+        activityId: ebitCanvas.id,
+        orderIndex: 0,
+      },
+      {
+        testId: caTest.id,
+        lessonId: acaLesson.id,
+        activityType: "quantus",
+        activityId: acaQuantus.id,
+        orderIndex: 1,
+      },
+      ...(ebitExtraMcq ? [{
+        testId: caTest.id,
+        lessonId: gpLesson.id,
+        activityType: "mcq" as const,
+        activityId: ebitExtraMcq.id,
+        orderIndex: 2,
+      }] : []),
+    ],
+  });
+
+  console.log("  ✅ Skill tests seeded: IB Foundation Set 1 + CA Foundation Set 1");
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1551,16 +2685,32 @@ async function main() {
   await seedUser();
   const { professions } = await seedProfessions();
   console.log("Seeding learning tree…");
-  await seedLearningTree(professions);
+  const lessonIndex = await seedLearningTree(professions);
+  console.log("Seeding case simulations…");
+  await seedCaseSimulations();
+  console.log("Seeding skill tests…");
+  await seedSkillTests(lessonIndex, professions);
   console.log("Done.");
-  console.log("\n────────────────────────────────────────────────────");
-  console.log("  1 demo user          demo@shankh.app / shankh-demo");
-  console.log("  8 professions");
+  console.log("\n──────────────────────────────────────────────────────────");
+  console.log("  DEMO CREDENTIALS");
+  console.log("  Learner:  demo@shankh.app  / shankh-demo");
+  console.log("  Admin:    admin@shankh.app / shankh-admin");
+  console.log("");
+  console.log("  LEARNING (3 flows × all activity types)");
   console.log("  3 modules (Finance, Strategy, Operations)");
-  console.log("  54 lessons with canvas/mcq/quantus activities");
+  console.log("  54 lessons — Canvas + MCQ + Quantus per lesson");
   console.log("  Extra MCQ activities on Income Statement lessons");
-  console.log("  SubtopicProfessionTags for cross-promotion");
-  console.log("────────────────────────────────────────────────────");
+  console.log("");
+  console.log("  CASE SIMULATIONS");
+  console.log("  • Zomato UAE Market Entry  (medium) — Canvas + MCQ + Quantus");
+  console.log("  • Tata Steel Acquires Corus (hard)  — Canvas + MCQ + Quantus");
+  console.log("");
+  console.log("  SKILL BUILDING");
+  console.log("  • IB Foundation Set 1  (Investment Banking Analyst)");
+  console.log("    Canvas (25 min) + MCQ (20 min) + Quantus (30 min)");
+  console.log("  • CA Foundation Set 1  (Chartered Accountant)");
+  console.log("    Canvas (20 min) + MCQ (20 min) + Quantus (30 min)");
+  console.log("──────────────────────────────────────────────────────────");
 }
 
 main()

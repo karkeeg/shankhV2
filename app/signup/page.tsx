@@ -43,8 +43,8 @@ export default function SignupPage() {
       } else {
         router.push("/");
       }
-    } catch (err: any) {
-      setError(err.message || "Signup failed");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Signup failed");
     } finally {
       setLoading(false);
     }

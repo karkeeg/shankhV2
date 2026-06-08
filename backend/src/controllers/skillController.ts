@@ -218,7 +218,7 @@ export const resumeTestSession = async (req: Request, res: Response) => {
               activity: {
                 include: {
                   quantusCells: {
-                    select: { rowIndex: true, colIndex: true, expectedValue: true, isEditable: true },
+                    select: { rowIndex: true, colIndex: true, expectedValue: true, isEditable: true, displayValue: true },
                     orderBy: [{ rowIndex: "asc" }, { colIndex: "asc" }],
                   },
                   columns: { select: { colIndex: true, label: true }, orderBy: { colIndex: "asc" } },
