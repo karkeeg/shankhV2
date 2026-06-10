@@ -4,6 +4,7 @@ import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { useAuthStore } from "@/lib/auth-store";
+import { bookmarksApi } from "@/lib/api";
 import {
   Bookmark,
   Loader2,
@@ -14,8 +15,6 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-const API = process.env.NEXT_PUBLIC_BACKEND_URL || "";
 
 interface BookmarkedLesson {
   lessonId: string;
@@ -52,20 +51,14 @@ export default function BookmarksPage() {
   const [selectedSubtopicId, setSelectedSubtopicId] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState<string>("");
 
-  const authHeaders = useCallback((): Record<string, string> => {
-    return token ? { Authorization: `Bearer ${token}` } : {};
-  }, [token]);
-
   const fetchBookmarks = useCallback(() => {
     if (!token) return;
-    fetch(`${API}/api/v1/bookmarks/me`, { headers: authHeaders() })
-      .then((r) => r.json())
-      .then((res) => {
-        setBookmarks(res.data ?? []);
-      })
+    bookmarksApi
+      .mine<BookmarkedSubtopic[]>()
+      .then((data) => setBookmarks(data ?? []))
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [token, authHeaders]);
+  }, [token]);
 
   useEffect(() => {
     fetchBookmarks();
@@ -76,10 +69,7 @@ export default function BookmarksPage() {
     // Optimistic UI update
     setBookmarks((prev) => prev.filter((b) => b.subtopicId !== subtopicId));
     try {
-      await fetch(`${API}/api/v1/bookmarks/subtopics/${subtopicId}`, {
-        method: "POST",
-        headers: authHeaders(),
-      });
+      await bookmarksApi.toggleSubtopic(subtopicId);
     } catch {
       // Re-fetch on error to revert state
       fetchBookmarks();

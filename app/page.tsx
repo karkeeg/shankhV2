@@ -2,7 +2,10 @@
 
 import React, { useEffect, useState } from "react";
 import { useAuthStore } from "@/lib/auth-store";
+import { progressApi } from "@/lib/api";
 import { MainLayout } from "@/components/layout/MainLayout";
+import Cookies from "js-cookie";
+import LandingPage from "@/components/landing/LandingPage";
 
 // Dashboard Components
 import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
@@ -17,7 +20,7 @@ import { DashboardSkeleton } from "@/components/ui/Skeletons";
 
 export default function Dashboard() {
   const [mounted, setMounted] = useState(false);
-  const token = useAuthStore((state) => state.token);
+  const token = useAuthStore((state) => state.token) || (typeof window !== "undefined" ? Cookies.get("shankh-token") : undefined);
   const [loading, setLoading] = useState(true);
   const [dashboardError, setDashboardError] = useState(false);
   const [isAiOpen, setIsAiOpen] = useState(true);
@@ -37,15 +40,18 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
+    if (mounted && !token) {
+      setLoading(false);
+    }
+  }, [mounted, token]);
+
+  useEffect(() => {
     const fetchData = async () => {
       if (!mounted || !token) return;
 
       try {
-        const headers: Record<string, string> = { "Content-Type": "application/json" };
-        headers.Authorization = `Bearer ${token}`;
-        const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1/progress/me/dashboard`, { headers });
-        if (res.ok) {
-          const { data } = await res.json();
+        const data = await progressApi.dashboard<any>();
+        {
           if (data) {
             setDashboardData(data);
 
@@ -62,9 +68,10 @@ export default function Dashboard() {
               }
             }
           }
-        } else {
+        
+        else {
           setDashboardError(true);
-        }
+        }}
       } catch (err) {
         console.error("Failed to fetch dashboard data:", err);
         setDashboardError(true);
@@ -77,6 +84,10 @@ export default function Dashboard() {
 
   if (!mounted || loading) {
     return <DashboardSkeleton />;
+  }
+
+  if (!token) {
+    return <LandingPage />;
   }
 
   if (dashboardError) {

@@ -3,8 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Hourglass, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useAuthStore } from "@/lib/auth-store";
-import Cookies from "js-cookie";
+import { skillApi } from "@/lib/api";
 
 interface TimerBarProps {
   sessionId: string;
@@ -31,19 +30,9 @@ export const TimerBar: React.FC<TimerBarProps> = ({
   const onTickRef = useRef(onTick);
   onTickRef.current = onTick;
 
-  const token = useAuthStore((state) => state.token) || Cookies.get("shankh-token");
-
   const saveProgress = async (spentSecs: number) => {
     try {
-      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "";
-      await fetch(`${backendUrl}/api/v1/skill/sessions/${sessionId}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ timeSpentSecs: spentSecs }),
-      });
+      await skillApi.updateSession(sessionId, { timeSpentSecs: spentSecs });
     } catch (err) {
       console.error("Failed to save timer state:", err);
     }

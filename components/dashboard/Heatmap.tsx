@@ -1,5 +1,6 @@
-import React from "react";
+import React, { useState } from "react";
 import { cn } from "@/lib/utils";
+import { Flame, ChevronLeft, ChevronRight } from "lucide-react";
 
 interface HeatmapProps {
   completedDates?: string[];
@@ -7,11 +8,25 @@ interface HeatmapProps {
 
 export const Heatmap = ({ completedDates = [] }: HeatmapProps) => {
   const days = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
-  
+
   const today = new Date();
-  const year = today.getFullYear();
-  const month = today.getMonth(); // 0-indexed
-  const monthName = today.toLocaleString("default", { month: "short", year: "numeric" });
+
+  // Currently displayed month/year (defaults to current month)
+  const [viewDate, setViewDate] = useState(
+    () => new Date(today.getFullYear(), today.getMonth(), 1)
+  );
+
+  const year = viewDate.getFullYear();
+  const month = viewDate.getMonth(); // 0-indexed
+  const monthName = viewDate.toLocaleString("default", {
+    month: "short",
+    year: "numeric",
+  });
+
+  const goToPrevMonth = () =>
+    setViewDate((d) => new Date(d.getFullYear(), d.getMonth() - 1, 1));
+  const goToNextMonth = () =>
+    setViewDate((d) => new Date(d.getFullYear(), d.getMonth() + 1, 1));
 
   // Get first day of the month
   const firstDay = new Date(year, month, 1);
@@ -39,7 +54,10 @@ export const Heatmap = ({ completedDates = [] }: HeatmapProps) => {
     const dateStr = `${yyyy}-${mm}-${dd}`;
 
     const isActive = completedDates.includes(dateStr);
-    const isToday = d === today.getDate();
+    const isToday =
+      d === today.getDate() &&
+      month === today.getMonth() &&
+      year === today.getFullYear();
 
     cells.push({
       day: d,
@@ -57,17 +75,33 @@ export const Heatmap = ({ completedDates = [] }: HeatmapProps) => {
   return (
     <div className="bg-white p-4 rounded-3xl flex flex-col h-full w-full border border-transparent select-none">
       <div className="flex items-center justify-between mb-2">
+        <button
+          type="button"
+          onClick={goToPrevMonth}
+          aria-label="Previous month"
+          className="p-1 rounded-full text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 transition-colors"
+        >
+          <ChevronLeft className="w-4 h-4" />
+        </button>
         <span className="text-xs font-bold text-zinc-900 uppercase tracking-widest">{monthName}</span>
+        <button
+          type="button"
+          onClick={goToNextMonth}
+          aria-label="Next month"
+          className="p-1 rounded-full text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 transition-colors"
+        >
+          <ChevronRight className="w-4 h-4" />
+        </button>
       </div>
-      <div className="grid grid-cols-7 gap-1 text-center mb-2">
+      <div className="grid grid-cols-7 gap-1 justify-items-center text-center mb-1.5">
         {days.map((day) => (
-          <span key={day} className="text-[10px] font-bold text-zinc-400">{day}</span>
+          <span key={day} className="text-[9px] font-bold text-zinc-400 w-full">{day}</span>
         ))}
       </div>
-      <div className="grid grid-cols-7 gap-2 flex-1">
+      <div className="grid grid-cols-7 gap-1 justify-items-center flex-1">
         {cells.map((cell, i) => {
           if (!cell.day) {
-            return <div key={`empty-${i}`} className="aspect-square" />;
+            return <div key={`empty-${i}`} className="aspect-square w-full max-w-[44px]" />;
           }
 
           return (
@@ -75,17 +109,24 @@ export const Heatmap = ({ completedDates = [] }: HeatmapProps) => {
               key={`day-${cell.day}`}
               title={cell.dateStr || ""}
               className={cn(
-                "aspect-square rounded-full flex flex-col items-center justify-center transition-all relative text-xs font-bold",
-                cell.isActive 
-                  ? "bg-[#01696F] text-white" 
+                "aspect-square max-w-[44px] max-h-[44px] w-full rounded-full flex items-center justify-center transition-all relative text-xs font-bold",
+                cell.isActive
+                  ? "bg-[#01696F]/20 text-white border-2 border-[#01696F]" // Keep text white for readability over the flame
                   : "bg-zinc-50 hover:bg-zinc-100 text-zinc-700",
-                cell.isToday && "ring-2 ring-[#01696F] ring-offset-2"
+                cell.isToday && "ring-2 ring-[#01696F] ring-offset-1"
               )}
             >
-              <span>{cell.day}</span>
               {cell.isActive && (
-                <div className="w-1.5 h-1.5 bg-white rounded-full mt-0.5 opacity-60" />
+                <Flame
+                  className="absolute inset-0 m-auto w-9 h-9 text-[#01696F] opacity-90"
+                  fill="currentColor"
+                />
               )}
+
+              {/* The day number sits on top (Z-index handled by source order) */}
+              <span className={cn(cell.isActive && "relative z-10")}>
+                {cell.day}
+              </span>
             </div>
           );
         })}

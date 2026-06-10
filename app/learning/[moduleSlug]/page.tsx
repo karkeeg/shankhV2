@@ -7,8 +7,7 @@ import { Search, Bell, ChevronRight, Loader2, BookOpen, Layers, ArrowRight, Chec
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/lib/auth-store";
-
-const API = process.env.NEXT_PUBLIC_BACKEND_URL || "";
+import { contentApi, bookmarksApi } from "@/lib/api";
 
 interface ModuleData {
   id: string;
@@ -85,18 +84,14 @@ export default function ModulePage() {
   const [subtopicsError, setSubtopicsError]   = useState<string | null>(null);
   const [lessonsError, setLessonsError]       = useState<string | null>(null);
 
-  const authHeaders = useCallback((): HeadersInit => {
-    return token ? { Authorization: `Bearer ${token}` } : {};
-  }, [token]);
-
   // Load bookmarked subtopic IDs
   useEffect(() => {
     if (!token) return;
-    fetch(`${API}/api/v1/bookmarks/me/ids`, { headers: authHeaders() })
-      .then((r) => r.json())
-      .then((res) => { if (Array.isArray(res.data)) setBookmarkedIds(new Set(res.data)); })
+    bookmarksApi
+      .myIds<string[]>()
+      .then((ids) => { if (Array.isArray(ids)) setBookmarkedIds(new Set(ids)); })
       .catch(() => {});
-  }, [token, authHeaders]);
+  }, [token]);
 
   const handleToggleBookmark = async (e: React.MouseEvent, subtopicId: string) => {
     e.stopPropagation();
@@ -106,10 +101,7 @@ export default function ModulePage() {
     if (next.has(subtopicId)) next.delete(subtopicId); else next.add(subtopicId);
     setBookmarkedIds(next);
     try {
-      await fetch(`${API}/api/v1/bookmarks/subtopics/${subtopicId}`, {
-        method: "POST",
-        headers: authHeaders(),
-      });
+      await bookmarksApi.toggleSubtopic(subtopicId);
     } catch {
       setBookmarkedIds(snapshot); // revert to pre-optimistic state
     }
@@ -119,36 +111,27 @@ export default function ModulePage() {
   const loadModule = useCallback(() => {
     setLoadingModule(true);
     setModuleError(null);
-    fetch(`${API}/api/v1/content/modules/slug/${moduleSlug}`, { headers: authHeaders() })
-      .then(async (r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
-      })
-      .then((res) => {
-        const found: ModuleData | null = res.data ?? null;
+    contentApi
+      .moduleBySlug<ModuleData | null>(moduleSlug)
+      .then((found) => {
         if (!found) { setLoadingModule(false); return; }
         setModuleData(found);
 
         // Load topics for this module
-        return fetch(`${API}/api/v1/content/modules/${found.id}/topics`, { headers: authHeaders() })
-          .then(async (r2) => {
-            if (!r2.ok) throw new Error(`HTTP ${r2.status}`);
-            return r2.json();
-          })
-          .then((topicsData) => {
-            const topicList: Topic[] = topicsData.data ?? [];
-            setTopics(topicList);
-            if (topicList.length > 0) {
-              setSelectedTopicId(topicList[0].id);
-            }
-          });
+        return contentApi.moduleTopics<Topic[]>(found.id).then((topicList) => {
+          const list = topicList ?? [];
+          setTopics(list);
+          if (list.length > 0) {
+            setSelectedTopicId(list[0].id);
+          }
+        });
       })
       .catch((e) => {
         console.error("Module load error:", e);
         setModuleError("Failed to load module. Check your connection and try again.");
       })
       .finally(() => setLoadingModule(false));
-  }, [moduleSlug, authHeaders]);
+  }, [moduleSlug]);
 
   useEffect(() => { loadModule(); }, [loadModule]);
 
@@ -161,13 +144,10 @@ export default function ModulePage() {
     setSubtopicDetail(null);
     setSelectedSubtopicId("");
     setSearchQuery("");
-    fetch(`${API}/api/v1/content/topics/${selectedTopicId}/subtopics`, { headers: authHeaders() })
-      .then(async (r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
-      })
+    contentApi
+      .topicSubtopics<Subtopic[]>(selectedTopicId)
       .then((res) => {
-        const list: Subtopic[] = res.data ?? [];
+        const list = res ?? [];
         setSubtopics(list);
         if (list.length > 0) setSelectedSubtopicId(list[0].id);
       })
@@ -176,7 +156,7 @@ export default function ModulePage() {
         setSubtopicsError("Failed to load subtopics.");
       })
       .finally(() => setLoadingSubtopics(false));
-  }, [selectedTopicId, authHeaders]);
+  }, [selectedTopicId]);
 
   useEffect(() => { loadSubtopics(); }, [loadSubtopics]);
 
@@ -186,18 +166,15 @@ export default function ModulePage() {
     setLoadingLessons(true);
     setLessonsError(null);
     setSubtopicDetail(null);
-    fetch(`${API}/api/v1/content/subtopics/${selectedSubtopicId}`, { headers: authHeaders() })
-      .then(async (r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
-      })
-      .then((res) => setSubtopicDetail(res.data ?? null))
+    contentApi
+      .subtopic<any>(selectedSubtopicId)
+      .then((res) => setSubtopicDetail(res ?? null))
       .catch((e) => {
         console.error("Subtopic detail error:", e);
         setLessonsError("Failed to load lessons.");
       })
       .finally(() => setLoadingLessons(false));
-  }, [selectedSubtopicId, authHeaders]);
+  }, [selectedSubtopicId]);
 
   useEffect(() => { loadLessons(); }, [loadLessons]);
 

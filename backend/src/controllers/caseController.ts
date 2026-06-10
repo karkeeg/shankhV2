@@ -199,8 +199,8 @@ function gradeActivityFull(activity: any, responseData: any): { scorePct: number
     if (!solution?.edges?.length) return { scorePct: 100 };
 
     // Accept both submission formats:
-    // - Excalidraw path: responseData.canvasData.edges = [{ from, to }]
-    // - CanvasWorkspace path: responseData.edges = [{ sourceId, targetId }]
+    // - Activity-page canvas path: responseData.canvasData.edges = [{ from, to }]
+    // - Direct edge path: responseData.edges = [{ sourceId, targetId }]
     let userEdges: { sourceId: string; targetId: string }[] = [];
     if (responseData.edges?.length) {
       userEdges = responseData.edges;

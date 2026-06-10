@@ -1,14 +1,12 @@
 "use client";
 
-import React, { useEffect, useState, useMemo, useCallback } from "react";
+import React, { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { MainLayout } from "@/components/layout/MainLayout";
-import { useAuthStore } from "@/lib/auth-store";
-import { ArrowLeft, Save, Loader2, PenLine, Check, AlertCircle } from "lucide-react";
+import { api } from "@/lib/api";
+import { useToastStore } from "@/lib/toast-store";
+import { ArrowLeft, Save, Loader2, PenLine } from "lucide-react";
 import { AdminCanvasEditor, AdminCanvasData } from "@/components/admin/AdminCanvasEditor";
-import { cn } from "@/lib/utils";
-
-const API = process.env.NEXT_PUBLIC_BACKEND_URL || "";
 
 const DEFAULT: AdminCanvasData = {
   title: "", instructions: "", context: "",
@@ -19,29 +17,16 @@ export default function CanvasAdminPage() {
   const params = useParams();
   const lessonId = params.id as string;
   const router = useRouter();
-  const token = useAuthStore((s) => s.token);
-
-  const headers = useMemo<Record<string, string>>(() => {
-    const h: Record<string, string> = { "Content-Type": "application/json" };
-    if (token) h["Authorization"] = `Bearer ${token}`;
-    return h;
-  }, [token]);
+  const showToast = useToastStore((s) => s.showToast);
 
   const [data, setData] = useState<AdminCanvasData>({ ...DEFAULT });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [toast, setToast] = useState<{ type: "success" | "error"; msg: string } | null>(null);
-
-  const showToast = useCallback((type: "success" | "error", msg: string) => {
-    setToast({ type, msg });
-    setTimeout(() => setToast(null), 3500);
-  }, []);
 
   useEffect(() => {
-    fetch(`${API}/api/v1/admin/lessons/${lessonId}`, { headers })
-      .then((r) => r.json())
-      .then((json) => {
-        const a = json.data?.canvasActivity;
+    api.get<any>(`/api/v1/admin/lessons/${lessonId}`)
+      .then((res) => {
+        const a = res?.canvasActivity;
         if (a) {
           setData({
             title: a.title || "",
@@ -64,31 +49,26 @@ export default function CanvasAdminPage() {
 
   const handleSave = async () => {
     if (!data.title.trim() || !data.instructions.trim()) {
-      showToast("error", "Title and instructions are required");
+      showToast("Title and instructions are required", "error");
       return;
     }
     setSaving(true);
     try {
-      const res = await fetch(`${API}/api/v1/admin/lessons/${lessonId}/canvas`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          title: data.title,
-          instructions: data.instructions,
-          context: data.context,
-          scoringMode: data.scoringMode,
-          paletteItems: data.paletteItems,
-          solutionSnapshot: data.solutionSnapshot,
-          tokens: data.paletteItems.map((p) => ({
-            id: p.id, content: p.label, type: p.shape, tokenRole: "operand",
-          })),
-          assemblyMode: "graph",
-        }),
+      await api.post(`/api/v1/admin/lessons/${lessonId}/canvas`, {
+        title: data.title,
+        instructions: data.instructions,
+        context: data.context,
+        scoringMode: data.scoringMode,
+        paletteItems: data.paletteItems,
+        solutionSnapshot: data.solutionSnapshot,
+        tokens: data.paletteItems.map((p) => ({
+          id: p.id, content: p.label, type: p.shape, tokenRole: "operand",
+        })),
+        assemblyMode: "graph",
       });
-      if (res.ok) showToast("success", "Canvas activity saved!");
-      else showToast("error", "Failed to save.");
-    } catch {
-      showToast("error", "Network error.");
+      showToast("Canvas activity saved!", "success");
+    } catch (e: any) {
+      showToast(e?.message || "Failed to save.", "error");
     } finally {
       setSaving(false);
     }
@@ -105,17 +85,6 @@ export default function CanvasAdminPage() {
   return (
     <MainLayout>
       <div className="flex flex-col h-full max-h-[calc(100vh-24px)] overflow-hidden bg-zinc-50">
-
-        {/* Toast */}
-        {toast && (
-          <div className={cn(
-            "fixed top-5 right-5 z-50 flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-bold shadow-2xl",
-            toast.type === "success" ? "bg-emerald-600 text-white" : "bg-rose-600 text-white"
-          )}>
-            {toast.type === "success" ? <Check size={13} /> : <AlertCircle size={13} />}
-            {toast.msg}
-          </div>
-        )}
 
         {/* ── Top bar ── */}
         <div className="flex items-center gap-3 px-5 py-3 bg-white border-b border-zinc-200 shrink-0 flex-wrap">

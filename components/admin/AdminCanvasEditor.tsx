@@ -1,10 +1,13 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
-import { PaletteItem, SolutionSnapshot, PlacedNode, PALETTE_COLORS, DEFAULT_COLOR, NODE_W, NODE_H } from "@/components/canvas/types";
-import { CanvasWorkspace, CanvasWorkspaceHandle } from "@/components/canvas/CanvasWorkspace";
-import { CanvasPalette } from "@/components/canvas/CanvasPalette";
+import {
+  PaletteItem, SolutionSnapshot, PALETTE_COLORS, DEFAULT_COLOR,
+  paletteToDragCategories, solutionToGraph, graphToSolution,
+} from "@/lib/canvasAdapter";
+import { CanvasExercise, CanvasGraph } from "@/components/exercise/CanvasExercise";
+import { CanvasToolkit } from "@/components/exercise/CanvasToolkit";
 import { Plus, Trash2, Save, RotateCcw, Maximize2, X } from "lucide-react";
 
 export interface AdminCanvasData {
@@ -25,9 +28,11 @@ interface Props {
 
 export function AdminCanvasEditor({ value, onChange, compact = false }: Props) {
   const [tab, setTab] = useState<"palette" | "solution">("palette");
-  const [placedIds, setPlacedIds] = useState<Set<string>>(new Set());
   const [modalOpen, setModalOpen] = useState(false);
-  const modalCanvasRef = useRef<CanvasWorkspaceHandle>(null);
+  // Latest graph emitted by the canvas; null until the admin edits something.
+  const graphRef = useRef<CanvasGraph | null>(null);
+  // Bumped to remount the canvas blank when the admin clears the solution.
+  const [canvasNonce, setCanvasNonce] = useState(0);
 
   const set = <K extends keyof AdminCanvasData>(key: K, val: AdminCanvasData[K]) =>
     onChange({ ...value, [key]: val });
@@ -48,53 +53,29 @@ export function AdminCanvasEditor({ value, onChange, compact = false }: Props) {
     set("paletteItems", value.paletteItems.filter((_, i) => i !== idx));
   };
 
-  // ── Restore initial nodes from saved snapshot (preserves admin layout) ────────
-  const initialNodes: PlacedNode[] = (() => {
-    const positions = value.solutionSnapshot?.nodePositions ?? [];
-    if (!positions.length) {
-      // Auto-layout: grid with spacing derived from node dimensions
-      const COLS = 3;
-      const COL_W = NODE_W + 60;
-      const ROW_H = NODE_H + 60;
-      return value.paletteItems.map((item, idx) => ({
-        ...item,
-        x: (idx % COLS) * COL_W + 48,
-        y: Math.floor(idx / COLS) * ROW_H + 48,
-      }));
-    }
-    const placed = positions
-      .map(pos => {
-        const item = value.paletteItems.find(i => i.id === pos.id);
-        return item ? { ...item, x: pos.x, y: pos.y } : null;
-      })
-      .filter((n): n is PlacedNode => n !== null);
-    // Any palette items added after the snapshot get placed at end
-    const placedIds = new Set(placed.map(p => p.id));
-    const extras = value.paletteItems
-      .filter(i => !placedIds.has(i.id))
-      .map((item, idx) => ({ ...item, x: 48 + (placed.length + idx) * (NODE_W + 20), y: 48 }));
-    return [...placed, ...extras];
-  })();
+  // ── Palette → toolkit + initial graph (reconstructed from saved snapshot) ─────
+  const dragCategories = useMemo(
+    () => paletteToDragCategories(value.paletteItems),
+    [value.paletteItems],
+  );
 
-  const initialEdges = (value.solutionSnapshot?.edges ?? []).map((e, i) => ({
-    id: `sol-${i}`, sourceId: e.sourceId, targetId: e.targetId,
-  }));
+  // Reconstructed once per modal open / clear, so it reflects the latest palette
+  // and saved layout. CanvasExercise reads initialElements only on mount.
+  const initialGraph = useMemo(
+    () => solutionToGraph(value.paletteItems, value.solutionSnapshot),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [modalOpen, canvasNonce],
+  );
 
-  // ── Save solution (edges + node positions so layout is preserved on reload) ───
-  const handleSaveSolution = (ref: React.RefObject<CanvasWorkspaceHandle | null>) => {
-    const snapshot = ref.current?.getSnapshot();
-    if (!snapshot) return;
-    onChange({
-      ...value,
-      solutionSnapshot: {
-        edges: snapshot.edges.map(e => ({ sourceId: e.sourceId, targetId: e.targetId })),
-        nodePositions: snapshot.nodes.map(n => ({ id: n.id, x: n.x, y: n.y })),
-      },
-    });
+  // ── Save solution (token-pair edges + node positions for layout reload) ───────
+  const handleSaveSolution = () => {
+    const graph = graphRef.current ?? initialGraph;
+    onChange({ ...value, solutionSnapshot: graphToSolution(graph) });
   };
 
-  const handleClearSolution = (ref: React.RefObject<CanvasWorkspaceHandle | null>) => {
-    ref.current?.reset();
+  const handleClearSolution = () => {
+    graphRef.current = { nodes: [], edges: [] };
+    setCanvasNonce(n => n + 1); // remount the canvas blank
     onChange({ ...value, solutionSnapshot: null });
   };
 
@@ -233,13 +214,13 @@ export function AdminCanvasEditor({ value, onChange, compact = false }: Props) {
             </div>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => { handleClearSolution(modalCanvasRef); }}
+                onClick={() => { handleClearSolution(); }}
                 className="flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold text-zinc-500 border border-zinc-200 rounded-xl hover:bg-zinc-50 active:scale-95"
               >
                 <RotateCcw size={11} /> Clear
               </button>
               <button
-                onClick={() => { handleSaveSolution(modalCanvasRef); setModalOpen(false); }}
+                onClick={() => { handleSaveSolution(); setModalOpen(false); }}
                 className="flex items-center gap-1.5 px-4 py-2 bg-[#01696F] text-white text-xs font-black rounded-xl hover:bg-[#01696F]/90 active:scale-95 shadow-sm"
               >
                 <Save size={13} /> Save & Close
@@ -256,25 +237,21 @@ export function AdminCanvasEditor({ value, onChange, compact = false }: Props) {
           {/* Modal body — palette left, canvas right */}
           <div className="flex-1 overflow-hidden flex">
             {/* Palette panel */}
-            <div className="w-52 shrink-0 bg-white border-r border-zinc-200 p-4 overflow-y-auto flex flex-col gap-3">
-              <p className="text-[9px] font-black uppercase tracking-widest text-zinc-400">Drag to Canvas</p>
-              <CanvasPalette items={value.paletteItems} placedIds={placedIds} />
+            <div className="w-60 shrink-0 bg-white border-r border-zinc-200 p-4 overflow-y-auto flex flex-col gap-3">
+              <CanvasToolkit draggableElements={dragCategories} />
               <div className="mt-auto pt-3 border-t border-zinc-100">
                 <p className="text-[9px] text-zinc-400 font-medium leading-relaxed">
-                  Drag nodes onto the canvas. Click a node to start a connection, click another to connect. Double-click a node to remove it. Click an edge to delete it.
+                  Drag nodes onto the canvas. Hover a node and drag from a handle to another node to connect them. Select a node or edge and press Delete to remove it.
                 </p>
               </div>
             </div>
 
             {/* Canvas area */}
             <div className="flex-1 relative">
-              <CanvasWorkspace
-                key={`admin-modal-canvas-${value.paletteItems.map(p => p.id).join(",")}`}
-                ref={modalCanvasRef}
-                paletteItems={value.paletteItems}
-                initialNodes={initialNodes}
-                initialEdges={initialEdges}
-                onPlacedIdsChange={setPlacedIds}
+              <CanvasExercise
+                key={`admin-modal-canvas-${canvasNonce}-${value.paletteItems.map(p => p.id).join(",")}`}
+                initialElements={initialGraph}
+                onElementsChange={(g) => { graphRef.current = g; }}
               />
             </div>
           </div>

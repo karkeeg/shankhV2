@@ -1,24 +1,23 @@
 "use client";
 
-import React, { useEffect, useState, useMemo, useCallback } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { useAuthStore } from "@/lib/auth-store";
+import { casesApi } from "@/lib/api";
+import { useToastStore } from "@/lib/toast-store";
+import { ConfirmDialog } from "@/components/admin/ui";
 import {
   Loader2, ArrowLeft, ArrowRight, CheckCircle2,
   ChevronLeft, ChevronRight, Trophy, X, RefreshCw, Eye, Save, Plus, Trash2, Pencil,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ExcelGrid } from "@/components/exercise/ExcelGrid";
-import { CanvasWorkspace } from "@/components/canvas/CanvasWorkspace";
-import { tokensToItems } from "@/components/canvas/CanvasPalette";
-import type { PlacedNode } from "@/components/canvas/types";
-import Image from "next/image";
-import logo from "@/public/ShankhFull.png";
+import { CanvasExercise } from "@/components/exercise/CanvasExercise";
+import { tokensToPaletteItems, solutionToGraph } from "@/lib/canvasAdapter";
+import { Logo } from "@/components/layout/Logo";
 import { CaseStudiesModal } from "@/components/case/CaseStudiesModal";
 import { AdminCanvasEditor, AdminCanvasData } from "@/components/admin/AdminCanvasEditor";
 import { QuantusActivityBuilder, QuantusActivityData } from "@/components/admin/QuantusActivityBuilder";
 
-const API = process.env.NEXT_PUBLIC_BACKEND_URL || "";
 const uuidv4 = () => crypto.randomUUID();
 
 const TYPE_META: Record<string, { label: string; color: string }> = {
@@ -236,7 +235,7 @@ export default function AdminCasePreviewPage() {
   const router = useRouter();
   const params = useParams();
   const id = params?.id as string;
-  const token = useAuthStore((s) => s.token);
+  const showToast = useToastStore((s) => s.showToast);
 
   const [caseData, setCaseData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -263,27 +262,25 @@ export default function AdminCasePreviewPage() {
   const [editingActivity, setEditingActivity] = useState<any>(null);
   const [savingActivity, setSavingActivity] = useState(false);
 
-  const headers = useCallback(() => ({
-    "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  }), [token]);
+  // Delete confirm
+  const [confirmDel, setConfirmDel] = useState<{ kind: "study" | "activity"; id: string; label: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
-  const load = useCallback(() => {
+  const load = () => {
     setLoading(true);
-    fetch(`${API}/api/v1/cases/admin/${id}`, { headers: headers() })
-      .then((r) => r.json())
-      .then((res) => {
-        const data = res.data;
+    casesApi
+      .adminGet<any>(id)
+      .then((data) => {
         if (!data) return;
         setCaseData(data);
         setSteps(buildSteps(data.caseActivities ?? []));
         setCurrentIdx(0);
       })
-      .catch(() => {})
+      .catch((e: any) => showToast(e?.message || "Failed to load case", "error"))
       .finally(() => setLoading(false));
-  }, [id, token]);
+  };
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [id]);
 
   // ── Reset preview on step change ─────────────────────────────────────────
 
@@ -299,27 +296,19 @@ export default function AdminCasePreviewPage() {
   }, [currentIdx]);
 
   const canvasPaletteItems = useMemo(
-    () => actData?.paletteItems?.length ? actData.paletteItems : tokensToItems(actData?.tokens ?? []),
+    () => actData?.paletteItems?.length ? actData.paletteItems : tokensToPaletteItems(actData?.tokens ?? []),
     [step]
   );
 
-  const canvasPreviewNodes: PlacedNode[] = useMemo(() => {
-    if (step?.stepType !== "canvas") return [];
-    const positions: { id: string; x: number; y: number }[] = actData?.solutionSnapshot?.nodePositions ?? [];
-    return canvasPaletteItems.map((item: any, idx: number) => {
-      const pos = positions.find((p: any) => p.id === item.id);
-      return { ...item, x: pos?.x ?? (40 + (idx % 4) * 170), y: pos?.y ?? (40 + Math.floor(idx / 4) * 90) };
-    });
-  }, [step, canvasPaletteItems]);
+  const canvasPreviewGraph = useMemo(
+    () => solutionToGraph(canvasPaletteItems, actData?.solutionSnapshot ?? null),
+    [step, canvasPaletteItems]
+  );
 
-  const canvasPreviewEdges = useMemo(() => {
-    if (step?.stepType !== "canvas") return [];
-    return (actData?.solutionSnapshot?.edges ?? []).map((e: any, i: number) => ({
-      id: `preview-edge-${i}`,
-      sourceId: e.sourceId,
-      targetId: e.targetId,
-    }));
-  }, [step, actData]);
+  const canvasPreviewEdges = useMemo(
+    () => actData?.solutionSnapshot?.edges ?? [],
+    [step, actData]
+  );
 
   const excelTable = useMemo(() => {
     if (!actData?.gridRows || !actData?.gridCols) return [];
@@ -360,10 +349,13 @@ export default function AdminCasePreviewPage() {
     e.preventDefault();
     setSavingStudy(true);
     try {
-      await fetch(`${API}/api/v1/cases/admin/${id}/studies`, { method: "POST", headers: headers(), body: JSON.stringify(studyForm) });
+      await casesApi.adminCreateStudy(id, studyForm);
       setStudyForm({ title: "", content: "", orderIndex: 0 });
       setShowStudyForm(false);
       load();
+      showToast("Study added.", "success");
+    } catch (e: any) {
+      showToast(e?.message || "Failed to add study.", "error");
     } finally { setSavingStudy(false); }
   };
 
@@ -372,19 +364,14 @@ export default function AdminCasePreviewPage() {
     if (!editingStudy) return;
     setSavingStudy(true);
     try {
-      await fetch(`${API}/api/v1/cases/admin/${id}/studies/${editingStudy.id}`, {
-        method: "PUT", headers: headers(), body: JSON.stringify(studyForm),
-      });
+      await casesApi.adminUpdateStudy(id, editingStudy.id, studyForm);
       setEditingStudy(null);
       setStudyForm({ title: "", content: "", orderIndex: 0 });
       load();
+      showToast("Study updated.", "success");
+    } catch (e: any) {
+      showToast(e?.message || "Failed to update study.", "error");
     } finally { setSavingStudy(false); }
-  };
-
-  const handleDeleteStudy = async (studyId: string) => {
-    if (!confirm("Delete this case study?")) return;
-    await fetch(`${API}/api/v1/cases/admin/${id}/studies/${studyId}`, { method: "DELETE", headers: headers() });
-    load();
   };
 
   // ── Edit: Activities CRUD ─────────────────────────────────────────────────
@@ -392,12 +379,12 @@ export default function AdminCasePreviewPage() {
   const handleSaveNewActivity = async (type: string, data: any, order: number) => {
     setSavingActivity(true);
     try {
-      await fetch(`${API}/api/v1/cases/admin/${id}/activities`, {
-        method: "POST", headers: headers(),
-        body: JSON.stringify({ activityType: type, activityData: data, orderIndex: order }),
-      });
+      await casesApi.adminCreateActivity(id, { activityType: type, activityData: data, orderIndex: order });
       setShowActivityForm(false);
       load();
+      showToast("Activity added.", "success");
+    } catch (e: any) {
+      showToast(e?.message || "Failed to add activity.", "error");
     } finally { setSavingActivity(false); }
   };
 
@@ -405,19 +392,27 @@ export default function AdminCasePreviewPage() {
     if (!editingActivity) return;
     setSavingActivity(true);
     try {
-      await fetch(`${API}/api/v1/cases/admin/${id}/activities/${editingActivity.id}`, {
-        method: "PUT", headers: headers(),
-        body: JSON.stringify({ activityType: type, activityData: data }),
-      });
+      await casesApi.adminUpdateActivity(id, editingActivity.id, { activityType: type, activityData: data });
       setEditingActivity(null);
       load();
+      showToast("Activity updated.", "success");
+    } catch (e: any) {
+      showToast(e?.message || "Failed to update activity.", "error");
     } finally { setSavingActivity(false); }
   };
 
-  const handleDeleteActivity = async (actId: string) => {
-    if (!confirm("Delete this activity?")) return;
-    await fetch(`${API}/api/v1/cases/admin/${id}/activities/${actId}`, { method: "DELETE", headers: headers() });
-    load();
+  const handleConfirmDelete = async () => {
+    if (!confirmDel) return;
+    setDeleting(true);
+    try {
+      if (confirmDel.kind === "study") await casesApi.adminDeleteStudy(id, confirmDel.id);
+      else await casesApi.adminDeleteActivity(id, confirmDel.id);
+      setConfirmDel(null);
+      load();
+      showToast(`${confirmDel.kind === "study" ? "Study" : "Activity"} deleted.`, "success");
+    } catch (e: any) {
+      showToast(e?.message || "Failed to delete.", "error");
+    } finally { setDeleting(false); }
   };
 
   // ── Loading / empty states ────────────────────────────────────────────────
@@ -443,7 +438,7 @@ export default function AdminCasePreviewPage() {
   const PageHeader = (
     <header className="flex items-center gap-3 px-4 py-3 border-b border-zinc-200 bg-white shrink-0">
       <button
-        onClick={() => router.push(`/admin/cases/${id}`)}
+        onClick={() => router.push("/admin/cases")}
         className="flex items-center gap-1.5 text-xs font-bold text-zinc-500 hover:text-[#01696F] transition-colors shrink-0"
       >
         <ArrowLeft size={14} /> Cases
@@ -564,7 +559,7 @@ export default function AdminCasePreviewPage() {
                             className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-amber-50 text-zinc-300 hover:text-amber-500 transition-all">
                             <Pencil size={13} />
                           </button>
-                          <button onClick={() => handleDeleteStudy(s.id)}
+                          <button onClick={() => setConfirmDel({ kind: "study", id: s.id, label: s.title })}
                             className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-red-50 text-zinc-300 hover:text-red-500 transition-all">
                             <Trash2 size={13} />
                           </button>
@@ -633,7 +628,7 @@ export default function AdminCasePreviewPage() {
                               className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-amber-50 text-zinc-300 hover:text-amber-500 transition-all">
                               <Pencil size={13} />
                             </button>
-                            <button onClick={() => handleDeleteActivity(a.id)}
+                            <button onClick={() => setConfirmDel({ kind: "activity", id: a.id, label: a.activityType })}
                               className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-red-50 text-zinc-300 hover:text-red-500 transition-all">
                               <Trash2 size={13} />
                             </button>
@@ -647,6 +642,19 @@ export default function AdminCasePreviewPage() {
             )}
           </div>
         </div>
+
+        <ConfirmDialog
+          open={!!confirmDel}
+          loading={deleting}
+          title={confirmDel?.kind === "study" ? "Delete Case Study?" : "Delete Activity?"}
+          message={
+            <>
+              Delete <span className="font-bold text-zinc-800">{confirmDel?.label}</span>? This cannot be undone.
+            </>
+          }
+          onConfirm={handleConfirmDelete}
+          onClose={() => setConfirmDel(null)}
+        />
       </div>
     );
   }
@@ -683,7 +691,7 @@ export default function AdminCasePreviewPage() {
 
               <div className="flex flex-col items-center gap-2 border-b border-zinc-100 pb-3 pt-1">
                 <div className="w-full flex justify-center">
-                  <Image src={logo} alt="Shankh" width={110} height={32} className="object-contain" style={{ width: "auto", height: "auto" }} />
+                  <Logo variant="full" width={110} height={32} className="object-contain" style={{ width: "auto", height: "auto" }} />
                 </div>
                 <button
                   onClick={() => setShowStudies(true)}
@@ -863,12 +871,9 @@ export default function AdminCasePreviewPage() {
             {/* ── Canvas ── */}
             {isCanvasActive && (
               <div className="absolute inset-0">
-                <CanvasWorkspace
+                <CanvasExercise
                   key={`canvas-preview-${step.id}`}
-                  paletteItems={canvasPaletteItems}
-                  initialNodes={canvasPreviewNodes}
-                  initialEdges={canvasPreviewEdges}
-                  solutionSnapshot={actData?.solutionSnapshot ?? null}
+                  initialElements={canvasPreviewGraph}
                   disabled
                 />
               </div>

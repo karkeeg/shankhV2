@@ -4,6 +4,7 @@ import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { useAuthStore } from "@/lib/auth-store";
+import { reactionsApi } from "@/lib/api";
 import {
   ThumbsUp,
   ThumbsDown,
@@ -16,8 +17,6 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-const API = process.env.NEXT_PUBLIC_BACKEND_URL || "";
 
 interface ReactionLesson {
   lessonId: string;
@@ -59,13 +58,9 @@ export default function ReviewCenterPage() {
 
   const fetchReactions = useCallback(() => {
     if (!token) return;
-    fetch(`${API}/api/v1/reactions/me/lessons`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((r) => r.json())
-      .then((res) => {
-        setData(res.data ?? { liked: [], disliked: [] });
-      })
+    reactionsApi
+      .myLessons<ReactionsData>()
+      .then((res) => setData(res ?? { liked: [], disliked: [] }))
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [token]);
@@ -203,17 +198,8 @@ export default function ReviewCenterPage() {
 
   const handleToggleLike = async (lessonId: string, reaction: "like" | "dislike" | null) => {
     try {
-      const res = await fetch(`${API}/api/v1/reactions/lessons/${lessonId}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ reaction }),
-      });
-      if (res.ok) {
-        fetchReactions();
-      }
+      await reactionsApi.react(lessonId, { reaction });
+      fetchReactions();
     } catch (error) {
       console.error("Failed to toggle reaction:", error);
     }

@@ -106,12 +106,23 @@
   --animate-fade-in: fade-in 0.5s ease-out;
   --animate-slide-up: slide-up 0.5s ease-out;
   --animate-slide-in-left: slide-in-left 0.5s ease-out;
+  --animate-scale-up: scale-up 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 
   @keyframes fade-in {
     from {
       opacity: 0;
     }
     to {
+      opacity: 1;
+    }
+  }
+  @keyframes scale-up {
+    from {
+      transform: scale(0.96) translateY(8px);
+      opacity: 0;
+    }
+    to {
+      transform: scale(1) translateY(0);
       opacity: 1;
     }
   }
@@ -205,6 +216,91 @@ body {
     transform: scale(1);
     opacity: 1;
   }
+}
+
+/* Lively all-directions sway — draws attention to the scratchpad launcher.
+   Moves on both axes (+ a gentle tilt) so the glow isn't only up/down. */
+@keyframes scratch-sway {
+  0%, 100% { transform: translate(0, 0) rotate(0deg); }
+  25%      { transform: translate(-5px, -3px) rotate(-5deg); }
+  50%      { transform: translate(0, -5px) rotate(0deg); }
+  75%      { transform: translate(5px, -3px) rotate(5deg); }
+}
+.animate-scratch-sway {
+  animation: scratch-sway 1.8s ease-in-out infinite;
+}
+
+/* Up-and-down float on a duty cycle: ~5s of bobbing, then ~5s held still.
+   First half of the 10s timeline bobs twice; second half rests at 0. */
+@keyframes scratch-bob-cycle {
+  0%     { transform: translateY(0); }
+  12.5%  { transform: translateY(-9px); }
+  25%    { transform: translateY(0); }
+  37.5%  { transform: translateY(-9px); }
+  50%    { transform: translateY(0); }
+  100%   { transform: translateY(0); }
+}
+.animate-scratch-bob-cycle {
+  animation: scratch-bob-cycle 10s ease-in-out infinite;
+}
+
+/* Gentle left-right drift for the coachmark message */
+@keyframes coach-float-x {
+  0%, 100% { transform: translateX(0); }
+  50%      { transform: translateX(-7px); }
+}
+.animate-coach-float-x {
+  animation: coach-float-x 2.4s ease-in-out infinite;
+}
+
+/* Pulsing colored glow for the coachmark bubble */
+@keyframes coach-glow {
+  0%, 100% {
+    box-shadow: 0 0 16px 1px var(--coach-glow, rgba(1, 105, 111, 0.4));
+  }
+  50% {
+    box-shadow: 0 0 30px 6px var(--coach-glow, rgba(1, 105, 111, 0.7));
+  }
+}
+.animate-coach-glow {
+  animation: coach-glow 1.8s ease-in-out infinite;
+}
+
+/* Shimmering glow on the coachmark title text */
+@keyframes text-glow {
+  0%, 100% {
+    text-shadow: 0 0 6px var(--text-glow, rgba(252, 211, 77, 0.45));
+  }
+  50% {
+    text-shadow: 0 0 16px var(--text-glow, rgba(252, 211, 77, 0.95));
+  }
+}
+.animate-text-glow {
+  animation: text-glow 1.6s ease-in-out infinite;
+}
+
+/* Coachmark callout entrance */
+@keyframes coach-pop {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.animate-coach-pop {
+  animation: coach-pop 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Hide the Excalidraw Library button + sidebar (only used in the scratchpad).
+   Covers the top-right trigger and any docked library sidebar/dialog. */
+.excalidraw .default-sidebar-trigger,
+.excalidraw .sidebar-trigger,
+.excalidraw .layer-ui__sidebar,
+.excalidraw .default-sidebar {
+  display: none !important;
 }
 
 /* Spreadsheet specific styles */

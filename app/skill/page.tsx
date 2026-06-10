@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { CaseSimulationCardSkeleton, SkillProfessionCardSkeleton } from "@/components/ui/Skeletons";
 import { useAuthStore } from "@/lib/auth-store";
+import { skillApi, casesApi } from "@/lib/api";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { cn } from "@/lib/utils";
 import Cookies from "js-cookie";
@@ -293,7 +294,7 @@ function ProfessionCard({ profession, topics, filterType, defaultExpanded, onNav
   const allDone = totalActivities > 0 && completedActivities === totalActivities;
 
   return (
-    <div className="bg-white border border-zinc-200 rounded-3xl overflow-hidden shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)] hover:shadow-[0_4px_20px_-4px_rgba(0,0,0,0.1)] transition-all duration-300">
+    <div className="bg-white border border-zinc-200 rounded-3xl overflow-hidden shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)] hover:shadow-[0_4px_20px_-4px_rgba(0,0,0,0.1)] transition-all duration-300 flex flex-col h-full">
 
       {/* Card header */}
       <div className="px-5 pt-5 pb-4">
@@ -356,7 +357,7 @@ function ProfessionCard({ profession, topics, filterType, defaultExpanded, onNav
       )}
 
       {/* Big CTA */}
-      <div className="px-5 pb-5">
+      <div className="px-5 pb-5 mt-auto">
         {allFilteredTests.length === 0 ? (
           <button disabled className="w-full py-3 rounded-2xl text-sm font-black text-zinc-400 bg-zinc-100 border border-zinc-200 cursor-not-allowed">
             No tests available
@@ -397,12 +398,6 @@ function SkillHomeContent() {
   const filterType = SECTION_TO_TYPE[section] ?? null;
   const sectionLabel = SECTION_LABELS[section] ?? "All Tests";
 
-  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "";
-  const headers = {
-    "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
-
   const [professions, setProfessions] = useState<Profession[]>([]);
   const [topicsByProf, setTopicsByProf] = useState<Record<string, SkillTopic[]>>({});
   const [loading, setLoading] = useState(true);
@@ -416,18 +411,14 @@ function SkillHomeContent() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const profRes = await fetch(`${backendUrl}/api/v1/skill/professions`, { headers });
-      const profData = await profRes.json();
-      const profs: Profession[] = profData.data ?? [];
+      const profs = (await skillApi.professions<Profession[]>()) ?? [];
       setProfessions(profs);
 
       const results = await Promise.all(
         profs.map(async (p) => {
           try {
-            const res = await fetch(`${backendUrl}/api/v1/skill/professions/${p.slug}/tests`, { headers });
-            if (!res.ok) return { slug: p.slug, topics: [] };
-            const data = await res.json();
-            return { slug: p.slug, topics: data.data?.topics ?? [] };
+            const data = await skillApi.professionTests<{ topics?: SkillTopic[] }>(p.slug);
+            return { slug: p.slug, topics: data?.topics ?? [] };
           } catch { return { slug: p.slug, topics: [] }; }
         })
       );
@@ -445,9 +436,9 @@ function SkillHomeContent() {
   useEffect(() => {
     if (section !== "case_simulations") return;
     setCasesLoading(true);
-    fetch(`${backendUrl}/api/v1/cases`, { headers })
-      .then((r) => r.json())
-      .then((res) => setCases(res.data ?? []))
+    casesApi
+      .list<any[]>()
+      .then((res) => setCases(res ?? []))
       .catch(() => {})
       .finally(() => setCasesLoading(false));
   }, [section, token]);
@@ -479,23 +470,22 @@ function SkillHomeContent() {
     setPreviewLoading(true);
     setPreviewCase({ id: c.id, title: c.title, studies: [] });
     try {
-      const res = await fetch(`${backendUrl}/api/v1/cases/${c.id}`, { headers });
-      const data = await res.json();
-      setPreviewCase({ id: c.id, title: c.title, studies: data.data?.caseStudies ?? [] });
+      const data = await casesApi.detail<any>(c.id);
+      setPreviewCase({ id: c.id, title: c.title, studies: data?.caseStudies ?? [] });
     } catch {
       setPreviewCase(null);
     } finally {
       setPreviewLoading(false);
     }
-  }, [router, backendUrl, headers]);
+  }, [router]);
 
   const handleStartActivities = useCallback(async () => {
     if (!previewCase) return;
-    await fetch(`${backendUrl}/api/v1/cases/${previewCase.id}/session`, { method: "POST", headers });
-    await fetch(`${backendUrl}/api/v1/cases/${previewCase.id}/session/mark-read`, { method: "POST", headers });
+    await casesApi.startSession(previewCase.id);
+    await casesApi.markRead(previewCase.id);
     setPreviewCase(null);
     router.push(`/case-simulations/${previewCase.id}/test`);
-  }, [previewCase, router, backendUrl, headers]);
+  }, [previewCase, router]);
 
   // Filter professions by search
   const filtered = professions.filter(p =>
@@ -569,7 +559,7 @@ function SkillHomeContent() {
                 const isTesting = sess?.status === "testing";
                 const progressPct = sess ? Math.round(((sess.completedCount ?? 0) / Math.max(1, sess.totalActivities ?? 1)) * 100) : 0;
                 return (
-                  <div key={c.id} className="bg-white border border-zinc-200 rounded-3xl p-5 flex flex-col gap-3 shadow-sm hover:shadow-md transition-all">
+                  <div key={c.id} className="bg-white border border-zinc-200 rounded-3xl p-5 flex flex-col gap-3 shadow-sm hover:shadow-md transition-all h-full">
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <p className="text-xs font-black uppercase tracking-widest text-[#01696F]/60 mb-1">Case Simulation</p>
@@ -604,7 +594,7 @@ function SkillHomeContent() {
                     <button
                       onClick={() => handleOpenCase(c)}
                       className={cn(
-                        "w-full py-2.5 rounded-2xl text-xs font-black flex items-center justify-center gap-1.5 transition-all active:scale-[0.98]",
+                        "w-full py-2.5 rounded-2xl text-xs font-black flex items-center justify-center gap-1.5 transition-all active:scale-[0.98] mt-auto",
                         isCompleted
                           ? "bg-[#01696F]/10 text-[#01696F] border border-[#01696F]/20"
                           : "bg-[#01696F] text-white hover:bg-[#01696F]/90 shadow-sm"

@@ -7,7 +7,7 @@ import { useToastStore } from "@/lib/toast-store";
 import { Loader2 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
-import logo from "@/public/shankhLogo.svg"
+import { Logo } from "@/components/layout/Logo";
 import dashImage from "@/public/image.png"
 
 function LoginForm() {
@@ -64,7 +64,7 @@ function LoginForm() {
         <div className="w-full max-w-[500px] mx-auto min-h-full flex flex-col p-8 md:p-12">
           <div className="my-auto py-12">
             <div className="flex items-center gap-2 mb-6 md:mb-10">
-              <Image src={logo} alt="Shankh Logo" width={120} height={40} className="object-contain" />
+              <Logo variant="full" width={140} height={40} className="object-contain" />
             </div>
 
             <h1 className="text-3xl font-semibold text-[#1a1a1a] mb-1">Log In</h1>

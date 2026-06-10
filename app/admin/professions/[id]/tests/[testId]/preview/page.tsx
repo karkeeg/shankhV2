@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { useAuthStore } from "@/lib/auth-store";
+import { api } from "@/lib/api";
 import {
   Loader2, ArrowLeft, ArrowRight, CheckCircle2,
   ChevronRight, Trophy, X, RefreshCw, Eye,
@@ -10,13 +10,9 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ExcelGrid } from "@/components/exercise/ExcelGrid";
-import { CanvasWorkspace } from "@/components/canvas/CanvasWorkspace";
-import { tokensToItems } from "@/components/canvas/CanvasPalette";
-import type { PlacedNode } from "@/components/canvas/types";
-import Image from "next/image";
-import logo from "@/public/ShankhFull.png";
-
-const API = process.env.NEXT_PUBLIC_BACKEND_URL || "";
+import { CanvasExercise } from "@/components/exercise/CanvasExercise";
+import { tokensToPaletteItems, solutionToGraph } from "@/lib/canvasAdapter";
+import { Logo } from "@/components/layout/Logo";
 
 const TYPE_META: Record<string, { label: string; color: string }> = {
   quantus: { label: "Spreadsheet", color: "bg-sky-100 text-sky-700 border-sky-200" },
@@ -116,7 +112,6 @@ export default function TestPreviewPage() {
   const params = useParams();
   const professionId = params?.id as string;
   const testId = params?.testId as string;
-  const token = useAuthStore((s) => s.token);
 
   const [testData, setTestData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -130,28 +125,17 @@ export default function TestPreviewPage() {
   const [rightOpen, setRightOpen] = useState(false);
   const [activeLeftTab, setActiveLeftTab] = useState<"instructions" | "context">("instructions");
 
-  const headers = useCallback(
-    () => ({
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    }),
-    [token]
-  );
-
   const load = useCallback(async () => {
     setLoading(true);
     setLoadError("");
     try {
-      const testRes = await fetch(`${API}/api/v1/skill/tests/${testId}`, {
-        headers: headers(),
-      });
-      const testJson = await testRes.json();
-      if (!testRes.ok || !testJson.data) {
+      const testData = await api.get<{ test: any; items: any }>(`/api/v1/skill/tests/${testId}`);
+      if (!testData) {
         setLoadError("Test not found.");
         return;
       }
 
-      const { test, items } = testJson.data;
+      const { test, items } = testData;
       setTestData(test);
 
       const allItems: any[] = [
@@ -169,10 +153,7 @@ export default function TestPreviewPage() {
 
       const lessonResults = await Promise.all(
         uniqueLessonIds.map((lessonId) =>
-          fetch(`${API}/api/v1/admin/lessons/${lessonId}`, { headers: headers() })
-            .then((r) => r.json())
-            .then((j) => j.data)
-            .catch(() => null)
+          api.get<any>(`/api/v1/admin/lessons/${lessonId}`).catch(() => null)
         )
       );
 
@@ -203,7 +184,7 @@ export default function TestPreviewPage() {
     } finally {
       setLoading(false);
     }
-  }, [testId, token]);
+  }, [testId]);
 
   useEffect(() => {
     load();
@@ -220,32 +201,19 @@ export default function TestPreviewPage() {
   }, [currentIdx]);
 
   const canvasPaletteItems = useMemo(
-    () => actData?.paletteItems?.length ? actData.paletteItems : tokensToItems(actData?.tokens ?? []),
+    () => actData?.paletteItems?.length ? actData.paletteItems : tokensToPaletteItems(actData?.tokens ?? []),
     [step]
   );
 
-  const canvasPreviewNodes: PlacedNode[] = useMemo(() => {
-    if (step?.stepType !== "canvas") return [];
-    const positions: { id: string; x: number; y: number }[] =
-      actData?.solutionSnapshot?.nodePositions ?? [];
-    return canvasPaletteItems.map((item: any, idx: number) => {
-      const pos = positions.find((p: any) => p.id === item.id);
-      return {
-        ...item,
-        x: pos?.x ?? 40 + (idx % 4) * 170,
-        y: pos?.y ?? 40 + Math.floor(idx / 4) * 90,
-      };
-    });
-  }, [step, canvasPaletteItems]);
+  const canvasPreviewGraph = useMemo(
+    () => solutionToGraph(canvasPaletteItems, actData?.solutionSnapshot ?? null),
+    [step, canvasPaletteItems]
+  );
 
-  const canvasPreviewEdges = useMemo(() => {
-    if (step?.stepType !== "canvas") return [];
-    return (actData?.solutionSnapshot?.edges ?? []).map((e: any, i: number) => ({
-      id: `preview-edge-${i}`,
-      sourceId: e.sourceId,
-      targetId: e.targetId,
-    }));
-  }, [step, actData]);
+  const canvasPreviewEdges = useMemo(
+    () => actData?.solutionSnapshot?.edges ?? [],
+    [step, actData]
+  );
 
   const excelTable = useMemo(() => {
     if (!actData?.gridRows || !actData?.gridCols) return [];
@@ -372,9 +340,8 @@ export default function TestPreviewPage() {
             <div className="flex flex-col gap-3 overflow-y-auto flex-1 pb-3">
               <div className="flex flex-col items-center gap-2 border-b border-zinc-100 pb-3 pt-1">
                 <div className="w-full flex justify-center">
-                  <Image
-                    src={logo}
-                    alt="Shankh"
+                  <Logo
+                    variant="full"
                     width={110}
                     height={32}
                     className="object-contain"
@@ -630,12 +597,9 @@ export default function TestPreviewPage() {
             {/* Canvas */}
             {isCanvasActive && (
               <div className="absolute inset-0">
-                <CanvasWorkspace
+                <CanvasExercise
                   key={`canvas-preview-${step.id}`}
-                  paletteItems={canvasPaletteItems}
-                  initialNodes={canvasPreviewNodes}
-                  initialEdges={canvasPreviewEdges}
-                  solutionSnapshot={actData?.solutionSnapshot ?? null}
+                  initialElements={canvasPreviewGraph}
                   disabled
                 />
               </div>

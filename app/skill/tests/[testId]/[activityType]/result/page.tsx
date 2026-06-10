@@ -10,6 +10,7 @@ import {
 import { ExcelGrid } from "@/components/exercise/ExcelGrid";
 import { CanvasExercise } from "@/components/exercise/CanvasExercise";
 import { useAuthStore } from "@/lib/auth-store";
+import { skillApi, activitiesApi } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import Cookies from "js-cookie";
 
@@ -203,29 +204,16 @@ function QuantusReview({ quantusSession }: { quantusSession: any }) {
 
 // ─── Canvas Review ────────────────────────────────────────────────────────────
 
-function CanvasReview({
-  item,
-  token: authToken,
-  backendUrl,
-}: {
-  item: any;
-  token?: string;
-  backendUrl: string;
-}) {
+function CanvasReview({ item }: { item: any }) {
   const [activityData, setActivityData] = useState<any>(null);
   const [loadingActivity, setLoadingActivity] = useState(false);
 
   useEffect(() => {
     if (!item.lessonId || !item.canvasData) return;
     setLoadingActivity(true);
-    fetch(`${backendUrl}/api/v1/activities/${item.lessonId}`, {
-      headers: {
-        "Content-Type": "application/json",
-        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-      },
-    })
-      .then(r => r.json())
-      .then(d => setActivityData(d.data))
+    activitiesApi
+      .get<any>(item.lessonId)
+      .then(d => setActivityData(d))
       .catch(() => {})
       .finally(() => setLoadingActivity(false));
   }, [item.lessonId, item.canvasData]);
@@ -322,11 +310,6 @@ export default function TestResultPage() {
   const backSection = TYPE_TO_SECTION[activityType] ?? "mcqs";
 
   const token = useAuthStore((s) => s.token) || Cookies.get("shankh-token");
-  const headers = {
-    "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
-  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "";
 
   const [session, setSession] = useState<any>(null);
   const [testDetails, setTestDetails] = useState<any>(null);
@@ -351,14 +334,12 @@ export default function TestResultPage() {
     if (!testId || !activityType) return;
     setLoading(true);
     try {
-      const [sessionRes, testRes] = await Promise.all([
-        fetch(`${backendUrl}/api/v1/skill/tests/${testId}/sessions/${activityType}`, { headers }),
-        fetch(`${backendUrl}/api/v1/skill/tests/${testId}`, { headers }),
+      const [sessionData, testData] = await Promise.all([
+        skillApi.testSession<any>(testId, activityType),
+        skillApi.test<any>(testId).catch(() => null),
       ]);
-      if (!sessionRes.ok) throw new Error("Failed to load session");
-      const sessionData = (await sessionRes.json()).data;
       setSession(sessionData.session);
-      if (testRes.ok) setTestDetails((await testRes.json()).data);
+      if (testData) setTestDetails(testData);
     } catch (e) {
       console.error("Failed to load result:", e);
     } finally {
@@ -649,7 +630,7 @@ export default function TestResultPage() {
 
           {/* Canvas */}
           {activityType === "canvas" && currentItem && (
-            <CanvasReview item={currentItem} token={token} backendUrl={backendUrl} />
+            <CanvasReview item={currentItem} />
           )}
         </div>
       </div>

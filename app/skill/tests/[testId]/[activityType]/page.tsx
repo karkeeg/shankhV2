@@ -21,10 +21,13 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/lib/auth-store";
+import { skillApi, activitiesApi, attemptsApi, reactionsApi, ApiError } from "@/lib/api";
 import { CanvasExercise } from "@/components/exercise/CanvasExercise";
 import { ExcelGrid, evaluateExcelFormula } from "@/components/exercise/ExcelGrid";
 import { CanvasToolkit } from "@/components/exercise/CanvasToolkit";
 import { TimerBar } from "@/components/skill/TimerBar";
+import { Logo } from "@/components/layout/Logo";
+import { CollapsiblePanel, PanelEdgeRail, PanelReopenTab, useCollapsiblePanel } from "@/components/activity/panels";
 import Cookies from "js-cookie";
 
 // ─── Normalization ────────────────────────────────────────────────────────────
@@ -98,45 +101,6 @@ function ActivityTypePill({ type }: { type: string }) {
     <span className={cn("px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest border", m.color)}>
       {m.label}
     </span>
-  );
-}
-
-// ─── Panel Toggle ─────────────────────────────────────────────────────────────
-
-function PanelToggle({
-  open,
-  onClick,
-  side,
-}: {
-  open: boolean;
-  onClick: () => void;
-  side: "left" | "right";
-}) {
-  if (open) return null;
-  const isLeft = side === "left";
-  return (
-    <button
-      onClick={onClick}
-      aria-label={open ? "Collapse panel" : "Expand panel"}
-      className={cn(
-        "self-center z-20 flex-shrink-0",
-        "w-8 h-40 bg-white border border-zinc-200 shadow-md",
-        "rounded-full flex items-center justify-center",
-        "hover:bg-[#E6F0F1] hover:border-[#01696F]/30",
-        "transition-all duration-200 active:scale-95 group"
-      )}
-    >
-      {isLeft ? (
-        <ChevronRight size={14} className="text-zinc-500 group-hover:text-[#01696F]" />
-      ) : (
-        <div className="flex flex-col items-center justify-center gap-2">
-          <span className="text-[11px] font-bold text-[#01696F] uppercase tracking-widest [writing-mode:vertical-rl] rotate-180">
-            Session
-          </span>
-          <Trophy size={14} className="text-[#01696F] group-hover:scale-110 transition-transform duration-200" />
-        </div>
-      )}
-    </button>
   );
 }
 
@@ -256,13 +220,6 @@ export default function TestSessionPage() {
   const token = useAuthStore((s) => s.token) || Cookies.get("shankh-token");
   const user = useAuthStore((s) => s.user);
 
-  const headers = {
-    "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
-
-  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "";
-
   // ── Session & item state ──────────────────────────────────────────────────
   const [session, setSession] = useState<any>(null);
   const [nextItem, setNextItem] = useState<any>(null);
@@ -290,8 +247,17 @@ export default function TestSessionPage() {
   const [showConfirm, setShowConfirm] = useState(false);
 
   // ── Panel state ───────────────────────────────────────────────────────────
-  const [leftPanelOpen, setLeftPanelOpen] = useState(true);
-  const [rightPanelOpen, setRightPanelOpen] = useState(true);
+  // Left panel: new collapsible + resizable shell with a floating edge rail,
+  // persisted per test id. Right panel keeps its previous fixed-width behaviour.
+  const {
+    open: leftPanelOpen, setOpen: setLeftPanelOpen, toggle: toggleLeft,
+    width: leftWidth, resize: resizeLeft,
+  } = useCollapsiblePanel(`skill:${testId}:left`, { defaultOpen: true, defaultWidth: 256, min: 180, max: 420 });
+  const {
+    open: rightPanelOpen, setOpen: setRightPanelOpen, toggle: toggleRight,
+    width: rightWidth, resize: resizeRight,
+  } = useCollapsiblePanel(`skill:${testId}:right`, { defaultOpen: true, defaultWidth: 320, min: 240, max: 520 });
+  const [dragging, setDragging] = useState(false);
   const [activeLeftTab, setActiveLeftTab] = useState<"instructions" | "context">("instructions");
 
   // ── Step counting (MCQ questions each count as 1 step) ────────────────────
@@ -317,37 +283,30 @@ export default function TestSessionPage() {
   const loadSession = useCallback(async () => {
     if (!testId || !activityType) return;
     try {
-      let res = await fetch(
-        `${backendUrl}/api/v1/skill/tests/${testId}/sessions/${activityType}`,
-        { headers }
-      );
-
       let data: any;
 
-      if (res.status === 404) {
-        res = await fetch(
-          `${backendUrl}/api/v1/skill/tests/${testId}/sessions`,
-          {
-            method: "POST",
-            headers,
-            body: JSON.stringify({ activityType }),
+      try {
+        data = await skillApi.testSession<any>(testId, activityType);
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 404) {
+          try {
+            const init = await skillApi.startSession<any>(testId, { activityType });
+            data = {
+              session: init.session,
+              completedItemIds: [],
+              nextItem: init.items?.[0] ?? null,
+            };
+          } catch (e2) {
+            if (e2 instanceof ApiError && e2.status === 409) {
+              // Session already completed — send straight to results
+              router.replace(`/skill/tests/${testId}/${activityType}/result`);
+              return;
+            }
+            throw e2;
           }
-        );
-        if (res.status === 409) {
-          // Session already completed — send straight to results
-          router.replace(`/skill/tests/${testId}/${activityType}/result`);
-          return;
+        } else {
+          throw e;
         }
-        if (!res.ok) throw new Error("Failed to start session");
-        const init = await res.json();
-        data = {
-          session: init.data.session,
-          completedItemIds: [],
-          nextItem: init.data.items?.[0] ?? null,
-        };
-      } else {
-        if (!res.ok) throw new Error("Failed to resume session");
-        data = (await res.json()).data;
       }
 
       setSession(data.session);
@@ -366,13 +325,7 @@ export default function TestSessionPage() {
 
       setNextItem(data.nextItem);
 
-      const actRes = await fetch(
-        `${backendUrl}/api/v1/activities/${data.nextItem.lessonId}`,
-        { headers }
-      );
-      if (!actRes.ok) throw new Error("Failed to load activity");
-      const actJson = await actRes.json();
-      const raw = actJson.data;
+      const raw = await activitiesApi.get<any>(data.nextItem.lessonId);
 
       const targetStep = raw.steps.find((s: any) => s.type === activityType);
       if (!targetStep) throw new Error("Activity type not found in lesson");
@@ -389,14 +342,12 @@ export default function TestSessionPage() {
 
       // Fetch reactions for the new lesson item
       if (token && data.nextItem?.lessonId) {
-        fetch(`${backendUrl}/api/v1/reactions/lessons/${data.nextItem.lessonId}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-          .then((r) => r.json())
+        reactionsApi
+          .lesson<any>(data.nextItem.lessonId)
           .then((rj) => {
-            if (rj?.data) {
-              setReactionCounts({ likes: rj.data.likes, dislikes: rj.data.dislikes });
-              setUserReaction(rj.data.userReaction);
+            if (rj) {
+              setReactionCounts({ likes: rj.likes, dislikes: rj.dislikes });
+              setUserReaction(rj.userReaction);
             }
           })
           .catch(() => {});
@@ -449,11 +400,7 @@ export default function TestSessionPage() {
   const handleTimerExpired = async () => {
     if (!session) return;
     try {
-      await fetch(`${backendUrl}/api/v1/skill/sessions/${session.id}/complete`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ timeSpentSecs: session.timeLimitMins * 60 }),
-      });
+      await skillApi.completeSession(session.id, { timeSpentSecs: session.timeLimitMins * 60 });
       router.push(`/skill/tests/${testId}/${activityType}/result`);
     } catch (err) {
       console.error(err);
@@ -465,11 +412,7 @@ export default function TestSessionPage() {
     if (!session) return;
     setCompleting(true);
     try {
-      await fetch(`${backendUrl}/api/v1/skill/sessions/${session.id}/complete`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ timeSpentSecs: timeSpentRef.current }),
-      });
+      await skillApi.completeSession(session.id, { timeSpentSecs: timeSpentRef.current });
       router.push(`/skill/tests/${testId}/${activityType}/result`);
     } catch (err) {
       console.error(err);
@@ -487,11 +430,7 @@ export default function TestSessionPage() {
   const handlePauseExit = async () => {
     if (session) {
       try {
-        await fetch(`${backendUrl}/api/v1/skill/sessions/${session.id}`, {
-          method: "PATCH",
-          headers,
-          body: JSON.stringify({ timeSpentSecs: timeSpentRef.current }),
-        });
+        await skillApi.updateSession(session.id, { timeSpentSecs: timeSpentRef.current });
       } catch { }
     }
     router.push(`/skill?section=${TYPE_TO_SECTION[activityType] ?? "mcqs"}`);
@@ -576,16 +515,10 @@ export default function TestSessionPage() {
     }
 
     try {
-      const gradeRes = await fetch(`${backendUrl}/api/v1/attempts/session/${activityType}`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(gradePayload),
-      });
-      const gradeJson = await gradeRes.json();
-      if (!gradeRes.ok) throw new Error(gradeJson?.error || "Grading failed");
+      const grade = await attemptsApi.session<any>(activityType, gradePayload);
 
-      const attemptId = gradeJson.data.id;
-      const scorePct = gradeJson.data.accuracy ?? gradeJson.data.scorePct ?? 100;
+      const attemptId = grade.id;
+      const scorePct = grade.accuracy ?? grade.scorePct ?? 100;
 
       // Per-cell feedback for quantus
       if (activityType === "quantus") {
@@ -617,20 +550,14 @@ export default function TestSessionPage() {
         return;
       }
 
-      const submitRes = await fetch(`${backendUrl}/api/v1/skill/sessions/${session.id}/submit`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          testItemId: nextItem.id,
-          activityType,
-          existingSessionId: attemptId,
-          scorePct,
-        }),
+      const submit = await skillApi.submitSession<any>(session.id, {
+        testItemId: nextItem.id,
+        activityType,
+        existingSessionId: attemptId,
+        scorePct,
       });
-      const submitJson = await submitRes.json();
-      if (!submitRes.ok) throw new Error("Failed to submit to session");
 
-      const { sessionProgress, allComplete } = submitJson.data;
+      const { sessionProgress, allComplete } = submit;
 
       setSession((prev: any) => ({
         ...prev,
@@ -665,15 +592,10 @@ export default function TestSessionPage() {
   const handleReaction = async (reaction: "like" | "dislike") => {
     if (!token || !nextItem?.lessonId) return;
     try {
-      const res = await fetch(`${backendUrl}/api/v1/reactions/lessons/${nextItem.lessonId}`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ reaction, source: "test" }),
-      });
-      const rj = await res.json();
-      if (rj?.data) {
-        setReactionCounts({ likes: rj.data.likes, dislikes: rj.data.dislikes });
-        setUserReaction(rj.data.userReaction);
+      const rj = await reactionsApi.react<any>(nextItem.lessonId, { reaction, source: "test" });
+      if (rj) {
+        setReactionCounts({ likes: rj.likes, dislikes: rj.dislikes });
+        setUserReaction(rj.userReaction);
       }
     } catch { }
   };
@@ -704,23 +626,28 @@ export default function TestSessionPage() {
 
   // ─────────────────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-row h-screen overflow-hidden font-sans bg-white text-zinc-800 p-2 sm:p-3 gap-0">
+    <div className="relative flex flex-row h-screen overflow-hidden font-sans bg-white text-zinc-800 p-2 sm:p-3 gap-0">
+
+      {/* Far-left edge rail — collapse / expand the left panel */}
+      <PanelEdgeRail side="left" open={leftPanelOpen} onToggle={toggleLeft} label="test panel" />
 
       {/* ══════════════════════ LEFT PANEL ══════════════════════ */}
-      <div className={cn(
-        "flex-shrink-0 transition-all duration-300 ease-in-out overflow-hidden",
-        leftPanelOpen ? "w-60 xl:w-64" : "w-0"
-      )}>
-        <div className="w-60 xl:w-64 h-full flex flex-col justify-between pr-2">
+      <CollapsiblePanel
+        side="left"
+        open={leftPanelOpen}
+        width={leftWidth}
+        dragging={dragging}
+        resizable
+        onResize={resizeLeft}
+        onDragState={setDragging}
+        innerClassName="h-full flex flex-col justify-between pr-2"
+      >
           <div className="flex flex-col gap-3 overflow-y-auto flex-1 pb-3">
 
             {/* Logo + back */}
             <div className="flex flex-col items-center gap-3 border-b border-zinc-100 pb-3 pt-1">
               <div className="w-full flex justify-center">
-                {/* Replace with your actual logo import */}
-                <div className="h-8 w-28 bg-[#01696F]/10 rounded-lg flex items-center justify-center">
-                  <span className="text-xs font-black text-[#01696F] tracking-widest uppercase">Shankh</span>
-                </div>
+                <Logo variant="full" width={110} height={32} className="object-contain" style={{ width: "auto", height: "auto" }} />
               </div>
               <button
                 onClick={handlePauseExit}
@@ -845,11 +772,7 @@ export default function TestSessionPage() {
               </div>
             )}
           </div>
-        </div>
-      </div>
-
-      {/* ── Left panel toggle ── */}
-      <PanelToggle open={leftPanelOpen} onClick={() => setLeftPanelOpen((o) => !o)} side="left" />
+      </CollapsiblePanel>
 
       {/* ══════════════════════ MAIN WORKSPACE ══════════════════════ */}
       <div className="flex-1 min-w-0 flex flex-col bg-[#F0EDE7] shadow-[0px_4px_8px_0px_#0000003D_inset] border border-[#F0EDE7] rounded-2xl overflow-hidden mx-1.5">
@@ -1002,32 +925,28 @@ export default function TestSessionPage() {
         </div>
       </div>
 
-      {/* ── Right panel toggle ── */}
-      <PanelToggle open={rightPanelOpen} onClick={() => setRightPanelOpen((o) => !o)} side="right" />
+      {/* Right panel reopen tab (previous style) */}
+      <PanelReopenTab
+        open={rightPanelOpen}
+        onOpen={() => setRightPanelOpen(true)}
+        label="Session"
+        icon={<Trophy size={14} className="text-[#01696F] group-hover:scale-110 transition-transform duration-200" />}
+      />
 
       {/* ══════════════════════ RIGHT PANEL — SESSION INFO ══════════════════════ */}
-      <div className={cn(
-        "flex-shrink-0 transition-all duration-300 ease-in-out overflow-hidden",
-        rightPanelOpen ? "w-72 xl:w-80" : "w-0"
-      )}>
-        <div className="w-72 xl:w-80 h-full flex flex-col pl-2">
-          <div className="bg-white flex flex-col h-full overflow-hidden rounded-2xl border border-zinc-100 shadow-sm">
-
-            {/* Header */}
-            <div className="flex items-center gap-2.5 px-4 py-3 border-b border-zinc-200 flex-shrink-0 bg-[#FAF7F2]">
-              <div className="w-8 h-8 rounded-full bg-[#01696F]/10 flex items-center justify-center flex-shrink-0">
-                <Trophy size={16} className="text-[#01696F]" />
-              </div>
-              <h3 className="font-black text-zinc-800 text-base tracking-tight">Session</h3>
-              <button
-                onClick={() => setRightPanelOpen(false)}
-                aria-label="Close panel"
-                className="ml-auto w-7 h-7 flex items-center justify-center rounded-lg hover:bg-zinc-100 transition group"
-              >
-                <X size={16} className="text-zinc-500 group-hover:text-zinc-800 transition" />
-              </button>
-            </div>
-
+      <CollapsiblePanel
+        side="right"
+        open={rightPanelOpen}
+        width={rightWidth}
+        dragging={dragging}
+        resizable
+        onResize={resizeRight}
+        onDragState={setDragging}
+        title="Session"
+        icon={<Trophy size={16} className="text-[#01696F]" />}
+        onClose={() => setRightPanelOpen(false)}
+        innerClassName="h-full flex flex-col pl-2"
+      >
             {/* Body */}
             <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-3 bg-[#F0EDE7]">
 
@@ -1087,9 +1006,7 @@ export default function TestSessionPage() {
                 </p>
               </div>
             </div>
-          </div>
-        </div>
-      </div>
+      </CollapsiblePanel>
     </div>
   );
 }

@@ -318,6 +318,134 @@ export const deleteProfession = async (req: Request, res: Response) => {
 
 
 
+// ─── Curriculum CRUD: update / soft-delete / reorder ─────────────────────────
+//
+// Soft-delete keeps history intact and matches the getLearningTree filter
+// (isActive: true, deletedAt: null). `undefined` fields in update payloads are
+// ignored by Prisma, so partial updates work without extra guards.
+
+export const updateModule = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { slug, name, description, accentColor, iconKey, orderIndex, isActive } = req.body;
+  try {
+    const module = await prisma.module.update({
+      where: { id },
+      data: { slug, name, description, accentColor, iconKey, orderIndex, isActive },
+    });
+    return res.json({ data: module });
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message || "Failed to update module" });
+  }
+};
+
+export const deleteModule = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  try {
+    await prisma.module.update({ where: { id }, data: { isActive: false, deletedAt: new Date() } });
+    return res.json({ data: { success: true } });
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message || "Failed to delete module" });
+  }
+};
+
+export const updateTopic = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { name, subtitle, description, tags, orderIndex, type, isActive } = req.body;
+  try {
+    const topic = await prisma.topic.update({
+      where: { id },
+      data: { name, subtitle, description, tags, orderIndex, type, isActive },
+    });
+    return res.json({ data: topic });
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message || "Failed to update topic" });
+  }
+};
+
+export const deleteTopic = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  try {
+    await prisma.topic.update({ where: { id }, data: { isActive: false, deletedAt: new Date() } });
+    return res.json({ data: { success: true } });
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message || "Failed to delete topic" });
+  }
+};
+
+export const updateSubtopic = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { name, description, type, orderIndex, isActive } = req.body;
+  try {
+    const subtopic = await prisma.subtopic.update({
+      where: { id },
+      data: { name, description, type, orderIndex, isActive },
+    });
+    return res.json({ data: subtopic });
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message || "Failed to update subtopic" });
+  }
+};
+
+export const deleteSubtopic = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  try {
+    await prisma.subtopic.update({ where: { id }, data: { isActive: false, deletedAt: new Date() } });
+    return res.json({ data: { success: true } });
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message || "Failed to delete subtopic" });
+  }
+};
+
+export const updateLesson = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { name, description, difficulty, orderIndex, estimatedMins, isActive } = req.body;
+  try {
+    const lesson = await prisma.lesson.update({
+      where: { id },
+      data: { name, description, difficulty, orderIndex, estimatedMins, isActive },
+    });
+    return res.json({ data: lesson });
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message || "Failed to update lesson" });
+  }
+};
+
+export const deleteLesson = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  try {
+    await prisma.lesson.update({ where: { id }, data: { isActive: false, deletedAt: new Date() } });
+    return res.json({ data: { success: true } });
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message || "Failed to delete lesson" });
+  }
+};
+
+const REORDER_DELEGATES = {
+  module: prisma.module,
+  topic: prisma.topic,
+  subtopic: prisma.subtopic,
+  lesson: prisma.lesson,
+} as const;
+
+/**
+ * Reorder a flat list of sibling entities. Body: { entity, orderedIds }.
+ * Applies orderIndex = position atomically.
+ */
+export const reorderCurriculum = async (req: Request, res: Response) => {
+  const { entity, orderedIds } = req.body as { entity?: keyof typeof REORDER_DELEGATES; orderedIds?: string[] };
+  if (!entity || !REORDER_DELEGATES[entity]) return res.status(400).json({ error: "Valid entity is required (module|topic|subtopic|lesson)" });
+  if (!Array.isArray(orderedIds)) return res.status(400).json({ error: "orderedIds array is required" });
+  try {
+    const delegate = REORDER_DELEGATES[entity] as any;
+    await prisma.$transaction(
+      orderedIds.map((id: string, index: number) => delegate.update({ where: { id }, data: { orderIndex: index } })),
+    );
+    return res.json({ data: { success: true } });
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message || "Failed to reorder" });
+  }
+};
+
 export const getLearningTree = async (req: Request, res: Response) => {
   try {
     const tree = await prisma.module.findMany({

@@ -3,13 +3,10 @@
 import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { MainLayout } from "@/components/layout/MainLayout";
-import { useAuthStore } from "@/lib/auth-store";
-import { ArrowLeft, Save, Check, AlertCircle, Plus, Trash2, Grid3X3, TableProperties, Loader2 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { api } from "@/lib/api";
+import { useToastStore } from "@/lib/toast-store";
+import { ArrowLeft, Save, Plus, Trash2, Grid3X3, TableProperties, Loader2 } from "lucide-react";
 import { ExcelGrid } from "@/components/exercise/ExcelGrid";
-
-
-const API = process.env.NEXT_PUBLIC_BACKEND_URL || "";
 
 // ── Cell type metadata ────────────────────────────────────────────────────────
 
@@ -51,13 +48,7 @@ export default function QuantusAdminEditor() {
   const params = useParams();
   const lessonId = params.id as string;
   const router = useRouter();
-  const token = useAuthStore((s) => s.token);
-
-  const headers = useMemo<Record<string, string>>(() => {
-    const h: Record<string, string> = { "Content-Type": "application/json" };
-    if (token) h["Authorization"] = `Bearer ${token}`;
-    return h;
-  }, [token]);
+  const showToast = useToastStore((s) => s.showToast);
 
   // ── Meta ──
   const [title, setTitle] = useState("");
@@ -85,12 +76,6 @@ export default function QuantusAdminEditor() {
   // ── UI ──
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [toast, setToast] = useState<{ type: "success" | "error"; msg: string } | null>(null);
-
-  const showToast = useCallback((type: "success" | "error", msg: string) => {
-    setToast({ type, msg });
-    setTimeout(() => setToast(null), 3500);
-  }, []);
 
   // ── Build empty grid ──
   const buildGrid = useCallback((r: number, c: number) => {
@@ -102,10 +87,9 @@ export default function QuantusAdminEditor() {
 
   // ── Load existing data ──
   useEffect(() => {
-    fetch(`${API}/api/v1/admin/lessons/${lessonId}`, { headers })
-      .then((res) => res.json())
-      .then((json) => {
-        const a = json.data?.quantusActivity;
+    api.get<any>(`/api/v1/admin/lessons/${lessonId}`)
+      .then((res) => {
+        const a = res?.quantusActivity;
         if (a) {
           setTitle(a.title || "");
           setInstructions(a.instructions || "");
@@ -260,7 +244,7 @@ export default function QuantusAdminEditor() {
   // ── Save ──
   const save = async () => {
     if (!title.trim() || !instructions.trim()) {
-      showToast("error", "Title and instructions are required");
+      showToast("Title and instructions are required", "error");
       return;
     }
     try {
@@ -295,13 +279,10 @@ export default function QuantusAdminEditor() {
         cells,
       };
 
-      const res = await fetch(`${API}/api/v1/admin/lessons/${lessonId}/quantus`, {
-        method: "POST", headers, body: JSON.stringify(payload),
-      });
-      if (!res.ok) { const j = await res.json(); throw new Error(j.error || "Failed"); }
-      showToast("success", "Quantus activity saved");
+      await api.post(`/api/v1/admin/lessons/${lessonId}/quantus`, payload);
+      showToast("Quantus activity saved", "success");
     } catch (e: any) {
-      showToast("error", e.message);
+      showToast(e?.message || "Failed to save", "error");
     } finally {
       setSaving(false);
     }
@@ -321,15 +302,6 @@ export default function QuantusAdminEditor() {
   return (
     <MainLayout>
       <div className="flex flex-col h-full max-h-[calc(100vh-24px)] overflow-hidden bg-zinc-100">
-
-        {toast && (
-          <div className={cn(
-            "fixed top-5 right-5 z-50 flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-bold shadow-2xl",
-            toast.type === "success" ? "bg-emerald-600 text-white" : "bg-rose-600 text-white"
-          )}>
-            {toast.type === "success" ? <Check size={13} /> : <AlertCircle size={13} />} {toast.msg}
-          </div>
-        )}
 
         {/* ── Top bar ── */}
         <div className="flex items-center gap-3 px-5 py-3 bg-white border-b border-zinc-200 shrink-0 flex-wrap">

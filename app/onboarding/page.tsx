@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/lib/auth-store";
 import { Loader2, Check, ArrowRight, ArrowLeft } from "lucide-react";
 import Image from "next/image";
-import logo from "@/public/shankhLogo.svg";
+import { Logo } from "@/components/layout/Logo";
 import dashImage from "@/public/image.png";
 
 const professionOptions = [
@@ -174,7 +174,7 @@ export default function OnboardingPage() {
           
           {/* Top Header Logo */}
           <div className="flex items-center justify-between mb-8 md:mb-12">
-            <Image src={logo} alt="Shankh Logo" width={120} height={40} className="object-contain" />
+            <Logo variant="mark" width={120} height={40} className="object-contain" />
             
             {step < 6 && (
               <span className="bg-[#EAE8E2] text-zinc-700 font-semibold px-3 py-1.5 rounded-full text-xs transition-all animate-fade-in">

@@ -6,6 +6,9 @@ import {
   setupQuantusActivity, addActivityHints, assignSubtopicProfessions,
   recalculateUserProgress, createProfession, getAdminProfessions,
   updateProfession, deleteProfession, getLearningTree, getLessonDetail,
+  updateModule, deleteModule, updateTopic, deleteTopic,
+  updateSubtopic, deleteSubtopic, updateLesson, deleteLesson,
+  reorderCurriculum,
 } from "../controllers/adminController";
 
 import {
@@ -18,9 +21,18 @@ router.use(requireAuth, requireAdmin);
 
 // ── Learning content ──────────────────────────────────────────────────────────
 router.post("/modules", createModule);
+router.put("/modules/:id", updateModule);
+router.delete("/modules/:id", deleteModule);
 router.post("/topics", createTopic);
+router.put("/topics/:id", updateTopic);
+router.delete("/topics/:id", deleteTopic);
 router.post("/subtopics", createSubtopic);
+router.put("/subtopics/:id", updateSubtopic);
+router.delete("/subtopics/:id", deleteSubtopic);
 router.post("/lessons", createLesson);
+router.put("/lessons/:id", updateLesson);
+router.delete("/lessons/:id", deleteLesson);
+router.post("/curriculum/reorder", reorderCurriculum);
 router.post("/lessons/:id/activities", assignLessonActivity);
 router.post("/activities/mcq/:id/setup", setupMcqActivity);
 router.post("/activities/canvas/:id/setup", setupCanvasActivity);

@@ -3,10 +3,9 @@
 import React, { useEffect, useState, useCallback, Suspense } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Loader2, ArrowLeft, Bell, ChevronDown, ChevronUp } from "lucide-react";
-import { useAuthStore } from "@/lib/auth-store";
 import { TestCard } from "@/components/skill/TestCard";
 import { MainLayout } from "@/components/layout/MainLayout";
-import Cookies from "js-cookie";
+import { skillApi } from "@/lib/api";
 
 // ─── TopicSection Component ──────────────────────────────────────────────────
 
@@ -75,7 +74,6 @@ function ProfessionTestsPageContent() {
   else if (section === "framework_drills") activeActivityType = "canvas";
   else if (section === "quant_lab") activeActivityType = "quantus";
 
-  const token = useAuthStore((s) => s.token) || Cookies.get("shankh-token");
   const [topics, setTopics] = useState<any[]>([]);
   const [professionName, setProfessionName] = useState("");
   const [loading, setLoading] = useState(true);
@@ -84,28 +82,16 @@ function ProfessionTestsPageContent() {
     if (!professionSlug) return;
     setLoading(true);
     try {
-      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "";
-      const headers = {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      };
-
       // Fetch profession tests
-      const res = await fetch(
-        `${backendUrl}/api/v1/skill/professions/${professionSlug}/tests`,
-        { headers }
-      );
-      if (!res.ok) throw new Error("Failed to load tests");
-      const resData = await res.json();
-      const rawTopics = resData.data?.topics ?? [];
-      setTopics(rawTopics);
-      setProfessionName(resData.data?.profession?.name ?? professionSlug.toUpperCase().replace(/-/g, " "));
+      const data = await skillApi.professionTests<{ topics?: any[]; profession?: { name?: string } }>(professionSlug);
+      setTopics(data?.topics ?? []);
+      setProfessionName(data?.profession?.name ?? professionSlug.toUpperCase().replace(/-/g, " "));
     } catch (e) {
       console.error("Failed to load profession tests", e);
     } finally {
       setLoading(false);
     }
-  }, [professionSlug, token]);
+  }, [professionSlug]);
 
   useEffect(() => {
     fetchTests();

@@ -20,10 +20,11 @@ export function middleware(request: NextRequest) {
 
   const isAuthPage = pathname === "/login" || pathname === "/signup";
   const isOnboardingPage = pathname === "/onboarding";
-
-  // If there is no token and the user is not on an auth page or onboarding page, redirect to login
+  const isLandingPage = pathname === "/";
+  
+  // If there is no token and the user is not on an auth page, onboarding page, or landing page, redirect to login
   if (!token) {
-    if (!isAuthPage && !isOnboardingPage) {
+    if (!isAuthPage && !isOnboardingPage && !isLandingPage) {
       const url = request.nextUrl.clone();
       url.pathname = "/login";
       url.searchParams.set("redirect", "true");

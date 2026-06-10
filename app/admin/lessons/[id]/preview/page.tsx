@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { useAuthStore } from "@/lib/auth-store";
+import { api } from "@/lib/api";
 import {
   Loader2, ArrowLeft, ArrowRight, CheckCircle2,
   ChevronRight, Trophy, X, RefreshCw, Eye, Pencil,
@@ -10,13 +10,9 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ExcelGrid } from "@/components/exercise/ExcelGrid";
-import { CanvasWorkspace } from "@/components/canvas/CanvasWorkspace";
-import { tokensToItems } from "@/components/canvas/CanvasPalette";
-import type { PlacedNode } from "@/components/canvas/types";
-import Image from "next/image";
-import logo from "@/public/ShankhFull.png";
-
-const API = process.env.NEXT_PUBLIC_BACKEND_URL || "";
+import { CanvasExercise } from "@/components/exercise/CanvasExercise";
+import { tokensToPaletteItems, solutionToGraph } from "@/lib/canvasAdapter";
+import { Logo } from "@/components/layout/Logo";
 
 const TYPE_META: Record<string, { label: string; color: string }> = {
   quantus: { label: "Spreadsheet", color: "bg-sky-100 text-sky-700 border-sky-200" },
@@ -143,7 +139,6 @@ export default function LessonPreviewPage() {
   const router = useRouter();
   const params = useParams();
   const id = params?.id as string;
-  const token = useAuthStore((s) => s.token);
 
   const [lesson, setLesson] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -157,20 +152,10 @@ export default function LessonPreviewPage() {
   const [rightOpen, setRightOpen] = useState(false);
   const [activeLeftTab, setActiveLeftTab] = useState<"instructions" | "context">("instructions");
 
-  const headers = useCallback(
-    () => ({
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    }),
-    [token]
-  );
-
   const load = useCallback(() => {
     setLoading(true);
-    fetch(`${API}/api/v1/admin/lessons/${id}`, { headers: headers() })
-      .then((r) => r.json())
-      .then((res) => {
-        const data = res.data;
+    api.get<any>(`/api/v1/admin/lessons/${id}`)
+      .then((data) => {
         if (!data) return;
         setLesson(data);
         setSteps(buildLessonSteps(data));
@@ -178,7 +163,7 @@ export default function LessonPreviewPage() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [id, token]);
+  }, [id]);
 
   useEffect(() => {
     load();
@@ -202,32 +187,19 @@ export default function LessonPreviewPage() {
   }, [currentIdx]);
 
   const canvasPaletteItems = useMemo(
-    () => actData?.paletteItems?.length ? actData.paletteItems : tokensToItems(actData?.tokens ?? []),
+    () => actData?.paletteItems?.length ? actData.paletteItems : tokensToPaletteItems(actData?.tokens ?? []),
     [step]
   );
 
-  const canvasPreviewNodes: PlacedNode[] = useMemo(() => {
-    if (step?.stepType !== "canvas") return [];
-    const positions: { id: string; x: number; y: number }[] =
-      actData?.solutionSnapshot?.nodePositions ?? [];
-    return canvasPaletteItems.map((item: any, idx: number) => {
-      const pos = positions.find((p: any) => p.id === item.id);
-      return {
-        ...item,
-        x: pos?.x ?? 40 + (idx % 4) * 170,
-        y: pos?.y ?? 40 + Math.floor(idx / 4) * 90,
-      };
-    });
-  }, [step, canvasPaletteItems]);
+  const canvasPreviewGraph = useMemo(
+    () => solutionToGraph(canvasPaletteItems, actData?.solutionSnapshot ?? null),
+    [step, canvasPaletteItems]
+  );
 
-  const canvasPreviewEdges = useMemo(() => {
-    if (step?.stepType !== "canvas") return [];
-    return (actData?.solutionSnapshot?.edges ?? []).map((e: any, i: number) => ({
-      id: `preview-edge-${i}`,
-      sourceId: e.sourceId,
-      targetId: e.targetId,
-    }));
-  }, [step, actData]);
+  const canvasPreviewEdges = useMemo(
+    () => actData?.solutionSnapshot?.edges ?? [],
+    [step, actData]
+  );
 
   const excelTable = useMemo(() => {
     if (!actData?.gridRows || !actData?.gridCols) return [];
@@ -423,9 +395,8 @@ export default function LessonPreviewPage() {
             <div className="flex flex-col gap-3 overflow-y-auto flex-1 pb-3">
               <div className="flex flex-col items-center gap-2 border-b border-zinc-100 pb-3 pt-1">
                 <div className="w-full flex justify-center">
-                  <Image
-                    src={logo}
-                    alt="Shankh"
+                  <Logo
+                    variant="full"
                     width={110}
                     height={32}
                     className="object-contain"
@@ -681,12 +652,9 @@ export default function LessonPreviewPage() {
             {/* Canvas */}
             {isCanvasActive && (
               <div className="absolute inset-0">
-                <CanvasWorkspace
+                <CanvasExercise
                   key={`canvas-preview-${step.id}`}
-                  paletteItems={canvasPaletteItems}
-                  initialNodes={canvasPreviewNodes}
-                  initialEdges={canvasPreviewEdges}
-                  solutionSnapshot={actData?.solutionSnapshot ?? null}
+                  initialElements={canvasPreviewGraph}
                   disabled
                 />
               </div>

@@ -1,16 +1,15 @@
 "use client";
 
-import React, { useEffect, useState, useMemo, useCallback } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { MainLayout } from "@/components/layout/MainLayout";
-import { useAuthStore } from "@/lib/auth-store";
+import { api } from "@/lib/api";
+import { useToastStore } from "@/lib/toast-store";
 import {
-  ArrowLeft, Save, Loader2, Plus, Trash2, Check, AlertCircle,
+  ArrowLeft, Save, Loader2, Plus, Trash2,
   ChevronDown, ChevronUp, GripVertical, FileQuestion,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-const API = process.env.NEXT_PUBLIC_BACKEND_URL || "";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -233,13 +232,7 @@ export default function McqAdminPage() {
   const params = useParams();
   const lessonId = params.id as string;
   const router = useRouter();
-  const token = useAuthStore((s) => s.token);
-
-  const headers = useMemo<Record<string, string>>(() => {
-    const h: Record<string, string> = { "Content-Type": "application/json" };
-    if (token) h["Authorization"] = `Bearer ${token}`;
-    return h;
-  }, [token]);
+  const showToast = useToastStore((s) => s.showToast);
 
   const [title, setTitle] = useState("");
   const [instructions, setInstructions] = useState("");
@@ -247,18 +240,11 @@ export default function McqAdminPage() {
   const [questions, setQuestions] = useState<McqQuestion[]>([makeQuestion()]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [toast, setToast] = useState<{ type: "success" | "error"; msg: string } | null>(null);
-
-  const showToast = useCallback((type: "success" | "error", msg: string) => {
-    setToast({ type, msg });
-    setTimeout(() => setToast(null), 3500);
-  }, []);
 
   useEffect(() => {
-    fetch(`${API}/api/v1/admin/lessons/${lessonId}`, { headers })
-      .then((r) => r.json())
-      .then((json) => {
-        const a = json.data?.mcqActivity;
+    api.get<any>(`/api/v1/admin/lessons/${lessonId}`)
+      .then((data) => {
+        const a = data?.mcqActivity;
         if (a) {
           setTitle(a.title || "");
           setInstructions(a.instructions || "");
@@ -309,16 +295,16 @@ export default function McqAdminPage() {
 
   const handleSave = async () => {
     if (!instructions.trim()) {
-      showToast("error", "Instructions are required");
+      showToast("Instructions are required", "error");
       return;
     }
     if (questions.length === 0) {
-      showToast("error", "Add at least one question");
+      showToast("Add at least one question", "error");
       return;
     }
     const missingAnswer = questions.findIndex((q) => !q.options.some((o) => o.isCorrect));
     if (missingAnswer !== -1) {
-      showToast("error", `Question ${missingAnswer + 1} has no correct answer marked`);
+      showToast(`Question ${missingAnswer + 1} has no correct answer marked`, "error");
       return;
     }
 
@@ -339,15 +325,10 @@ export default function McqAdminPage() {
           })),
         })),
       };
-      const res = await fetch(`${API}/api/v1/admin/lessons/${lessonId}/mcq`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(payload),
-      });
-      if (res.ok) showToast("success", "MCQ activity saved!");
-      else { const j = await res.json(); showToast("error", j.error || "Failed to save"); }
-    } catch {
-      showToast("error", "Network error");
+      await api.post(`/api/v1/admin/lessons/${lessonId}/mcq`, payload);
+      showToast("MCQ activity saved!", "success");
+    } catch (e: any) {
+      showToast(e?.message || "Failed to save", "error");
     } finally {
       setSaving(false);
     }
@@ -364,17 +345,6 @@ export default function McqAdminPage() {
   return (
     <MainLayout>
       <div className="flex flex-col h-full max-h-[calc(100vh-24px)] overflow-hidden bg-zinc-50">
-
-        {/* Toast */}
-        {toast && (
-          <div className={cn(
-            "fixed top-5 right-5 z-50 flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-bold shadow-2xl",
-            toast.type === "success" ? "bg-emerald-600 text-white" : "bg-rose-600 text-white"
-          )}>
-            {toast.type === "success" ? <Check size={13} /> : <AlertCircle size={13} />}
-            {toast.msg}
-          </div>
-        )}
 
         {/* ── Top bar ── */}
         <div className="flex items-center gap-3 px-5 py-3 bg-white border-b border-zinc-200 shrink-0 flex-wrap">

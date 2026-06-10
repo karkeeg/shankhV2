@@ -1,16 +1,14 @@
 "use client";
 
-import React, { useEffect, useState, useMemo, useCallback } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { MainLayout } from "@/components/layout/MainLayout";
-import { useAuthStore } from "@/lib/auth-store";
+import { api } from "@/lib/api";
 import {
   ArrowLeft, FileQuestion, PenLine, TableProperties,
   Check, Circle, ChevronRight, Loader2, Eye,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-const API = process.env.NEXT_PUBLIC_BACKEND_URL || "";
 
 interface LessonDetail {
   id: string;
@@ -184,28 +182,20 @@ export default function LessonHub() {
   const params = useParams();
   const lessonId = params.id as string;
   const router = useRouter();
-  const token = useAuthStore((s) => s.token);
-
-  const headers = useMemo<Record<string, string>>(() => {
-    const h: Record<string, string> = { "Content-Type": "application/json" };
-    if (token) h["Authorization"] = `Bearer ${token}`;
-    return h;
-  }, [token]);
 
   const [lesson, setLesson] = useState<LessonDetail | null>(null);
   const [loading, setLoading] = useState(true);
 
   const fetchLesson = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/api/v1/admin/lessons/${lessonId}`, { headers });
-      const json = await res.json();
-      if (json.data) setLesson(json.data as LessonDetail);
+      const data = await api.get<LessonDetail>(`/api/v1/admin/lessons/${lessonId}`);
+      if (data) setLesson(data);
     } catch (e) {
       console.error(e);
     } finally {
       setLoading(false);
     }
-  }, [lessonId, headers]);
+  }, [lessonId]);
 
   useEffect(() => { fetchLesson(); }, [fetchLesson]);
 

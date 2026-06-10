@@ -5,7 +5,7 @@ import { PASS_THRESHOLD_PCT } from "@/lib/thresholds";
 import { saveQuantusDraft, loadQuantusDraft, clearQuantusDraft, saveCanvasDraft, loadCanvasDraft, clearCanvasDraft } from "@/lib/activityDraft";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
-import logo from "@/public/ShankhFull.png";
+import { Logo } from "@/components/layout/Logo";
 import {
   RefreshCw,
   Lightbulb,
@@ -24,12 +24,11 @@ import {
 import { cn } from "@/lib/utils";
 import { DifficultyBadge } from "@/components/ui/DifficultyBadge";
 import { useAuthStore } from "@/lib/auth-store";
+import { activitiesApi, casesApi, reactionsApi, draftApi, attemptsApi } from "@/lib/api";
 import { CanvasExercise } from "@/components/exercise/CanvasExercise";
 import { ExcelGrid, evaluateExcelFormula } from "@/components/exercise/ExcelGrid";
 import { CanvasToolkit } from "@/components/exercise/CanvasToolkit";
-import { CanvasWorkspace, CanvasWorkspaceHandle } from "@/components/canvas/CanvasWorkspace";
-import { CanvasPalette, tokensToItems } from "@/components/canvas/CanvasPalette";
-import type { GradeResult, CanvasSnapshot, PaletteItem, SolutionSnapshot } from "@/components/canvas/types";
+import { CollapsiblePanel, PanelEdgeRail, PanelReopenTab, useCollapsiblePanel } from "@/components/activity/panels";
 
 // ─── Shuffle Utilities ────────────────────────────────────────────────────────
 
@@ -350,67 +349,6 @@ function ShuffleToast({ visible }: { visible: boolean }) {
   );
 }
 
-function PanelToggle({
-  open,
-  onClick,
-  side,
-}: {
-  open: boolean;
-  onClick: () => void;
-  side: "left" | "right";
-}) {
-  // 👇 hide toggle when panel is open
-  if (open) return null;
-
-  const isLeft = side === "left";
-  return (
-    <button
-      onClick={onClick}
-      aria-label={open ? "Collapse panel" : "Expand panel"}
-      className={cn(
-        "self-center z-20 flex-shrink-0",
-        "w-8 h-40 bg-white border border-zinc-200 shadow-md",
-        "rounded-full flex items-center justify-center",
-        "hover:bg-[#E6F0F1] hover:border-[#01696F]/30",
-        "transition-all duration-200 active:scale-95 group"
-      )}
-    >
-      {/* LEFT SIDE */}
-      {isLeft ? (
-        open ? (
-          // when OPEN → show collapse button
-          <ChevronLeft
-            size={14}
-            className="text-zinc-500 group-hover:text-[#01696F]"
-          />
-        ) : (
-          // when CLOSED → show expand button
-          <ChevronRight
-            size={14}
-            className="text-zinc-500 group-hover:text-[#01696F]"
-          />
-        )
-      ) : (
-        // RIGHT SIDE (AI Coach)
-        <div className="flex flex-col items-center justify-center gap-2">
-          <span className="text-[11px] font-bold text-[#01696F] uppercase tracking-widest [writing-mode:vertical-rl] rotate-180">
-            AI Coach
-          </span>
-
-          <Image
-            src="/AiAssistance.svg"
-            alt="AI Coach"
-            width={22}
-            height={22}
-            className="group-hover:scale-110 transition-transform duration-200"
-          />
-        </div>
-      )}
-    </button>
-  );
-}
-
-
 function BottomFeedback({
   feedback,
   onClose,
@@ -602,8 +540,17 @@ export default function UnifiedActivityPage() {
   const currentStepIdx = shuffledOrder[orderPosition] ?? 0;
 
   // ── Panel visibility ────────────────────────────────────────────────────────
-  const [leftPanelOpen, setLeftPanelOpen] = useState(true);
-  const [rightPanelOpen, setRightPanelOpen] = useState(true);
+  // Unified collapsible + resizable panels with floating edge rails, persisted
+  // per activity id (same shell as the skill test + case test screens).
+  const {
+    open: leftPanelOpen, setOpen: setLeftPanelOpen, toggle: toggleLeft,
+    width: leftWidth, resize: resizeLeft,
+  } = useCollapsiblePanel(`activity:${id}:left`, { defaultOpen: true, defaultWidth: 256, min: 180, max: 420 });
+  const {
+    open: rightPanelOpen, setOpen: setRightPanelOpen, toggle: toggleRight,
+    width: rightWidth, resize: resizeRight,
+  } = useCollapsiblePanel(`activity:${id}:right`, { defaultOpen: true, defaultWidth: 320, min: 240, max: 520 });
+  const [dragging, setDragging] = useState(false);
 
   // ── UI ──────────────────────────────────────────────────────────────────────
   const [activeLeftTab, setActiveLeftTab] = useState<"instructions" | "context">("instructions");
@@ -620,12 +567,6 @@ export default function UnifiedActivityPage() {
 
   // ── Case mode: buffer MCQ answers until all questions in one activity are done
   const [caseMcqBuffer, setCaseMcqBuffer] = useState<Record<string, string>>({});
-
-  // ── Canvas state ─────────────────────────────────────────────────────────────
-  const canvasRef = useRef<CanvasWorkspaceHandle>(null);
-  const [canvasPlacedIds, setCanvasPlacedIds] = useState<Set<string>>(new Set());
-  const [canvasGradeResult, setCanvasGradeResult] = useState<GradeResult | null>(null);
-  const [showCanvasBreakdown, setShowCanvasBreakdown] = useState(false);
 
   const token = useAuthStore((state) => state.token);
   const user = useAuthStore((state) => state.user);
@@ -646,20 +587,15 @@ export default function UnifiedActivityPage() {
   useEffect(() => {
     if (!token) return;
 
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "";
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    headers.Authorization = `Bearer ${token}`;
-
     setLoading(true);
 
     // ── Case simulation mode ──────────────────────────────────────────────────
     if (fromCase) {
       Promise.all([
-        fetch(`${backendUrl}/api/v1/cases/${id}`, { headers }).then(r => r.json()),
-        fetch(`${backendUrl}/api/v1/cases/${id}/session`, { method: "POST", headers }).then(r => r.json()),
+        casesApi.detail<any>(id),
+        casesApi.startSession(id),
       ])
-        .then(([detail]) => {
-          const raw = detail.data;
+        .then(([raw]) => {
           if (!raw) throw new Error("Case not found");
           const steps = normalizeCaseSteps(raw.caseActivities ?? []);
           const actData = {
@@ -687,16 +623,8 @@ export default function UnifiedActivityPage() {
     }
 
     // ── Lesson mode (existing) ─────────────────────────────────────────────────
-    fetch(`${backendUrl}/api/v1/activities/${id}`, { headers })
-      .then(async (r) => {
-        if (!r.ok) {
-          const body = await r.text().catch(() => "");
-          throw new Error(`Activity fetch failed: ${r.status} ${r.statusText} — ${body.slice(0, 200)}`);
-        }
-        return r.json();
-      })
-      .then((data) => {
-        const raw = data.data || data;
+    activitiesApi.get<any>(id)
+      .then((raw) => {
         const steps = normalizeSteps(raw.steps);
 
         const actData = {
@@ -745,15 +673,12 @@ export default function UnifiedActivityPage() {
   // ── Fetch reactions for the current lesson ───────────────────────────────────
   useEffect(() => {
     if (!token || !id) return;
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "";
-    fetch(`${backendUrl}/api/v1/reactions/lessons/${id}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((r) => r.json())
+    reactionsApi
+      .lesson<any>(id)
       .then((data) => {
-        if (data?.data) {
-          setReactionCounts({ likes: data.data.likes, dislikes: data.data.dislikes });
-          setUserReaction(data.data.userReaction);
+        if (data) {
+          setReactionCounts({ likes: data.likes, dislikes: data.dislikes });
+          setUserReaction(data.userReaction);
         }
       })
       .catch(() => {});
@@ -761,17 +686,11 @@ export default function UnifiedActivityPage() {
 
   const handleReaction = async (reaction: "like" | "dislike") => {
     if (!token) return;
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "";
     try {
-      const res = await fetch(`${backendUrl}/api/v1/reactions/lessons/${id}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ reaction }),
-      });
-      const data = await res.json();
-      if (data?.data) {
-        setReactionCounts({ likes: data.data.likes, dislikes: data.data.dislikes });
-        setUserReaction(data.data.userReaction);
+      const data = await reactionsApi.react<any>(id, { reaction });
+      if (data) {
+        setReactionCounts({ likes: data.likes, dislikes: data.dislikes });
+        setUserReaction(data.userReaction);
       }
     } catch { }
   };
@@ -885,10 +804,6 @@ export default function UnifiedActivityPage() {
     if (!step || step.completed) return;
     const delay = step.type === "canvas" ? 500 : 1000;
     const t = setTimeout(async () => {
-      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "";
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (token) headers.Authorization = `Bearer ${token}`;
-
       let draftState: any = null;
       let activityId = step.id;
 
@@ -904,11 +819,7 @@ export default function UnifiedActivityPage() {
       if (!draftState || !activityId) return;
 
       try {
-        await fetch(`${backendUrl}/api/v1/draft/me/activities/${step.type}/${activityId}/draft`, {
-          method: "PUT",
-          headers,
-          body: JSON.stringify({ draft_state: draftState }),
-        });
+        await draftApi.save(step.type, activityId, draftState);
       } catch (err) {
         console.error("Autosave draft failed:", err);
       }
@@ -1015,91 +926,14 @@ export default function UnifiedActivityPage() {
     }
   };
 
-  // ── Unified canvas submit (lesson + case) ─────────────────────────────────────
-  const handleCanvasSubmit = async (snapshot: CanvasSnapshot): Promise<GradeResult | null> => {
-    if (!step) return null;
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "";
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (token) headers.Authorization = `Bearer ${token}`;
-
-    if (step._isCaseActivity) {
-      try {
-        const res = await fetch(`${backendUrl}/api/v1/cases/${id}/activities/${step._caseActivityId}/submit`, {
-          method: "POST", headers,
-          body: JSON.stringify({ responseData: { edges: snapshot.edges.map(e => ({ sourceId: e.sourceId, targetId: e.targetId })) } }),
-        });
-        const rj = await res.json();
-        if (!res.ok) return null;
-        const { scorePct, gradeBreakdown, allComplete } = rj.data;
-        if (activity?.steps) {
-          const updated = [...activity.steps];
-          updated[currentStepIdx] = { ...updated[currentStepIdx], completed: scorePct >= 60 };
-          setActivity({ ...activity, steps: updated });
-        }
-        if (allComplete) setTimeout(() => router.push(`/case-simulations/${id}`), 2500);
-        return gradeBreakdown ?? { scorePct, correct: [], wrong: [], missing: [] };
-      } catch { return null; }
-    }
-
-    // Lesson canvas — POST to the standard session endpoint
-    try {
-      const res = await fetch(`${backendUrl}/api/v1/attempts/session/canvas`, {
-        method: "POST", headers,
-        body: JSON.stringify({
-          lessonId: id, activityType: "canvas",
-          canvasData: {
-            placedTokens: snapshot.nodes.map(n => n.id),
-            edges: snapshot.edges.map(e => ({ from: e.sourceId, to: e.targetId })),
-          },
-        }),
-      });
-      const rj = await res.json();
-      if (!res.ok) throw new Error(rj?.error || "Submission failed");
-      const accuracy: number = rj.data?.accuracy ?? rj.data?.scorePct ?? 100;
-      const isCorrect = accuracy >= PASS_THRESHOLD_PCT;
-      if (activity?.steps) {
-        const updated = [...activity.steps];
-        updated[currentStepIdx] = { ...updated[currentStepIdx], completed: isCorrect };
-        setActivity({ ...activity, steps: updated });
-      }
-      clearCanvasDraft(step?.id ?? "");
-      setFeedback({
-        isError: !isCorrect,
-        message: isCorrect ? "Excellent! Correct answer." : "Not quite — try again!",
-        metrics: rj.data || {},
-      });
-      return { scorePct: accuracy, correct: [], wrong: [], missing: [] };
-    } catch (e: any) {
-      setFeedback({ isError: true, message: e?.message || "Network error." });
-      return null;
-    }
-  };
-
   // ── Check answer ──────────────────────────────────────────────────────────────
   const handleCheckAnswer = async () => {
     if (!step) return;
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "";
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (token) headers.Authorization = `Bearer ${token}`;
     setSubmitting(true);
     setFeedback(null);
 
-    // ── Case activity submit path ────────────────────────────────────────────────
-    if (step._isCaseActivity) {
-      // Canvas is handled below via the unified path
-      if (step.type === "canvas") {
-        const snapshot = canvasRef.current?.getSnapshot();
-        if (!snapshot || snapshot.nodes.length === 0) {
-          setFeedback({ isError: true, message: "Place some nodes on the canvas first!" });
-          setSubmitting(false);
-          return;
-        }
-        const result = await handleCanvasSubmit(snapshot);
-        if (result) { setCanvasGradeResult(result); setShowCanvasBreakdown(false); }
-        setSubmitting(false);
-        return;
-      }
-
+    // ── Case activity submit path (canvas handled by the unified path below) ──────
+    if (step._isCaseActivity && step.type !== "canvas") {
       let responseData: any = {};
 
       if (step.type === "mcq") {
@@ -1135,13 +969,8 @@ export default function UnifiedActivityPage() {
       }
 
       try {
-        const res = await fetch(`${backendUrl}/api/v1/cases/${id}/activities/${step._caseActivityId}/submit`, {
-          method: "POST", headers,
-          body: JSON.stringify({ responseData }),
-        });
-        const rj = await res.json();
-        if (!res.ok) throw new Error(rj?.error || "Submit failed");
-        const { scorePct, allComplete } = rj.data;
+        const rjData = await casesApi.submitActivity<any>(id, step._caseActivityId, { responseData });
+        const { scorePct, allComplete } = rjData;
         const isCorrect = (scorePct ?? 0) >= 60;
         if (activity?.steps) {
           const updated = [...activity.steps];
@@ -1201,13 +1030,8 @@ export default function UnifiedActivityPage() {
       if (step._isCaseActivity) {
         // Post to case activity endpoint
         try {
-          const res = await fetch(`${backendUrl}/api/v1/cases/${id}/activities/${step._caseActivityId}/submit`, {
-            method: "POST", headers,
-            body: JSON.stringify({ responseData: { canvasData: graph } }),
-          });
-          const rj = await res.json();
-          if (!res.ok) throw new Error(rj?.error || "Submit failed");
-          const { scorePct, allComplete } = rj.data;
+          const rjData = await casesApi.submitActivity<any>(id, step._caseActivityId, { responseData: { canvasData: graph } });
+          const { scorePct, allComplete } = rjData;
           const isCorrect = (scorePct ?? 0) >= 60;
           if (activity?.steps) {
             const updated = [...activity.steps];
@@ -1220,7 +1044,7 @@ export default function UnifiedActivityPage() {
           setFeedback({
             isError: !isCorrect,
             message: isCorrect ? "Excellent! Correct answer." : "Not quite — try again!",
-            metrics: rj.data || {},
+            metrics: rjData || {},
           });
           if (allComplete) setTimeout(() => router.push(`/case-simulations/${id}`), 2500);
         } catch (e: any) {
@@ -1237,16 +1061,10 @@ export default function UnifiedActivityPage() {
 
     try {
       // Single direct POST to the typed session endpoint — no separate "create attempt" step needed
-      const sr = await fetch(`${backendUrl}/api/v1/attempts/session/${step.type}`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(payload),
-      });
-      const sj = await sr.json();
-      if (!sr.ok) throw new Error(sj?.error || "Submission failed");
+      const sj = await attemptsApi.session<any>(step.type, payload);
 
       // Mark the step completed locally (accuracy >= 70 is "correct" by backend rules)
-      const accuracy: number = sj.data?.accuracy ?? sj.data?.scorePct ?? 100;
+      const accuracy: number = sj?.accuracy ?? sj?.scorePct ?? 100;
       const isCorrect = accuracy >= PASS_THRESHOLD_PCT;
 
       if (activity?.steps) {
@@ -1267,7 +1085,7 @@ export default function UnifiedActivityPage() {
       setFeedback({
         isError: !isCorrect,
         message: isCorrect ? "Excellent! Correct answer." : "Not quite — try again!",
-        metrics: sj.data || {},
+        metrics: sj || {},
       });
     } catch (e: any) {
       setFeedback({ isError: true, message: e?.message || "Network error." });
@@ -1301,21 +1119,29 @@ export default function UnifiedActivityPage() {
 
   // ─────────────────────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-row h-screen overflow-hidden font-sans bg-white text-zinc-800 p-2 sm:p-3 gap-0">
+    <div className="relative flex flex-row h-screen overflow-hidden font-sans bg-white text-zinc-800 p-2 sm:p-3 gap-0">
       <ShuffleToast visible={showShuffleToast} />
 
+      {/* Far-left edge rail — collapse / expand the left panel */}
+      <PanelEdgeRail side="left" open={leftPanelOpen} onToggle={toggleLeft} label="activity panel" />
+
       {/* ══════════════════════ LEFT PANEL ══════════════════════ */}
-      <div className={cn(
-        "flex-shrink-0 transition-all duration-300 ease-in-out overflow-hidden",
-        leftPanelOpen ? "w-60 xl:w-64" : "w-0"
-      )}>
-        <div className="w-60 xl:w-64 h-full flex flex-col justify-between pr-2">
+      <CollapsiblePanel
+        side="left"
+        open={leftPanelOpen}
+        width={leftWidth}
+        dragging={dragging}
+        resizable
+        onResize={resizeLeft}
+        onDragState={setDragging}
+        innerClassName="h-full flex flex-col justify-between pr-2"
+      >
           <div className="flex flex-col gap-3 overflow-y-auto flex-1 pb-3">
 
             {/* Logo + back */}
             <div className="flex flex-col items-center gap-3 border-b border-zinc-100 pb-3 pt-1">
               <div className="w-full flex justify-center">
-                <Image src={logo} alt="Shankh" width={110} height={32} className="object-contain" style={{ width: "auto", height: "auto" }} />
+                <Logo variant="full" width={110} height={32} className="object-contain" style={{ width: "auto", height: "auto" }} />
               </div>
               <button
                 onClick={handleClose}
@@ -1427,11 +1253,7 @@ export default function UnifiedActivityPage() {
               </button>
             </div>
           </div>
-        </div>
-      </div>
-
-      {/* ── Left panel toggle ── */}
-      <PanelToggle open={leftPanelOpen} onClick={() => setLeftPanelOpen(o => !o)} side="left" />
+      </CollapsiblePanel>
 
       {/* ══════════════════════ MAIN WORKSPACE ══════════════════════ */}
       <div className="flex-1 min-w-0 flex flex-col bg-[#F0EDE7] shadow-[0px_4px_8px_0px_#0000003D_inset] border border-[#F0EDE7] rounded-2xl overflow-hidden mx-1.5">
@@ -1656,47 +1478,28 @@ export default function UnifiedActivityPage() {
         </div>
       </div>
 
-      {/* ── Right panel toggle ── */}
-
-      <PanelToggle open={rightPanelOpen} onClick={() => setRightPanelOpen(o => !o)} side="right" />
-
+      {/* Right panel reopen tab (previous style) */}
+      <PanelReopenTab
+        open={rightPanelOpen}
+        onOpen={() => setRightPanelOpen(true)}
+        label="AI Coach"
+        icon={<Image src="/AiAssistance.svg" alt="AI Coach" width={22} height={22} className="group-hover:scale-110 transition-transform duration-200" />}
+      />
 
       {/* ══════════════════════ RIGHT PANEL — AI COACH ══════════════════════ */}
-      <div
-        className={cn(
-          "flex-shrink-0 transition-all duration-300 ease-in-out overflow-hidden",
-          rightPanelOpen ? "w-72 xl:w-80" : "w-0"
-        )}
+      <CollapsiblePanel
+        side="right"
+        open={rightPanelOpen}
+        width={rightWidth}
+        dragging={dragging}
+        resizable
+        onResize={resizeRight}
+        onDragState={setDragging}
+        title="AI Coach"
+        icon={<Image src="/AiAssistance.svg" alt="AI Coach" width={18} height={18} />}
+        onClose={() => setRightPanelOpen(false)}
+        innerClassName="h-full flex flex-col pl-2"
       >
-        <div className="w-72 xl:w-80 h-full flex flex-col pl-2">
-          <div className="bg-white flex flex-col h-full overflow-hidden rounded-2xl border border-zinc-100 shadow-sm">
-
-            {/* ───────────── Header ───────────── */}
-            <div className="flex items-center gap-2.5 px-4 py-3 border-b border-zinc-200 flex-shrink-0 bg-[#FAF7F2]">
-
-              <Image
-                src="/AiAssistance.svg"
-                alt="AI Coach"
-                width={32}
-                height={32}
-              />
-
-              <h3 className="font-black text-zinc-800 text-base tracking-tight">
-                AI Coach
-              </h3>
-
-              {/* Close Button */}
-              <button
-                onClick={() => setRightPanelOpen(false)}
-                aria-label="Close AI Coach"
-                className="ml-auto w-7 h-7 flex items-center justify-center rounded-lg hover:bg-zinc-100 transition group"
-              >
-                <X
-                  size={16}
-                  className="text-zinc-500 group-hover:text-zinc-800 transition"
-                />
-              </button>
-            </div>
 
             {/* ───────────── Body ───────────── */}
             <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-3 bg-[#F0EDE7]">
@@ -1725,9 +1528,7 @@ export default function UnifiedActivityPage() {
                 </div>
               )}
             </div>
-          </div>
-        </div>
-      </div>
+      </CollapsiblePanel>
     </div>
   );
 }

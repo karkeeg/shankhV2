@@ -4,13 +4,13 @@ import React, { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { useAuthStore } from "@/lib/auth-store";
+import { casesApi } from "@/lib/api";
 import {
   Loader2, ArrowLeft, ArrowRight, BookOpen,
   CheckCircle2, ChevronLeft, ChevronRight, Play,
+  PanelLeftClose, PanelLeftOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-const API = process.env.NEXT_PUBLIC_BACKEND_URL || "";
 
 export default function CaseReadingPage() {
   const router = useRouter();
@@ -22,20 +22,18 @@ export default function CaseReadingPage() {
   const [loading, setLoading] = useState(true);
   const [currentStudyIdx, setCurrentStudyIdx] = useState(0);
   const [marking, setMarking] = useState(false);
-
-  const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+  const [navOpen, setNavOpen] = useState(true);
 
   useEffect(() => {
     if (!token) return;
     Promise.all([
-      fetch(`${API}/api/v1/cases/${id}`, { headers }).then((r) => r.json()),
-      fetch(`${API}/api/v1/cases/${id}/session`, { method: "POST", headers: { ...headers, "Content-Type": "application/json" } }).then((r) => r.json()),
+      casesApi.detail<any>(id),
+      casesApi.startSession<any>(id),
     ])
-      .then(([detail, sessionRes]) => {
-        const data = detail.data;
+      .then(([data, session]) => {
         setCaseData(data);
         // If the user has already read the studies, skip straight to the test
-        if (sessionRes?.data?.studiesRead === true || data?.session?.studiesRead === true) {
+        if (session?.studiesRead === true || data?.session?.studiesRead === true) {
           router.replace(`/case-simulations/${id}/test`);
         }
       })
@@ -47,10 +45,7 @@ export default function CaseReadingPage() {
     if (!caseData) return;
     setMarking(true);
     try {
-      await fetch(`${API}/api/v1/cases/${id}/session/mark-read`, {
-        method: "POST",
-        headers: { ...headers, "Content-Type": "application/json" },
-      });
+      await casesApi.markRead(id);
       router.push(`/case-simulations/${id}/test`);
     } catch { } finally { setMarking(false); }
   };
@@ -106,12 +101,41 @@ export default function CaseReadingPage() {
 
         <div className="flex-1 overflow-y-auto flex flex-col lg:flex-row gap-0">
 
+          {/* Reopen button — shown when the navigator is collapsed */}
+          {!navOpen && (
+            <button
+              onClick={() => setNavOpen(true)}
+              title="Show case studies"
+              aria-label="Show case studies"
+              className="self-start mt-4 ml-2 shrink-0 z-20 w-8 h-8 bg-white border border-zinc-200 shadow-md rounded-lg flex items-center justify-center text-zinc-500 hover:text-[#01696F] hover:border-[#01696F]/30 transition-all active:scale-95"
+            >
+              <PanelLeftOpen size={16} />
+            </button>
+          )}
+
           {/* Left: study navigator */}
-          <div className="w-full lg:w-64 shrink-0 border-b lg:border-b-0 lg:border-r border-zinc-100 bg-white">
-            <div className="p-4">
-              <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-3">
-                Case Studies · {studies.length}
-              </p>
+          <div
+            className={cn(
+              "shrink-0 border-zinc-100 bg-white transition-all duration-300 ease-in-out overflow-hidden",
+              navOpen
+                ? "w-full lg:w-64 border-b lg:border-b-0 lg:border-r"
+                : "w-0 lg:w-0 border-0"
+            )}
+          >
+            <div className="p-4 w-full lg:w-64">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400">
+                  Case Studies · {studies.length}
+                </p>
+                <button
+                  onClick={() => setNavOpen(false)}
+                  title="Collapse"
+                  aria-label="Collapse case studies"
+                  className="flex items-center justify-center w-6 h-6 rounded-md text-zinc-400 hover:text-[#01696F] hover:bg-black/5 transition-all active:scale-90"
+                >
+                  <PanelLeftClose size={15} />
+                </button>
+              </div>
               <div className="space-y-2">
                 {studies.map((s, idx) => (
                   <button

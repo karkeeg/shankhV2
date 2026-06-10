@@ -36,7 +36,7 @@ export function ProfessionAdminCardSkeleton() {
 // Matches the ProfessionCard in /skill — name, desc, progress bar, CTA
 export function SkillProfessionCardSkeleton() {
   return (
-    <div className="bg-white border border-zinc-200 rounded-3xl overflow-hidden shadow-sm animate-pulse">
+    <div className="bg-white border border-zinc-200 rounded-3xl overflow-hidden shadow-sm animate-pulse flex flex-col h-full">
       <div className="px-5 pt-5 pb-4 space-y-3">
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 space-y-2">
@@ -50,7 +50,7 @@ export function SkillProfessionCardSkeleton() {
           <Pulse className="h-3 w-16 rounded-full" />
         </div>
       </div>
-      <div className="px-5 pb-5">
+      <div className="px-5 pb-5 mt-auto">
         <Pulse className="h-11 w-full rounded-2xl" />
       </div>
     </div>
@@ -61,7 +61,7 @@ export function SkillProfessionCardSkeleton() {
 // Matches the case card in /skill — title, difficulty badge, desc, meta, CTA
 export function CaseSimulationCardSkeleton() {
   return (
-    <div className="bg-white border border-zinc-200 rounded-3xl p-5 flex flex-col gap-3 shadow-sm animate-pulse">
+    <div className="bg-white border border-zinc-200 rounded-3xl p-5 flex flex-col gap-3 shadow-sm animate-pulse h-full">
       <div className="flex items-start justify-between gap-2">
         <div className="space-y-1.5 flex-1">
           <Pulse className="h-3 w-24 rounded-full" />
@@ -75,7 +75,7 @@ export function CaseSimulationCardSkeleton() {
         <Pulse className="h-3 w-20 rounded-full" />
         <Pulse className="h-3 w-24 rounded-full" />
       </div>
-      <Pulse className="h-9 w-full rounded-2xl mt-1" />
+      <Pulse className="h-9 w-full rounded-2xl mt-auto" />
     </div>
   );
 }

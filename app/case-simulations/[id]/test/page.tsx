@@ -2,24 +2,24 @@
 
 import React, { useEffect, useState, useMemo, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Image from "next/image";
 import { useAuthStore } from "@/lib/auth-store";
+import { casesApi } from "@/lib/api";
 import {
   Loader2, ArrowLeft, ArrowRight, CheckCircle2,
   XCircle, ChevronLeft, ChevronRight, Trophy, X, RefreshCw, BookOpen,
-  PencilRuler, Minimize2, Maximize2,
+  Minimize2, Maximize2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ExcelGrid } from "@/components/exercise/ExcelGrid";
 import { CanvasExercise } from "@/components/exercise/CanvasExercise";
 import { CanvasToolkit } from "@/components/exercise/CanvasToolkit";
-import { Whiteboard } from "@/components/exercise/Whiteboard";
+import { ScratchpadLauncher, ScratchpadPanel } from "@/components/scratchpad/Scratchpad";
 import { scratchpadKey } from "@/lib/scratchpad";
+import { CollapsiblePanel, PanelEdgeRail, PanelReopenTab, Resizer, useCollapsiblePanel, clamp } from "@/components/activity/panels";
 import type { DragCategory, DragItem } from "@/types/exercise";
-import Image from "next/image";
-import logo from "@/public/ShankhFull.png";
+import { Logo } from "@/components/layout/Logo";
 import { CaseStudiesModal } from "@/components/case/CaseStudiesModal";
-
-const API = process.env.NEXT_PUBLIC_BACKEND_URL || "";
 
 const TYPE_META: Record<string, { label: string; color: string }> = {
   quantus: { label: "Spreadsheet", color: "bg-sky-100 text-sky-700 border-sky-200" },
@@ -269,54 +269,8 @@ function extractCanvasGraph(canvasElements: any): { placedTokens: string[]; edge
   return { placedTokens, edges };
 }
 
-// ─── Draggable splitter (VS Code-style panel resizer) ─────────────────────────
-// Reports the horizontal drag delta (px) on each mouse move. Parent decides
-// whether to add or subtract it from a panel width.
-
-function clamp(v: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, v));
-}
-
-function Resizer({ onResize, onDragState }: {
-  onResize: (deltaX: number) => void;
-  onDragState?: (dragging: boolean) => void;
-}) {
-  const lastX = useRef(0);
-
-  const handleMouseDown = (e: React.MouseEvent) => {
-    e.preventDefault();
-    lastX.current = e.clientX;
-    onDragState?.(true);
-
-    const move = (ev: MouseEvent) => {
-      const delta = ev.clientX - lastX.current;
-      lastX.current = ev.clientX;
-      onResize(delta);
-    };
-    const up = () => {
-      document.removeEventListener("mousemove", move);
-      document.removeEventListener("mouseup", up);
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-      onDragState?.(false);
-    };
-    document.addEventListener("mousemove", move);
-    document.addEventListener("mouseup", up);
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-  };
-
-  return (
-    <div
-      onMouseDown={handleMouseDown}
-      className="flex-shrink-0 w-1.5 self-stretch my-1 rounded-full cursor-col-resize bg-transparent hover:bg-[#01696F]/30 active:bg-[#01696F]/50 transition-colors duration-150 group"
-    >
-      <div className="w-full h-full flex items-center justify-center">
-        <div className="w-[3px] h-8 rounded-full bg-zinc-200 group-hover:bg-[#01696F]/50 transition-colors" />
-      </div>
-    </div>
-  );
-}
+// Panel resizing helpers (`Resizer`, `clamp`) now live in
+// `@/components/activity/panels` and are shared across the activity screens.
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // MAIN COMPONENT
@@ -346,15 +300,21 @@ export default function CaseTestPage() {
   const [mcqBuffer, setMcqBuffer] = useState<Record<string, Record<string, string>>>({});
   const [showStudies, setShowStudies] = useState(false);
   const [studiesRead, setStudiesRead] = useState(false);
-  const [leftOpen, setLeftOpen] = useState(true);
-  const [rightOpen, setRightOpen] = useState(false);
   const [boardOpen, setBoardOpen] = useState(false);   // whiteboard scratchpad panel
   const [centerOpen, setCenterOpen] = useState(true);  // main question workspace
 
   // Resizable panel widths (px) — VS Code-style draggable splitters
-  const [leftWidth, setLeftWidth] = useState(248);
   const [boardWidth, setBoardWidth] = useState(460);
-  const [activitiesWidth, setActivitiesWidth] = useState(312);
+
+  // Left + right side panels: collapse state + width, persisted per case id.
+  const {
+    open: leftOpen, toggle: toggleLeft,
+    width: leftWidth, resize: resizeLeft,
+  } = useCollapsiblePanel(`case:${id}:left`, { defaultOpen: true, defaultWidth: 248, min: 180, max: 420 });
+  const {
+    open: rightOpen, setOpen: setRightOpen, toggle: toggleRight,
+    width: activitiesWidth, resize: resizeRight,
+  } = useCollapsiblePanel(`case:${id}:right`, { defaultOpen: false, defaultWidth: 312, min: 240, max: 520 });
   const [dragging, setDragging] = useState(false);
   const [activeLeftTab, setActiveLeftTab] = useState<"instructions" | "context">("instructions");
 
@@ -362,17 +322,13 @@ export default function CaseTestPage() {
   const [canvasElements, setCanvasElements] = useState<any>(null);
   const [canvasResetNonce, setCanvasResetNonce] = useState(0);
 
-  const headers = { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) };
-
   useEffect(() => {
     if (!token) return;
-    fetch(`${API}/api/v1/cases/${id}/session`, { method: "POST", headers })
+    casesApi.startSession(id)
       .catch(() => {})
       .finally(() => {
-        fetch(`${API}/api/v1/cases/${id}`, { headers })
-          .then((r) => r.json())
-          .then((res) => {
-            const data = res.data;
+        casesApi.detail<any>(id)
+          .then((data) => {
             if (!data) return;
             setCaseData(data);
 
@@ -558,16 +514,10 @@ export default function CaseTestPage() {
       setSubmitting(true);
       try {
         const answers = allQs.map((q: any) => ({ questionId: q.id, selectedOptionId: newBuffer[actId][q.id] }));
-        const res = await fetch(`${API}/api/v1/cases/${id}/activities/${actId}/submit`, {
-          method: "POST", headers, body: JSON.stringify({ responseData: { answers } }),
-        });
-        const rj = await res.json();
-        if (res.ok) {
-          const { scorePct, allComplete } = rj.data;
-          setCompletedActivityIds(prev => new Set([...prev, actId]));
-          setScores(prev => ({ ...prev, [actId]: scorePct }));
-          if (allComplete) setTimeout(() => router.push("/skill?section=case_simulations"), 2500);
-        }
+        const { scorePct, allComplete } = await casesApi.submitActivity<any>(id, actId, { responseData: { answers } });
+        setCompletedActivityIds(prev => new Set([...prev, actId]));
+        setScores(prev => ({ ...prev, [actId]: scorePct }));
+        if (allComplete) setTimeout(() => router.push("/skill?section=case_simulations"), 2500);
       } catch { }
       finally { setSubmitting(false); }
     }
@@ -587,12 +537,7 @@ export default function CaseTestPage() {
     setSubmitting(true);
     setFeedback(null);
     try {
-      const res = await fetch(`${API}/api/v1/cases/${id}/activities/${step.activityId}/submit`, {
-        method: "POST", headers, body: JSON.stringify({ responseData: { inputSnapshot: spreadsheetGrid } }),
-      });
-      const rj = await res.json();
-      if (!res.ok) throw new Error(rj?.error || "Submit failed");
-      const { scorePct, allComplete } = rj.data;
+      const { scorePct, allComplete } = await casesApi.submitActivity<any>(id, step.activityId, { responseData: { inputSnapshot: spreadsheetGrid } });
       setCompletedStepIds(prev => new Set([...prev, step.id]));
       setCompletedActivityIds(prev => new Set([...prev, step.activityId]));
       setScores(prev => ({ ...prev, [step.activityId]: scorePct }));
@@ -619,15 +564,9 @@ export default function CaseTestPage() {
     setSubmitting(true);
     setFeedback(null);
     try {
-      const res = await fetch(`${API}/api/v1/cases/${id}/activities/${step.activityId}/submit`, {
-        method: "POST", headers,
-        // canvasData feeds the grader ({from,to} token edges); rf preserves the
-        // full React Flow layout so the canvas can be reloaded in review mode.
-        body: JSON.stringify({ responseData: { canvasData: graph, rf: canvasElements } }),
-      });
-      const rj = await res.json();
-      if (!res.ok) throw new Error(rj?.error || "Submit failed");
-      const { scorePct, allComplete } = rj.data;
+      // canvasData feeds the grader ({from,to} token edges); rf preserves the
+      // full React Flow layout so the canvas can be reloaded in review mode.
+      const { scorePct, allComplete } = await casesApi.submitActivity<any>(id, step.activityId, { responseData: { canvasData: graph, rf: canvasElements } });
       setCompletedStepIds(prev => new Set([...prev, step.id]));
       setCompletedActivityIds(prev => new Set([...prev, step.activityId]));
       setScores(prev => ({ ...prev, [step.activityId]: scorePct }));
@@ -687,23 +626,28 @@ export default function CaseTestPage() {
   // ─────────────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex flex-row h-screen overflow-hidden font-sans bg-white text-zinc-800 p-2 sm:p-3 gap-0">
+    <div className="relative flex flex-row h-screen overflow-hidden font-sans bg-white text-zinc-800 p-2 sm:p-3 gap-0">
+
+      {/* Far-left edge rail — collapse / expand the left panel */}
+      <PanelEdgeRail side="left" open={leftOpen} onToggle={toggleLeft} label="case panel" />
 
       {/* ══════════════════════ LEFT PANEL ══════════════════════ */}
-      <div
-        className={cn(
-          "flex-shrink-0 overflow-hidden",
-          !dragging && "transition-all duration-300 ease-in-out"
-        )}
-        style={{ width: leftOpen ? leftWidth : 0 }}
+      <CollapsiblePanel
+        side="left"
+        open={leftOpen}
+        width={leftWidth}
+        dragging={dragging}
+        resizable
+        onResize={resizeLeft}
+        onDragState={setDragging}
+        innerClassName="h-full flex flex-col justify-between pr-2"
       >
-        <div className="h-full flex flex-col justify-between pr-2" style={{ width: leftWidth }}>
           <div className="flex flex-col gap-3 overflow-y-auto flex-1 pb-3">
 
             {/* Logo + navigation buttons */}
             <div className="flex flex-col items-center gap-2 border-b border-zinc-100 pb-3 pt-1">
               <div className="w-full flex justify-center">
-                <Image src={logo} alt="Shankh" width={110} height={32} className="object-contain" style={{ width: "auto", height: "auto" }} />
+                <Logo variant="full" width={110} height={32} className="object-contain" style={{ width: "auto", height: "auto" }} />
               </div>
               <button
                 onClick={() => router.push("/skill?section=case_simulations")}
@@ -820,26 +764,7 @@ export default function CaseTestPage() {
               <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">Case Simulation</p>
             </div>
           </div>
-        </div>
-      </div>
-
-      {/* Left panel splitter */}
-      {leftOpen && (
-        <Resizer
-          onDragState={setDragging}
-          onResize={(d) => setLeftWidth((w) => clamp(w + d, 180, 420))}
-        />
-      )}
-
-      {/* Left panel toggle */}
-      {!leftOpen && (
-        <button
-          onClick={() => setLeftOpen(true)}
-          className="self-center z-20 flex-shrink-0 w-8 h-40 bg-white border border-zinc-200 shadow-md rounded-full flex items-center justify-center hover:bg-[#E6F0F1] hover:border-[#01696F]/30 transition-all duration-200 active:scale-95 group"
-        >
-          <ChevronRight size={14} className="text-zinc-500 group-hover:text-[#01696F]" />
-        </button>
-      )}
+      </CollapsiblePanel>
 
       {/* Center restore toggle — shown when the question workspace is minimized */}
       {!centerOpen && (
@@ -914,7 +839,7 @@ export default function CaseTestPage() {
               title="Minimize question — give the scratchpad more room"
               className="px-2.5 py-2 bg-white text-zinc-500 hover:text-[#01696F] border border-zinc-200 hover:border-[#01696F]/30 font-bold text-xs rounded-xl shadow-sm transition-all active:scale-95 flex items-center gap-1.5 flex-shrink-0"
             >
-              <Minimize2 size={13} /> <span className="hidden lg:inline">Minimize</span>
+              <Minimize2 size={13} /> 
             </button>
             <button
               onClick={
@@ -1067,38 +992,11 @@ export default function CaseTestPage() {
             </div>
           )}
 
+          {/* Floating scratchpad launcher + idle guide nudge (top-right) */}
+          <ScratchpadLauncher open={boardOpen} onOpen={() => setBoardOpen(true)} />
+
           <Feedback feedback={feedback} onClose={() => setFeedback(null)} />
         </div>
-      </div>
-
-      {/* Right edge toggles — Scratchpad + Activities, stacked */}
-      <div className="self-center z-20 flex-shrink-0 flex flex-col gap-2">
-        {!boardOpen && (
-          <button
-            onClick={() => setBoardOpen(true)}
-            className="w-8 h-40 bg-white border border-zinc-200 shadow-md rounded-full flex items-center justify-center hover:bg-[#E6F0F1] hover:border-[#01696F]/30 transition-all duration-200 active:scale-95 group"
-          >
-            <div className="flex flex-col items-center justify-center gap-2">
-              <span className="text-[11px] font-bold text-[#01696F] uppercase tracking-widest [writing-mode:vertical-rl] rotate-180">
-                Scratchpad
-              </span>
-              <PencilRuler size={14} className="text-[#01696F] group-hover:scale-110 transition-transform duration-200" />
-            </div>
-          </button>
-        )}
-        {!rightOpen && (
-          <button
-            onClick={() => setRightOpen(true)}
-            className="w-8 h-40 bg-white border border-zinc-200 shadow-md rounded-full flex items-center justify-center hover:bg-[#E6F0F1] hover:border-[#01696F]/30 transition-all duration-200 active:scale-95 group"
-          >
-            <div className="flex flex-col items-center justify-center gap-2">
-              <span className="text-[11px] font-bold text-[#01696F] uppercase tracking-widest [writing-mode:vertical-rl] rotate-180">
-                Activities
-              </span>
-              <Trophy size={14} className="text-[#01696F] group-hover:scale-110 transition-transform duration-200" />
-            </div>
-          </button>
-        )}
       </div>
 
       {/* Scratchpad splitter */}
@@ -1119,64 +1017,65 @@ export default function CaseTestPage() {
         style={boardOpen && !centerOpen ? undefined : { width: boardOpen ? boardWidth : 0 }}
       >
         <div className="h-full flex flex-col pl-2" style={{ width: centerOpen ? boardWidth : "100%" }}>
-          <div className="bg-white flex flex-col h-full overflow-hidden rounded-2xl border border-zinc-100 shadow-sm">
-            {/* Header */}
-            <div className="flex items-center gap-2.5 px-4 py-3 border-b border-zinc-200 flex-shrink-0 bg-[#FAF7F2]">
-              <div className="w-8 h-8 rounded-full bg-[#01696F]/10 flex items-center justify-center flex-shrink-0">
-                <PencilRuler size={16} className="text-[#01696F]" />
-              </div>
-              <h3 className="font-black text-zinc-800 text-base tracking-tight">Scratchpad</h3>
-              <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">Rough work · not graded</span>
-              <button
-                onClick={() => setBoardOpen(false)}
-                className="ml-auto w-7 h-7 flex items-center justify-center rounded-lg hover:bg-zinc-100 transition group"
-              >
-                <X size={16} className="text-zinc-500 group-hover:text-zinc-800 transition" />
-              </button>
-            </div>
-            {/* Whiteboard surface */}
-            <div className="flex-1 min-h-0">
-              <Whiteboard
-                storageKey={scratchpadKey(user?.id ? `user-${user.id}` : `case-${id}`)}
-                refreshKey={`${leftOpen ? leftWidth : 0}-${centerOpen}-${boardOpen ? boardWidth : 0}-${rightOpen ? activitiesWidth : 0}`}
-              />
-            </div>
-          </div>
+          <ScratchpadPanel
+            storageKey={scratchpadKey(user?.id ? `user-${user.id}` : `case-${id}`)}
+            refreshKey={`${leftOpen ? leftWidth : 0}-${centerOpen}-${boardOpen ? boardWidth : 0}-${rightOpen ? activitiesWidth : 0}`}
+            onClose={() => setBoardOpen(false)}
+          />
         </div>
       </div>
 
-      {/* Activities splitter */}
-      {rightOpen && (
-        <Resizer
-          onDragState={setDragging}
-          onResize={(d) => setActivitiesWidth((w) => clamp(w - d, 240, 520))}
-        />
-      )}
+      {/* Right panel reopen tab (previous style) */}
+      <PanelReopenTab
+        open={rightOpen}
+        onOpen={() => setRightOpen(true)}
+        label="AI Coach"
+        icon={<Image src="/AiAssistance.svg" alt="AI Coach" width={22} height={22} className="group-hover:scale-110 transition-transform duration-200" />}
+      />
 
-      {/* ══════════════════════ RIGHT PANEL — Activities ══════════════════════ */}
-      <div
-        className={cn("flex-shrink-0 overflow-hidden", !dragging && "transition-all duration-300 ease-in-out")}
-        style={{ width: rightOpen ? activitiesWidth : 0 }}
+      {/* ══════════════════════ RIGHT PANEL — AI COACH ══════════════════════ */}
+      <CollapsiblePanel
+        side="right"
+        open={rightOpen}
+        width={activitiesWidth}
+        dragging={dragging}
+        resizable
+        onResize={resizeRight}
+        onDragState={setDragging}
+        title="AI Coach"
+        icon={<Image src="/AiAssistance.svg" alt="AI Coach" width={18} height={18} />}
+        onClose={() => setRightOpen(false)}
+        innerClassName="h-full flex flex-col pl-2"
       >
-        <div className="h-full flex flex-col pl-2" style={{ width: activitiesWidth }}>
-          <div className="bg-white flex flex-col h-full overflow-hidden rounded-2xl border border-zinc-100 shadow-sm">
-
-            {/* Header */}
-            <div className="flex items-center gap-2.5 px-4 py-3 border-b border-zinc-200 flex-shrink-0 bg-[#FAF7F2]">
-              <div className="w-8 h-8 rounded-full bg-[#01696F]/10 flex items-center justify-center flex-shrink-0">
-                <Trophy size={16} className="text-[#01696F]" />
-              </div>
-              <h3 className="font-black text-zinc-800 text-base tracking-tight">Activities</h3>
-              <button
-                onClick={() => setRightOpen(false)}
-                className="ml-auto w-7 h-7 flex items-center justify-center rounded-lg hover:bg-zinc-100 transition group"
-              >
-                <X size={16} className="text-zinc-500 group-hover:text-zinc-800 transition" />
-              </button>
-            </div>
-
             {/* Body */}
             <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-3 bg-[#F0EDE7]">
+
+              {/* Live feedback / coaching */}
+              {feedback ? (
+                <div className={cn(
+                  "rounded-2xl p-4 border shadow-sm animate-fade-in",
+                  feedback.isError ? "bg-rose-50 border-rose-100" : "bg-emerald-50 border-emerald-100"
+                )}>
+                  <h4 className={cn(
+                    "text-[9px] font-black uppercase tracking-widest mb-1.5",
+                    feedback.isError ? "text-rose-500" : "text-emerald-600"
+                  )}>Feedback</h4>
+                  <p className={cn(
+                    "text-xs font-semibold leading-relaxed",
+                    feedback.isError ? "text-rose-700" : "text-emerald-700"
+                  )}>{feedback.message}</p>
+                  {!feedback.isError && feedback.scorePct !== undefined && (
+                    <p className="text-[10px] text-emerald-600 font-extrabold mt-1.5">Score: {Math.round(feedback.scorePct)}%</p>
+                  )}
+                </div>
+              ) : (
+                <div className="bg-white rounded-2xl p-4 border border-zinc-100 shadow-sm">
+                  <p className="text-xs text-zinc-500 font-medium leading-relaxed">
+                    Complete the activity and I&apos;ll give you instant feedback here. Submit your
+                    answer and I&apos;ll let you know how you did — and where to focus next.
+                  </p>
+                </div>
+              )}
 
               {/* Progress card */}
               <div className="bg-white rounded-2xl p-3 border border-zinc-100 shadow-sm flex flex-col gap-2">
@@ -1189,49 +1088,8 @@ export default function CaseTestPage() {
                   <div className="h-full bg-[#01696F] rounded-full transition-all duration-700" style={{ width: `${progressPct}%` }} />
                 </div>
               </div>
-
-              {/* Step list — each MCQ question shown individually */}
-              <div className="bg-white rounded-2xl p-3 border border-zinc-100 shadow-sm flex flex-col gap-1.5">
-                <h4 className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-1">Jump to Step</h4>
-                {steps.map((s, idx) => {
-                  const done = completedStepIds.has(s.id);
-                  const isCurrent = idx === currentIdx;
-                  const typeKey = s.stepType === "mcq-question" ? "mcq" : s.stepType;
-                  const label = s.stepType === "mcq-question"
-                    ? `Q${(s.questionIndex ?? 0) + 1} — ${(s.question?.questionText ?? "MCQ").slice(0, 28)}…`
-                    : TYPE_META[s.stepType]?.label ?? s.stepType;
-                  return (
-                    <button
-                      key={s.id}
-                      onClick={() => { setCurrentIdx(idx); setFeedback(null); }}
-                      className={cn(
-                        "flex items-center gap-2 px-3 py-2 rounded-xl text-left text-[11px] font-bold transition-all border",
-                        isCurrent ? "bg-[#01696F] text-white border-transparent shadow-sm"
-                          : done ? "bg-[#01696F]/10 text-[#01696F] border-[#01696F]/15 hover:bg-[#01696F]/15"
-                            : "bg-zinc-50 text-zinc-600 border-zinc-100 hover:bg-zinc-100"
-                      )}
-                    >
-                      {done ? (
-                        <CheckCircle2 size={12} fill="currentColor" className="shrink-0" />
-                      ) : (
-                        <span className={cn(
-                          "w-5 h-5 rounded-full border text-[9px] flex items-center justify-center shrink-0 font-black",
-                          isCurrent ? "border-white/30 text-white/80" : "border-zinc-300 text-zinc-400"
-                        )}>{idx + 1}</span>
-                      )}
-                      <span className={cn(
-                        "w-2 h-2 rounded-full shrink-0",
-                        typeKey === "mcq" ? "bg-violet-400" : typeKey === "canvas" ? "bg-amber-400" : "bg-sky-400"
-                      )} />
-                      <span className="flex-1 truncate">{label}</span>
-                    </button>
-                  );
-                })}
-              </div>
             </div>
-          </div>
-        </div>
-      </div>
+      </CollapsiblePanel>
 
       {/* Case studies review modal — always review mode inside the test page */}
       <CaseStudiesModal
