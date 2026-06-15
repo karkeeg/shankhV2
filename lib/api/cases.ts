@@ -9,6 +9,8 @@ export const casesApi = {
   markRead: <T = unknown>(id: string) => api.post<T>(`/api/v1/cases/${id}/session/mark-read`),
   submitActivity: <T = unknown>(id: string, activityId: string, body: unknown) =>
     api.post<T>(`/api/v1/cases/${id}/activities/${activityId}/submit`, body),
+  saveDraft: <T = unknown>(id: string, activityId: string, body: unknown) =>
+    api.post<T>(`/api/v1/cases/${id}/activities/${activityId}/draft`, body),
 
   // ── Admin authoring ──────────────────────────────────────────────
   adminList: <T = unknown>() => api.get<T>("/api/v1/cases/admin/list"),

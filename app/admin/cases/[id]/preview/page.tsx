@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { casesApi } from "@/lib/api";
+import { casesApi, frameworksApi } from "@/lib/api";
 import { useToastStore } from "@/lib/toast-store";
 import { ConfirmDialog } from "@/components/admin/ui";
 import {
@@ -12,6 +12,7 @@ import {
 import { cn } from "@/lib/utils";
 import { ExcelGrid } from "@/components/exercise/ExcelGrid";
 import { CanvasExercise } from "@/components/exercise/CanvasExercise";
+import { FrameworkCanvas } from "@/components/exercise/FrameworkCanvas";
 import { tokensToPaletteItems, solutionToGraph } from "@/lib/canvasAdapter";
 import { Logo } from "@/components/layout/Logo";
 import { CaseStudiesModal } from "@/components/case/CaseStudiesModal";
@@ -117,17 +118,219 @@ const DEFAULT_CANVAS: AdminCanvasData = { title: "", instructions: "", context: 
 const DEFAULT_QUANTUS: QuantusActivityData = { title: "", instructions: "", context: "", gridRows: [], gridCols: [], gridValues: {}, correctAnswers: {} };
 const DEFAULT_MCQ = { instructions: "", context: "", questions: [] };
 
+interface FrameworkLite { id: string; name: string; category: string | null; structure?: any; isActive: boolean; }
+
+// ─── Canvas editor with mode switch (from-scratch vs framework library) ─────────
+
+function CanvasModeEditor({ frameworks, value, onChange, caseId, activityId }: {
+  frameworks: FrameworkLite[];
+  value: any;
+  onChange: (v: any) => void;
+  caseId?: string;
+  activityId?: string;
+}) {
+  const isFramework = value?.mode === "framework";
+
+  const switchMode = (mode: "freeform" | "framework") => {
+    const common = { title: value?.title ?? "", instructions: value?.instructions ?? "", context: value?.context ?? "" };
+    if (mode === "framework") {
+      onChange({ mode: "framework", ...common, frameworkIds: [], correctFrameworkId: null, frameworkSnapshots: {} });
+    } else {
+      onChange({ ...DEFAULT_CANVAS, ...common });
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex gap-1 bg-zinc-100 p-1 rounded-xl w-fit">
+        {(["freeform", "framework"] as const).map((m) => (
+          <button key={m} onClick={() => switchMode(m)}
+            className={cn("px-4 py-1.5 rounded-lg text-[11px] font-black transition-all",
+              (m === "framework") === isFramework ? "bg-white text-zinc-800 shadow-sm" : "text-zinc-500 hover:text-zinc-700")}>
+            {m === "freeform" ? "Build from scratch" : "Use frameworks"}
+          </button>
+        ))}
+      </div>
+
+      {isFramework ? (
+        <FrameworkModeFields frameworks={frameworks} value={value} onChange={onChange} caseId={caseId} activityId={activityId} />
+      ) : (
+        <AdminCanvasEditor value={value as AdminCanvasData} onChange={onChange} />
+      )}
+    </div>
+  );
+}
+
+function FrameworkModeFields({ frameworks, value, onChange, caseId, activityId }: {
+  frameworks: FrameworkLite[];
+  value: any;
+  onChange: (v: any) => void;
+  caseId?: string;
+  activityId?: string;
+}) {
+  const router = useRouter();
+  const set = (patch: any) => onChange({ ...value, ...patch });
+  const selectedIds: string[] = value.frameworkIds ?? [];
+  // Case-OWNED framework copies. Each attached framework is snapshotted here so
+  // later edits to the master library never change this case.
+  const snapshots: Record<string, any> = value.frameworkSnapshots ?? {};
+
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const clone = (o: any) => JSON.parse(JSON.stringify(o ?? {}));
+
+  // Attach → copy the master framework into the case. Detach → drop the copy.
+  const toggleFramework = (f: FrameworkLite) => {
+    const id = f.id;
+    const isOn = selectedIds.includes(id);
+    const nextIds = isOn ? selectedIds.filter((x) => x !== id) : [...selectedIds, id];
+    const nextSnap = { ...snapshots };
+    if (isOn) {
+      delete nextSnap[id];
+    } else {
+      nextSnap[id] = {
+        id, name: f.name, category: f.category ?? null,
+        description: (f as any).description ?? null,
+        structure: clone(f.structure ?? { nodes: [], edges: [] }),
+      };
+    }
+    const patch: any = { frameworkIds: nextIds, frameworkSnapshots: nextSnap };
+    if (!nextIds.includes(value.correctFrameworkId)) patch.correctFrameworkId = nextIds[0] ?? null;
+    set(patch);
+  };
+
+  // Edit a node label on the case's OWN copy (blank node = expected answer).
+  const setNodeLabel = (fwId: string, nodeId: string, label: string) => {
+    const snap = snapshots[fwId];
+    if (!snap) return;
+    const nextNodes = (snap.structure?.nodes ?? []).map((n: any) => (n.id === nodeId ? { ...n, label } : n));
+    set({ frameworkSnapshots: { ...snapshots, [fwId]: { ...snap, structure: { ...snap.structure, nodes: nextNodes } } } });
+  };
+
+  // Re-copy the latest master structure into this case (discards case edits).
+  const resetToMaster = (f: FrameworkLite) => {
+    const snap = snapshots[f.id];
+    if (!snap) return;
+    set({ frameworkSnapshots: { ...snapshots, [f.id]: { ...snap, structure: clone(f.structure ?? { nodes: [], edges: [] }) } } });
+  };
+
+  const active = frameworks.filter((f) => f.isActive);
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-1 gap-3">
+        <Field label="Title" value={value.title ?? ""} onChange={(v) => set({ title: v })} />
+        <Field label="Instructions" value={value.instructions ?? ""} onChange={(v) => set({ instructions: v })} multiline />
+        <Field label="Context / Scenario" value={value.context ?? ""} onChange={(v) => set({ context: v })} multiline />
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <span className="text-[9px] font-black uppercase tracking-widest text-zinc-400">
+          Frameworks offered to the learner · tick the correct one
+        </span>
+        {active.length === 0 && (
+          <div className="py-6 text-center text-zinc-400 text-xs font-semibold border border-dashed border-zinc-200 rounded-xl">
+            No active frameworks. Create some in the Framework Library first.
+          </div>
+        )}
+        <div className="flex flex-col gap-2">
+          {active.map((f) => {
+            const checked = selectedIds.includes(f.id);
+            const isCorrect = value.correctFrameworkId === f.id;
+            const snap = snapshots[f.id];
+            // Edit the case's own copy when attached; show the master as a hint otherwise.
+            const nodes: any[] = (snap?.structure?.nodes ?? f.structure?.nodes ?? []);
+            const blanks = nodes.filter((n: any) => n.isBlank).length;
+            // Count nodes whose case copy differs from the master (changed-for-this-case).
+            const masterById = new Map((f.structure?.nodes ?? []).map((n: any) => [n.id, n.label ?? ""]));
+            const customCount = snap ? nodes.filter((n: any) => masterById.has(n.id) && (n.label ?? "") !== masterById.get(n.id)).length : 0;
+            const expanded = expandedId === f.id;
+            return (
+              <div key={f.id} className={cn("flex flex-col border rounded-xl", checked ? "border-[#01696F]/30 bg-[#FAFFFE]" : "border-zinc-200 bg-white")}>
+                <div className="flex items-center gap-3 px-3 py-2.5">
+                  <input type="checkbox" checked={checked} onChange={() => toggleFramework(f)} className="w-4 h-4 accent-[#01696F] shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-extrabold text-zinc-800 truncate">{f.name}</p>
+                    <p className="text-[10px] text-zinc-400 font-semibold">
+                      {f.category || "Uncategorized"} · {blanks} blank node{blanks !== 1 ? "s" : ""}
+                      {customCount > 0 && <span className="text-[#01696F]"> · {customCount} changed for this case</span>}
+                    </p>
+                  </div>
+                  {checked && nodes.length > 0 && (
+                    <button type="button" onClick={() => setExpandedId(expanded ? null : f.id)}
+                      className="text-[10px] font-black text-[#01696F] hover:underline shrink-0">
+                      {expanded ? "Hide values ▴" : "Edit values ▾"}
+                    </button>
+                  )}
+                  {checked && caseId && activityId && (
+                    <button type="button"
+                      onClick={() => router.push(`/admin/cases/${caseId}/framework/${activityId}/${f.id}`)}
+                      title="Open the full builder to edit this case's copy (layout, connections, nodes). Save the activity first."
+                      className="text-[10px] font-black text-[#01696F] hover:underline shrink-0 whitespace-nowrap">
+                      Open builder ↗
+                    </button>
+                  )}
+                  <label className={cn("flex items-center gap-1.5 text-[10px] font-black shrink-0 cursor-pointer", isCorrect ? "text-[#01696F]" : "text-zinc-400", !checked && "opacity-40 pointer-events-none")}>
+                    <input type="radio" name="correct-framework" checked={isCorrect} onChange={() => set({ correctFrameworkId: f.id })} disabled={!checked} className="accent-[#01696F]" />
+                    Correct
+                  </label>
+                </div>
+
+                {/* Edit the case's OWN copy. Structure/layout come from the snapshot taken
+                    when the framework was attached — the master library is never touched. */}
+                {checked && expanded && (
+                  <div className="border-t border-[#01696F]/15 px-3 py-2.5 flex flex-col gap-2 bg-white/70 rounded-b-xl">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-[10px] text-zinc-400 font-medium">
+                        These values belong to <b>this case only</b>. Blank-node values are the expected answers.
+                      </p>
+                      <button type="button" onClick={() => resetToMaster(f)}
+                        title="Re-copy the latest version from the framework library (discards this case's edits)"
+                        className="text-[10px] font-black text-zinc-400 hover:text-[#01696F] shrink-0 whitespace-nowrap">
+                        Reset to master
+                      </button>
+                    </div>
+                    {nodes.map((n: any) => {
+                      const changed = masterById.has(n.id) && (n.label ?? "") !== masterById.get(n.id);
+                      return (
+                        <div key={n.id} className="flex items-center gap-2">
+                          <span className={cn("text-[9px] font-black uppercase tracking-wide px-1.5 py-0.5 rounded shrink-0 w-14 text-center",
+                            n.isBlank ? "bg-blue-100 text-blue-600" : "bg-zinc-100 text-zinc-500")}>
+                            {n.isBlank ? "Blank" : "Locked"}
+                          </span>
+                          <input
+                            value={n.label ?? ""}
+                            onChange={(e) => setNodeLabel(f.id, n.id, e.target.value)}
+                            placeholder="(empty)"
+                            className={cn("flex-1 border rounded-lg px-2 py-1.5 text-xs bg-white outline-none focus:border-[#01696F] min-w-0",
+                              changed ? "border-[#01696F]/50 text-[#01696F] font-bold" : "border-zinc-200 text-zinc-700")}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Activity Form (add new) ────────────────────────────────────────────────────
 
-function ActivityForm({ onSave, onCancel, saving }: {
+function ActivityForm({ onSave, onCancel, saving, frameworks }: {
   onSave: (type: string, data: any, order: number) => void;
   onCancel: () => void;
   saving: boolean;
+  frameworks: FrameworkLite[];
 }) {
   const [type, setType] = useState<"mcq" | "canvas" | "quantus">("mcq");
   const [order, setOrder] = useState(0);
   const [mcqData, setMcqData] = useState<any>({ ...DEFAULT_MCQ });
-  const [canvasData, setCanvasData] = useState<AdminCanvasData>({ ...DEFAULT_CANVAS });
+  const [canvasData, setCanvasData] = useState<any>({ ...DEFAULT_CANVAS });
   const [quantusData, setQuantusData] = useState<QuantusActivityData>({ ...DEFAULT_QUANTUS });
   const currentData = type === "mcq" ? mcqData : type === "canvas" ? canvasData : quantusData;
   return (
@@ -153,7 +356,7 @@ function ActivityForm({ onSave, onCancel, saving }: {
         </div>
       </div>
       {type === "mcq" && <McqBuilder value={mcqData} onChange={setMcqData} />}
-      {type === "canvas" && <AdminCanvasEditor value={canvasData} onChange={setCanvasData} />}
+      {type === "canvas" && <CanvasModeEditor frameworks={frameworks} value={canvasData} onChange={setCanvasData} />}
       {type === "quantus" && <QuantusActivityBuilder value={quantusData} onChange={setQuantusData} />}
       <div className="flex justify-end pt-2 border-t border-zinc-100">
         <button onClick={() => onSave(type, currentData, order)} disabled={saving}
@@ -167,15 +370,20 @@ function ActivityForm({ onSave, onCancel, saving }: {
 
 // ─── Edit Activity Form (update existing) ──────────────────────────────────────
 
-function EditActivityForm({ activity, onSave, onCancel, saving }: {
+function EditActivityForm({ activity, onSave, onCancel, saving, frameworks }: {
   activity: any;
   onSave: (type: string, data: any) => void;
   onCancel: () => void;
   saving: boolean;
+  frameworks: FrameworkLite[];
 }) {
   const type = activity.activityType as "mcq" | "canvas" | "quantus";
   const [mcqData, setMcqData] = useState<any>(type === "mcq" ? { ...DEFAULT_MCQ, ...activity.activityData } : { ...DEFAULT_MCQ });
-  const [canvasData, setCanvasData] = useState<AdminCanvasData>(type === "canvas" ? { ...DEFAULT_CANVAS, ...activity.activityData } : { ...DEFAULT_CANVAS });
+  const [canvasData, setCanvasData] = useState<any>(
+    type === "canvas"
+      ? (activity.activityData?.mode === "framework" ? { ...activity.activityData } : { ...DEFAULT_CANVAS, ...activity.activityData })
+      : { ...DEFAULT_CANVAS }
+  );
   const [quantusData, setQuantusData] = useState<QuantusActivityData>(type === "quantus" ? { ...DEFAULT_QUANTUS, ...activity.activityData } : { ...DEFAULT_QUANTUS });
   const currentData = type === "mcq" ? mcqData : type === "canvas" ? canvasData : quantusData;
   return (
@@ -189,7 +397,7 @@ function EditActivityForm({ activity, onSave, onCancel, saving }: {
         <button onClick={onCancel} className="text-xs font-bold text-zinc-400 hover:text-zinc-600">Cancel</button>
       </div>
       {type === "mcq" && <McqBuilder value={mcqData} onChange={setMcqData} />}
-      {type === "canvas" && <AdminCanvasEditor value={canvasData} onChange={setCanvasData} />}
+      {type === "canvas" && <CanvasModeEditor frameworks={frameworks} value={canvasData} onChange={setCanvasData} caseId={activity.caseSimulationId} activityId={activity.id} />}
       {type === "quantus" && <QuantusActivityBuilder value={quantusData} onChange={setQuantusData} />}
       <div className="flex justify-end pt-2 border-t border-zinc-100">
         <button onClick={() => onSave(type, currentData)} disabled={saving}
@@ -240,6 +448,7 @@ export default function AdminCasePreviewPage() {
   const [caseData, setCaseData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<"preview" | "edit">("preview");
+  const [frameworks, setFrameworks] = useState<FrameworkLite[]>([]);
 
   // ── Preview state ────────────────────────────────────────────────────────
   const [steps, setSteps] = useState<any[]>([]);
@@ -282,11 +491,21 @@ export default function AdminCasePreviewPage() {
 
   useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [id]);
 
+  useEffect(() => {
+    frameworksApi.adminList<FrameworkLite[]>().then((d) => setFrameworks(d ?? [])).catch(() => {});
+  }, []);
+
   // ── Reset preview on step change ─────────────────────────────────────────
 
   const step = steps[currentIdx];
   const actData = step?.activityData ?? {};
   const isCanvasActive = step?.stepType === "canvas";
+  const isFrameworkActive = isCanvasActive && actData?.mode === "framework";
+  // Admin preview: show the case's OWN snapshot copy of the correct framework
+  // (answers revealed). The master library is never read here.
+  const previewFwId: string | undefined = actData?.correctFrameworkId;
+  const previewFramework = isFrameworkActive ? actData?.frameworkSnapshots?.[previewFwId ?? ""] : undefined;
+  const previewStructure = previewFramework?.structure ?? null;
   const totalSteps = steps.length;
 
   useEffect(() => {
@@ -583,6 +802,7 @@ export default function AdminCasePreviewPage() {
 
                 {showActivityForm && (
                   <ActivityForm
+                    frameworks={frameworks}
                     onSave={handleSaveNewActivity}
                     onCancel={() => setShowActivityForm(false)}
                     saving={savingActivity}
@@ -592,6 +812,7 @@ export default function AdminCasePreviewPage() {
                 {editingActivity && (
                   <EditActivityForm
                     activity={editingActivity}
+                    frameworks={frameworks}
                     onSave={handleUpdateActivity}
                     onCancel={() => setEditingActivity(null)}
                     saving={savingActivity}
@@ -869,7 +1090,28 @@ export default function AdminCasePreviewPage() {
             )}
 
             {/* ── Canvas ── */}
-            {isCanvasActive && (
+            {isCanvasActive && isFrameworkActive && (
+              <div className="absolute inset-0">
+                {previewFramework ? (
+                  <FrameworkCanvas
+                    key={`fw-preview-${step.id}-${previewFramework.id}`}
+                    structure={previewStructure}
+                    revealAnswers
+                    disabled
+                    nodesDraggable
+                    backgroundText={previewFramework.name}
+                  />
+                ) : (
+                  <div className="h-full flex items-center justify-center text-zinc-400 text-sm font-semibold px-6 text-center">
+                    {(actData?.frameworkIds?.length ?? 0) === 0
+                      ? "No frameworks attached. Switch to Edit to attach frameworks."
+                      : "Mark a correct framework in Edit mode to preview it."}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {isCanvasActive && !isFrameworkActive && (
               <div className="absolute inset-0">
                 <CanvasExercise
                   key={`canvas-preview-${step.id}`}

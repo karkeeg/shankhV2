@@ -8,12 +8,13 @@ import { casesApi } from "@/lib/api";
 import {
   Loader2, ArrowLeft, ArrowRight, CheckCircle2,
   XCircle, ChevronLeft, ChevronRight, Trophy, X, RefreshCw, BookOpen,
-  Minimize2, Maximize2,
+  Minimize2, Maximize2, Save,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ExcelGrid } from "@/components/exercise/ExcelGrid";
 import { CanvasExercise } from "@/components/exercise/CanvasExercise";
 import { CanvasToolkit } from "@/components/exercise/CanvasToolkit";
+import { FrameworkCanvas } from "@/components/exercise/FrameworkCanvas";
 import { ScratchpadLauncher, ScratchpadPanel } from "@/components/scratchpad/Scratchpad";
 import { scratchpadKey } from "@/lib/scratchpad";
 import { CollapsiblePanel, PanelEdgeRail, PanelReopenTab, Resizer, useCollapsiblePanel, clamp } from "@/components/activity/panels";
@@ -322,6 +323,18 @@ export default function CaseTestPage() {
   const [canvasElements, setCanvasElements] = useState<any>(null);
   const [canvasResetNonce, setCanvasResetNonce] = useState(0);
 
+  // Framework-mode state (case canvas activities that use the framework library)
+  const [selectedFrameworkId, setSelectedFrameworkId] = useState<string | null>(null);
+  const [filledValues, setFilledValues] = useState<Record<string, string>>({});
+  // Per-learner node layout (node id → {x,y}); seeds + persists the canvas view.
+  const [filledPositions, setFilledPositions] = useState<Record<string, { x: number; y: number }>>({});
+  const [frameworkResetNonce, setFrameworkResetNonce] = useState(0);
+  // Draft autosave status
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [draftSavedAt, setDraftSavedAt] = useState<number | null>(null);
+  // Post-submit grade breakdown per activityId (for per-blank review colouring)
+  const [frameworkReview, setFrameworkReview] = useState<Record<string, any>>({});
+
   useEffect(() => {
     if (!token) return;
     casesApi.startSession(id)
@@ -345,7 +358,8 @@ export default function CaseTestPage() {
             const initialBuffer: Record<string, Record<string, string>> = {};
 
             for (const a of rawActivities) {
-              if (a.response) {
+              // A draft response prefills the canvas but is NOT a completion.
+              if (a.response && !a.response.isDraft) {
                 doneActIds.add(a.id);
                 sc[a.id] = a.response.scorePct ?? 0;
                 if (a.activityType === "mcq") {
@@ -382,7 +396,14 @@ export default function CaseTestPage() {
   const progressPct = totalSteps > 0 ? Math.round((completedCount / totalSteps) * 100) : 0;
 
   const isCanvasActive = step?.stepType === "canvas";
+  const isFrameworkActive = isCanvasActive && actData?.mode === "framework";
   const isCanvasSubmitted = isCanvasActive && isStepDone;
+
+  // Framework currently shown (picked locally, or the one submitted earlier)
+  const frameworkOptions: any[] = isFrameworkActive ? (actData?.frameworks ?? []) : [];
+  const activeFramework = isFrameworkActive
+    ? frameworkOptions.find((f) => f.id === selectedFrameworkId) ?? null
+    : null;
 
   // Reset UI state when navigating to a different step
   useEffect(() => {
@@ -390,7 +411,43 @@ export default function CaseTestPage() {
     setFeedback(null);
     setCanvasElements(null);
     if (step?.stepType === "quantus") setSpreadsheetGrid(actData?.gridValues ?? {});
+    if (step?.stepType === "canvas" && actData?.mode === "framework") {
+      // Restore a prior submission or saved draft, else start blank.
+      const resp = step?.response?.responseData;
+      setSelectedFrameworkId(resp?.selectedFrameworkId ?? null);
+      setFilledValues(resp?.filledValues ?? {});
+      setFilledPositions(resp?.nodePositions ?? {});
+    } else {
+      setSelectedFrameworkId(null);
+      setFilledValues({});
+      setFilledPositions({});
+    }
+    setDraftSavedAt(null);
   }, [currentIdx]);
+
+  // ── Framework draft: debounced autosave of layout + typed values ────────────
+  // Persists per-learner so the canvas view + answers survive a reload. Skipped
+  // once the activity is finally submitted (graded responses are immutable).
+  const draftPayload = useMemo(() => ({
+    selectedFrameworkId, filledValues, nodePositions: filledPositions,
+  }), [selectedFrameworkId, filledValues, filledPositions]);
+
+  const saveFrameworkDraft = async (silent = true) => {
+    if (!step || !isFrameworkActive || isCanvasSubmitted || !selectedFrameworkId) return;
+    if (!silent) setSavingDraft(true);
+    try {
+      await casesApi.saveDraft(id, step.activityId, { responseData: draftPayload });
+      setDraftSavedAt(Date.now());
+    } catch { /* draft saves are best-effort */ }
+    finally { if (!silent) setSavingDraft(false); }
+  };
+
+  useEffect(() => {
+    if (!isFrameworkActive || isCanvasSubmitted || !selectedFrameworkId) return;
+    const t = setTimeout(() => { saveFrameworkDraft(true); }, 1000);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftPayload, isFrameworkActive, isCanvasSubmitted, selectedFrameworkId]);
 
   // ── Canvas: palette → drag toolkit + review reconstruction ──────────────────
   // Mirror normalizeCaseSteps in the learning page: convert the stored
@@ -552,6 +609,43 @@ export default function CaseTestPage() {
 
   const handleCanvasSubmit = async () => {
     if (!step || step.stepType !== "canvas" || isStepDone) return;
+
+    // ── Framework mode: pick a framework + fill its blank nodes ──
+    if (isFrameworkActive) {
+      if (!selectedFrameworkId) {
+        setFeedback({ isError: true, message: "Pick a framework from the panel first!" });
+        return;
+      }
+      const blankNodes = (activeFramework?.structure?.nodes ?? []).filter((n: any) => n.isBlank);
+      const anyFilled = blankNodes.some((n: any) => (filledValues[n.id] ?? "").trim() !== "");
+      if (blankNodes.length > 0 && !anyFilled) {
+        setFeedback({ isError: true, message: "Fill in at least one blank node before submitting!" });
+        return;
+      }
+      setSubmitting(true);
+      setFeedback(null);
+      try {
+        const { scorePct, allComplete, gradeBreakdown } = await casesApi.submitActivity<any>(
+          id, step.activityId, { responseData: { selectedFrameworkId, filledValues, nodePositions: filledPositions } }
+        );
+        setCompletedStepIds(prev => new Set([...prev, step.id]));
+        setCompletedActivityIds(prev => new Set([...prev, step.activityId]));
+        setScores(prev => ({ ...prev, [step.activityId]: scorePct }));
+        setFrameworkReview(prev => ({ ...prev, [step.activityId]: gradeBreakdown }));
+        setFeedback({
+          isError: false,
+          message: gradeBreakdown?.wrongFramework
+            ? "That wasn't the right framework for this case."
+            : scorePct >= 60 ? `Score: ${Math.round(scorePct)}% ✓` : `Recorded. Score: ${Math.round(scorePct)}%`,
+          scorePct,
+        });
+        if (allComplete) setTimeout(() => router.push("/skill?section=case_simulations"), 2500);
+      } catch (e: any) {
+        setFeedback({ isError: true, message: e?.message || "Error submitting." });
+      } finally { setSubmitting(false); }
+      return;
+    }
+
     const graph = extractCanvasGraph(canvasElements);
     if (graph.placedTokens.length === 0) {
       setFeedback({ isError: true, message: "Drag some nodes onto the canvas first!" });
@@ -584,8 +678,14 @@ export default function CaseTestPage() {
   const handleReset = () => {
     setFeedback(null);
     if (step?.stepType === "canvas") {
-      setCanvasElements(null);
-      setCanvasResetNonce(n => n + 1); // force CanvasExercise to remount blank
+      if (isFrameworkActive) {
+        setFilledValues({});           // clear typed answers
+        setFilledPositions({});        // restore the framework's default layout
+        setFrameworkResetNonce(n => n + 1); // remount canvas so positions re-seed
+      } else {
+        setCanvasElements(null);
+        setCanvasResetNonce(n => n + 1); // force CanvasExercise to remount blank
+      }
     } else if (step?.stepType === "mcq-question") {
       setSelectedOption(null);
     } else if (step?.stepType === "quantus") {
@@ -737,9 +837,37 @@ export default function CaseTestPage() {
                 <p className="text-[10px] text-zinc-400 font-medium italic">No context provided.</p>
               )}
 
+              {/* Framework picker — case canvas activities that use the library.
+                  Replaces the drag toolkit: the learner chooses the right framework. */}
+              {isFrameworkActive && !isCanvasSubmitted && (
+                <div className="border-t border-zinc-200/50 pt-2 flex flex-col gap-2">
+                  <span className="text-[9px] uppercase font-black tracking-widest text-[#01696F]/70">Choose a framework</span>
+                  <p className="text-[10px] text-zinc-400 font-medium leading-relaxed">Pick the framework that fits this case, then fill its blank boxes.</p>
+                  <div className="flex flex-col gap-1.5">
+                    {frameworkOptions.map((f) => {
+                      const isSel = selectedFrameworkId === f.id;
+                      return (
+                        <button
+                          key={f.id}
+                          onClick={() => { setSelectedFrameworkId(f.id); setFilledValues({}); }}
+                          className={cn("text-left px-3 py-2 rounded-xl border text-[11px] font-bold transition-all",
+                            isSel ? "bg-[#01696F] text-white border-transparent shadow-sm" : "bg-white text-zinc-600 border-zinc-200 hover:border-[#01696F]/30")}
+                        >
+                          <span className="block truncate">{f.name}</span>
+                          {f.category && <span className={cn("block text-[9px] font-semibold mt-0.5", isSel ? "text-white/70" : "text-zinc-400")}>{f.category}</span>}
+                        </button>
+                      );
+                    })}
+                    {frameworkOptions.length === 0 && (
+                      <p className="text-[10px] text-zinc-400 font-medium italic">No frameworks available for this activity.</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Canvas modeling toolkit inside content card — active mode only.
                   Same drag-and-drop toolkit used by the learning + skill pages. */}
-              {isCanvasActive && !isCanvasSubmitted && (
+              {isCanvasActive && !isFrameworkActive && !isCanvasSubmitted && (
                 <CanvasToolkit draggableElements={canvasDraggableElements} />
               )}
 
@@ -834,12 +962,32 @@ export default function CaseTestPage() {
 
           {/* Right controls */}
           <div className="flex items-center gap-2 flex-shrink-0">
+            {/* Framework draft: explicit Save + autosave status */}
+            {isFrameworkActive && !isCanvasSubmitted && (
+              <>
+                {draftSavedAt && !savingDraft && (
+                  <span className="text-[10px] font-bold text-[#01696F]/70 hidden sm:flex items-center gap-1 select-none">
+                    <CheckCircle2 size={11} className="text-emerald-500" /> Saved
+                  </span>
+                )}
+                <button
+                  onClick={() => saveFrameworkDraft(false)}
+                  disabled={savingDraft || !selectedFrameworkId}
+                  title={selectedFrameworkId ? "Save your layout & answers" : "Pick a framework first"}
+                  className="px-3 py-2 bg-white text-[#01696F] hover:bg-[#E6F0F1] border border-[#01696F]/20 disabled:opacity-40 disabled:pointer-events-none font-bold text-xs rounded-xl shadow-sm transition-all active:scale-95 flex items-center gap-1.5 flex-shrink-0"
+                >
+                  {savingDraft
+                    ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /><span className="hidden sm:inline">Saving…</span></>
+                    : <><Save size={13} /><span className="hidden sm:inline">Save</span></>}
+                </button>
+              </>
+            )}
             <button
               onClick={() => setCenterOpen(false)}
               title="Minimize question — give the scratchpad more room"
               className="px-2.5 py-2 bg-white text-zinc-500 hover:text-[#01696F] border border-zinc-200 hover:border-[#01696F]/30 font-bold text-xs rounded-xl shadow-sm transition-all active:scale-95 flex items-center gap-1.5 flex-shrink-0"
             >
-              <Minimize2 size={13} /> 
+              <Minimize2 size={13} />
             </button>
             <button
               onClick={
@@ -970,8 +1118,42 @@ export default function CaseTestPage() {
             )
           )}
 
+          {/* ── Framework mode — fixed library diagram, learner fills blank nodes ── */}
+          {isFrameworkActive && (
+            <div className="absolute inset-0 flex flex-col">
+              {activeFramework ? (
+                <FrameworkCanvas
+                  key={`fw-${step.id}-${activeFramework.id}-${isCanvasSubmitted ? "review" : "fill"}-${frameworkResetNonce}`}
+                  structure={activeFramework.structure}
+                  values={filledValues}
+                  onValuesChange={setFilledValues}
+                  positions={filledPositions}
+                  onPositionsChange={setFilledPositions}
+                  disabled={isCanvasSubmitted}
+                  nodesDraggable={!isCanvasSubmitted}
+                  review={(() => {
+                    const gb = frameworkReview[step.activityId];
+                    if (!isCanvasSubmitted || !gb || gb.wrongFramework) return undefined;
+                    const map: Record<string, { isWrong: boolean; expected: string }> = {};
+                    const exp = gb.expected ?? {};
+                    (gb.wrong ?? []).forEach((nid: string) => { map[nid] = { isWrong: true, expected: exp[nid] ?? "" }; });
+                    (gb.missing ?? []).forEach((nid: string) => { map[nid] = { isWrong: true, expected: exp[nid] ?? "" }; });
+                    (gb.correct ?? []).forEach((nid: string) => { map[nid] = { isWrong: false, expected: exp[nid] ?? "" }; });
+                    return map;
+                  })()}
+                  backgroundText={activeFramework.name}
+                />
+              ) : (
+                <div className="h-full flex flex-col items-center justify-center gap-3 text-zinc-400 p-8 text-center">
+                  <p className="text-sm font-extrabold text-zinc-600">Pick a framework to begin</p>
+                  <p className="text-xs text-zinc-500 max-w-xs">Choose the framework that fits this case from the panel on the left, then fill in the blank boxes.</p>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* ── Canvas — same React Flow editor as learning + skill ── */}
-          {isCanvasActive && (
+          {isCanvasActive && !isFrameworkActive && (
             <div className="absolute inset-0 flex flex-col">
               {isCanvasSubmitted ? (
                 <CanvasExercise

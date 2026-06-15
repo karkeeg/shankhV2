@@ -30,6 +30,32 @@ export interface SolutionSnapshot {
   nodePositions?: { id: string; x: number; y: number }[];
 }
 
+// ─── Framework library types ───────────────────────────────────────────────────
+// A framework is a fixed, pre-drawn diagram. Every node is part of the structure
+// (no palette/solution split). `isBlank` nodes are filled by the learner; their
+// `label` is the expected answer.
+
+export interface FrameworkNode {
+  id: string;
+  label: string;
+  x: number;
+  y: number;
+  shape: "rectangle" | "ellipse" | "diamond";
+  color?: string;
+  isBlank: boolean;
+}
+
+export interface FrameworkEdge {
+  id: string;
+  sourceId: string;
+  targetId: string;
+}
+
+export interface FrameworkStructure {
+  nodes: FrameworkNode[];
+  edges: FrameworkEdge[];
+}
+
 export const PALETTE_COLORS = [
   "#dbeafe", "#d1fae5", "#fae8ff", "#fef3c7",
   "#ffe4e6", "#e0f2fe", "#f1f5f9",
@@ -151,4 +177,62 @@ export function graphToSolution(graph: CanvasGraph | null | undefined): Solution
   }
 
   return { edges, nodePositions: Array.from(posByToken.values()) };
+}
+
+// ─── Framework converters ──────────────────────────────────────────────────────
+
+/**
+ * Build a React Flow graph from a framework structure so the admin builder can
+ * reload a saved layout. Each node id === framework node id (so edges resolve).
+ * Node data carries `tokenId` (= node id) for round-tripping through CanvasExercise.
+ */
+export function frameworkStructureToGraph(structure: FrameworkStructure | null | undefined): CanvasGraph {
+  const s = structure ?? { nodes: [], edges: [] };
+  const nodes: Node[] = (s.nodes ?? []).map((n, idx) => ({
+    id: n.id,
+    type: "tokenNode",
+    position: {
+      x: n.x ?? ORIGIN + (idx % COLS) * COL_W,
+      y: n.y ?? ORIGIN + Math.floor(idx / COLS) * ROW_H,
+    },
+    data: { tokenId: n.id, label: n.label, shape: n.shape, color: n.color, isBlank: n.isBlank },
+  }));
+  const edges: Edge[] = (s.edges ?? []).map((e, i) => ({
+    id: e.id || `fw-${i}`,
+    source: e.sourceId,
+    target: e.targetId,
+    ...EDGE_DEFAULTS,
+  }));
+  return { nodes, edges };
+}
+
+/**
+ * Merge a node-metadata list (label/shape/color/isBlank — the source of truth)
+ * with the positions + edges captured from the canvas, producing the persisted
+ * framework `structure`. Nodes not yet placed on the canvas fall back to an
+ * auto-layout position.
+ */
+export function buildFrameworkStructure(
+  nodeMeta: { id: string; label: string; shape: FrameworkNode["shape"]; color?: string; isBlank: boolean }[],
+  snapshot: SolutionSnapshot | null | undefined,
+): FrameworkStructure {
+  const posById = new Map((snapshot?.nodePositions ?? []).map((p) => [p.id, p]));
+  const nodes: FrameworkNode[] = nodeMeta.map((m, idx) => {
+    const pos = posById.get(m.id);
+    return {
+      id: m.id,
+      label: m.label,
+      shape: m.shape,
+      color: m.color,
+      isBlank: m.isBlank,
+      x: pos?.x ?? ORIGIN + (idx % COLS) * COL_W,
+      y: pos?.y ?? ORIGIN + Math.floor(idx / COLS) * ROW_H,
+    };
+  });
+  // Keep only edges between nodes that still exist.
+  const ids = new Set(nodeMeta.map((m) => m.id));
+  const edges: FrameworkEdge[] = (snapshot?.edges ?? [])
+    .filter((e) => ids.has(e.sourceId) && ids.has(e.targetId))
+    .map((e, i) => ({ id: `fw-${i}`, sourceId: e.sourceId, targetId: e.targetId }));
+  return { nodes, edges };
 }

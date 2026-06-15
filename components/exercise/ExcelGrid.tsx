@@ -587,7 +587,12 @@ export const ExcelGrid = ({
 
   // Generate Column Headers (A, B, C...) with a minimum of 8 columns to feel like Excel
   const colHeaders = useMemo(() => {
-    const headers = colLabels ? [...colLabels] : Array.from({ length: table[0]?.length || 0 }, (_, i) => String.fromCharCode(65 + i));
+    const normalizedLabels = Array.isArray(colLabels)
+      ? colLabels
+      : colLabels && typeof colLabels === "object"
+        ? Object.values(colLabels)
+        : null;
+    const headers = normalizedLabels ? [...normalizedLabels] : Array.from({ length: table[0]?.length || 0 }, (_, i) => String.fromCharCode(65 + i));
     const minCols = 8;
     if (headers.length < minCols) {
       for (let i = headers.length; i < minCols; i++) {

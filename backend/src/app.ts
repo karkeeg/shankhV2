@@ -15,6 +15,8 @@ import activityRoutes from "./routes/activity";
 import reactionRoutes from "./routes/reactions";
 import bookmarkRoutes from "./routes/bookmarks";
 import caseRoutes from "./routes/cases";
+import frameworkRoutes from "./routes/frameworks";
+import { mountDocs } from "./docs/swagger";
 
 dotenv.config();
 
@@ -56,6 +58,9 @@ app.get("/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
+// ── API docs (Swagger UI at /api/docs, raw spec at /api/docs.json) ─────────────
+mountDocs(app);
+
 // ── Auth rate limiter (login + signup only) ───────────────────────────────────
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -78,6 +83,7 @@ app.use("/api/v1/attempts", activityRoutes);
 app.use("/api/v1/reactions", reactionRoutes);
 app.use("/api/v1/bookmarks", bookmarkRoutes);
 app.use("/api/v1/cases", caseRoutes);
+app.use("/api/v1/frameworks", frameworkRoutes);
 
 app.listen(port, () => {
   console.log(`Shankh backend listening at http://localhost:${port}`);

@@ -8,13 +8,20 @@ import Image from "next/image";
 import { Logo } from "@/components/layout/Logo";
 import dashImage from "@/public/image.png";
 
+const pathOptions = [
+  { value: "Finance", label: "Finance" },
+  { value: "Strategy", label: "Strategy" },
+  { value: "Operations", label: "Operations" },
+  { value: "Founder / Entrepreneur", label: "Founder / Entrepreneur" },
+  { value: "General management", label: "General management" },
+  { value: "Still Exploring", label: "Still Exploring" },
+];
+
 const professionOptions = [
   { value: "Student", label: "Student" },
-  { value: "Finance Professional", label: "Finance Professional" },
-  { value: "Investor", label: "Investor" },
-  { value: "Founder / Entrepreneur", label: "Founder / Entrepreneur" },
-  { value: "Software Engineer", label: "Software Engineer" },
-  { value: "Career Switcher", label: "Career Switcher" },
+  { value: "Working professional", label: "Working professional" },
+  { value: "Founder / entrepreneur", label: "Founder / entrepreneur" },
+  { value: "Career switcher", label: "Career switcher" },
   { value: "Other", label: "Other" },
 ];
 
@@ -22,26 +29,13 @@ const levelOptions = [
   { value: "Beginner", label: "Beginner" },
   { value: "Intermediate", label: "Intermediate" },
   { value: "Advanced", label: "Advanced" },
-  { value: "Professional", label: "Professional" },
+  { value: "Placement-ready / interview-ready", label: "Placement-ready / interview-ready" },
 ];
 
-const goalOptions = [
-  { value: "Break into Investment Banking", label: "Break into Investment Banking" },
-  { value: "Break into Private Equity", label: "Break into Private Equity" },
-  { value: "Improve Valuation Skills", label: "Improve Valuation Skills" },
-  { value: "Prepare for Interviews", label: "Prepare for Interviews" },
-  { value: "Advance My Career", label: "Advance My Career" },
-  { value: "Personal Investing", label: "Personal Investing" },
-  { value: "Academic Learning", label: "Academic Learning" },
-];
-
-const topicOptions = [
-  { value: "Financial Statements", label: "Financial Statements" },
-  { value: "Financial Analysis", label: "Financial Analysis" },
-  { value: "DCF Valuation", label: "DCF Valuation" },
-  { value: "M&A Modeling", label: "M&A Modeling" },
-  { value: "LBO Modeling", label: "LBO Modeling" },
-  { value: "Excel & Modeling Fundamentals", label: "Excel & Modeling Fundamentals" },
+const guidanceOptions = [
+  { value: "Focus deeply on one path first", label: "Focus deeply on one path first" },
+  { value: "Build strength across multiple business paths", label: "Build strength across multiple business paths" },
+  { value: "Explore first, then specialize later", label: "Explore first, then specialize later" },
 ];
 
 export default function OnboardingPage() {
@@ -52,10 +46,10 @@ export default function OnboardingPage() {
   const [name, setName] = useState("");
   const [username, setUsername] = useState("");
   const [phone, setPhone] = useState("");
+  const [path, setPath] = useState("");
   const [profession, setProfession] = useState("");
   const [level, setLevel] = useState("");
-  const [goal, setGoal] = useState("");
-  const [firstTopic, setFirstTopic] = useState("");
+  const [guidance, setGuidance] = useState("");
   
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -121,8 +115,8 @@ export default function OnboardingPage() {
             phone: phone || undefined,
             profession: profession || "Other",
             level: level || "Beginner",
-            goal: goal || "Academic Learning",
-            firstTopic: firstTopic || "Excel & Modeling Fundamentals",
+            goal: guidance || "Explore first, then specialize later",
+            firstTopic: path || "Still Exploring",
           });
           router.push("/");
         } catch (err) {
@@ -173,8 +167,8 @@ export default function OnboardingPage() {
         <div className="w-full max-w-[500px] mx-auto min-h-full flex flex-col p-8 md:p-12">
           
           {/* Top Header Logo */}
-          <div className="flex items-center justify-between mb-8 md:mb-12">
-            <Logo variant="mark" width={120} height={40} className="object-contain" />
+          <div className="flex items-center justify-between">
+            <Logo variant="full" width={180} height={40} className="object-contain" />
             
             {step < 6 && (
               <span className="bg-[#EAE8E2] text-zinc-700 font-semibold px-3 py-1.5 rounded-full text-xs transition-all animate-fade-in">
@@ -207,7 +201,7 @@ export default function OnboardingPage() {
                       value={name}
                       onChange={(e) => setName(e.target.value)}
                       className="w-full bg-[#F3F1ED] border-none rounded-xl p-3.5 text-[#1a1a1a] placeholder:text-zinc-400 focus:ring-2 focus:ring-[#01696F] outline-none transition-all"
-                      placeholder="John Doe"
+                      placeholder="Shankh world"
                     />
                   </div>
 
@@ -218,7 +212,7 @@ export default function OnboardingPage() {
                       value={username}
                       onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))}
                       className="w-full bg-[#F3F1ED] border-none rounded-xl p-3.5 text-[#1a1a1a] placeholder:text-zinc-400 focus:ring-2 focus:ring-[#01696F] outline-none transition-all"
-                      placeholder="johndoe_123"
+                      placeholder="shankh_world "
                     />
                   </div>
 
@@ -263,17 +257,17 @@ export default function OnboardingPage() {
                   >
                     <ArrowLeft size={16} /> Back
                   </button>
-                  <h1 className="text-3xl font-semibold text-[#1a1a1a] mb-1">Your Profession</h1>
-                  <p className="text-zinc-500 mb-6">Select your primary role or path</p>
+                  <h1 className="text-3xl font-semibold text-[#1a1a1a] mb-1">Which path best matches what you want to build expertise in right now?</h1>
+                  <p className="text-zinc-500 mb-6">Pick the area you&apos;re most drawn to</p>
                 </div>
 
                 <div className="space-y-3">
-                  {professionOptions.map((opt, i) => {
-                    const isSelected = profession === opt.value;
+                  {pathOptions.map((opt, i) => {
+                    const isSelected = path === opt.value;
                     return (
                       <button
                         key={opt.value}
-                        onClick={() => handleSelectOption(opt.value, setProfession, 3)}
+                        onClick={() => handleSelectOption(opt.value, setPath, 3)}
                         className={`w-full flex items-center justify-between p-4 rounded-xl text-left font-semibold border-none transition-all active:scale-[0.99] ${
                           isSelected
                             ? "bg-[#01696F] text-white shadow-lg shadow-[#01696F]/10"
@@ -321,17 +315,17 @@ export default function OnboardingPage() {
                   >
                     <ArrowLeft size={16} /> Back
                   </button>
-                  <h1 className="text-3xl font-semibold text-[#1a1a1a] mb-1">Your Current Level</h1>
-                  <p className="text-zinc-500 mb-6">Rate your general finance & modeling expertise</p>
+                  <h1 className="text-3xl font-semibold text-[#1a1a1a] mb-1">What best describes you today?</h1>
+                  <p className="text-zinc-500 mb-6">Select the option that fits you best</p>
                 </div>
 
                 <div className="space-y-3">
-                  {levelOptions.map((opt, i) => {
-                    const isSelected = level === opt.value;
+                  {professionOptions.map((opt, i) => {
+                    const isSelected = profession === opt.value;
                     return (
                       <button
                         key={opt.value}
-                        onClick={() => handleSelectOption(opt.value, setLevel, 4)}
+                        onClick={() => handleSelectOption(opt.value, setProfession, 4)}
                         className={`w-full flex items-center justify-between p-4 rounded-xl text-left font-semibold border-none transition-all active:scale-[0.99] ${
                           isSelected
                             ? "bg-[#01696F] text-white shadow-lg shadow-[#01696F]/10"
@@ -379,17 +373,17 @@ export default function OnboardingPage() {
                   >
                     <ArrowLeft size={16} /> Back
                   </button>
-                  <h1 className="text-3xl font-semibold text-[#1a1a1a] mb-1">Your Current Level</h1>
-                  <p className="text-zinc-500 mb-6">Select your primary goal on the platform</p>
+                  <h1 className="text-3xl font-semibold text-[#1a1a1a] mb-1">What is your current level?</h1>
+                  <p className="text-zinc-500 mb-6">Rate your general finance & modeling expertise</p>
                 </div>
 
                 <div className="space-y-3">
-                  {goalOptions.map((opt, i) => {
-                    const isSelected = goal === opt.value;
+                  {levelOptions.map((opt, i) => {
+                    const isSelected = level === opt.value;
                     return (
                       <button
                         key={opt.value}
-                        onClick={() => handleSelectOption(opt.value, setGoal, 5)}
+                        onClick={() => handleSelectOption(opt.value, setLevel, 5)}
                         className={`w-full flex items-center justify-between p-4 rounded-xl text-left font-semibold border-none transition-all active:scale-[0.99] ${
                           isSelected
                             ? "bg-[#01696F] text-white shadow-lg shadow-[#01696F]/10"
@@ -437,17 +431,17 @@ export default function OnboardingPage() {
                   >
                     <ArrowLeft size={16} /> Back
                   </button>
-                  <h1 className="text-3xl font-semibold text-[#1a1a1a] mb-1">What topic would you like to master first?</h1>
-                  <p className="text-zinc-500 mb-6">Choose a starting point for your customized track</p>
+                  <h1 className="text-3xl font-semibold text-[#1a1a1a] mb-1">How would you like Shankh to guide your learning?</h1>
+                  <p className="text-zinc-500 mb-6">Choose the approach that suits you best</p>
                 </div>
 
                 <div className="space-y-3">
-                  {topicOptions.map((opt, i) => {
-                    const isSelected = firstTopic === opt.value;
+                  {guidanceOptions.map((opt, i) => {
+                    const isSelected = guidance === opt.value;
                     return (
                       <button
                         key={opt.value}
-                        onClick={() => handleSelectOption(opt.value, setFirstTopic, 6)}
+                        onClick={() => handleSelectOption(opt.value, setGuidance, 6)}
                         className={`w-full flex items-center justify-between p-4 rounded-xl text-left font-semibold border-none transition-all active:scale-[0.99] ${
                           isSelected
                             ? "bg-[#01696F] text-white shadow-lg shadow-[#01696F]/10"

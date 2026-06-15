@@ -854,6 +854,24 @@ model UserSkillTestResponse {
 // CASE SIMULATIONS
 // =============================================================================
 
+// Reusable framework library — admin-defined, fixed consulting-style diagrams
+// (Market Entry, Due Diligence, …) reused across case simulations.
+// `structure` JSON shape:
+//   nodes: [{ id, label, x, y, shape: "rectangle"|"ellipse"|"diamond", color, isBlank }]
+//   edges: [{ id, sourceId, targetId }]
+// isBlank=false → locked node, label shown to learner.
+// isBlank=true  → blank input node, label is the EXPECTED value (hidden from learner, used for grading).
+model Framework {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  category    String?
+  structure   Json
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
 model CaseSimulation {
   id          String     @id @default(uuid())
   title       String
@@ -926,7 +944,9 @@ model CaseActivityResponse {
   activity       CaseActivity    @relation(fields: [caseActivityId], references: [id], onDelete: Cascade)
   responseData   Json
   scorePct       Float?
+  isDraft        Boolean         @default(false)  // true = saved-in-progress (not graded, not counted complete)
   createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @default(now()) @updatedAt
 
   @@unique([sessionId, caseActivityId])
 }

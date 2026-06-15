@@ -2,6 +2,46 @@
 import { Request, Response } from "express";
 import { prisma } from "../prisma";
 import { v4 as uuidv4 } from "uuid";
+import { stripFrameworkAnswers } from "./frameworkController";
+
+type ResolvedFramework = { id: string; name: string; description: string | null; category: string | null; structure: any };
+
+// Resolve the frameworks a case offers, WITH answers intact. Each case OWNS its
+// framework copy: the `frameworkSnapshots` stored on the activity is the single
+// source of truth, so later edits to the master library never change a case.
+// Used by BOTH the learner-hydrate path and the grade path so they always agree.
+function resolveCaseFrameworks(d: any): ResolvedFramework[] {
+  const ids: string[] = d.frameworkIds ?? [];
+  const snapshots: Record<string, any> = d.frameworkSnapshots ?? {};
+  // Preserve the admin-defined order; tolerate a missing snapshot entry.
+  return ids
+    .map((id) => snapshots[id])
+    .filter(Boolean)
+    .map((s) => ({ id: s.id, name: s.name, description: s.description ?? null, category: s.category ?? null, structure: s.structure }));
+}
+
+// Hydrate a framework-mode canvas activity for the LEARNER: attach the case's own
+// framework copies (answers stripped) and never leak which one is correct.
+async function hydrateFrameworkActivityForLearner(activity: any): Promise<any> {
+  const d = activity.activityData as any;
+  if (activity.activityType !== "canvas" || d?.mode !== "framework") return activity;
+
+  const resolved = resolveCaseFrameworks(d);
+  const { correctFrameworkId, frameworkSnapshots, ...safe } = d; // drop answer key + raw copies
+  return {
+    ...activity,
+    activityData: {
+      ...safe,
+      frameworks: resolved.map((f) => ({
+        id: f.id,
+        name: f.name,
+        description: f.description,
+        category: f.category,
+        structure: stripFrameworkAnswers(f.structure), // hide blank answers from the learner
+      })),
+    },
+  };
+}
 
 // ─── User-facing ──────────────────────────────────────────────────────────────
 
@@ -54,6 +94,13 @@ export async function getCaseDetail(req: Request, res: Response) {
     responses = await prisma.caseActivityResponse.findMany({ where: { sessionId: session.id } });
   }
 
+  const caseActivities = await Promise.all(
+    sim.caseActivities.map(async (a) => {
+      const hydrated = await hydrateFrameworkActivityForLearner(a);
+      return { ...hydrated, response: responses.find((r) => r.caseActivityId === a.id) ?? null };
+    })
+  );
+
   return res.json({
     data: {
       id: sim.id,
@@ -61,10 +108,7 @@ export async function getCaseDetail(req: Request, res: Response) {
       description: sim.description,
       difficulty: sim.difficulty,
       caseStudies: sim.caseStudies,
-      caseActivities: sim.caseActivities.map((a) => ({
-        ...a,
-        response: responses.find((r) => r.caseActivityId === a.id) ?? null,
-      })),
+      caseActivities,
       session,
     },
   });
@@ -112,6 +156,32 @@ export async function markStudiesRead(req: Request, res: Response) {
   return res.json({ data: updated });
 }
 
+// POST /api/v1/cases/:id/activities/:activityId/draft
+// Persist an in-progress response (layout + typed values) WITHOUT grading or
+// counting it toward completion. Lets the learner save the canvas and resume
+// later. No-op if the activity was already finally submitted.
+export async function saveCaseActivityDraft(req: Request, res: Response) {
+  const { id, activityId } = req.params;
+  const userId = (req as any).userId as string;
+  const { responseData } = req.body;
+
+  const session = await prisma.userCaseSession.findUnique({ where: { userId_caseSimulationId: { userId, caseSimulationId: id } } });
+  if (!session) return res.status(404).json({ error: "Session not found" });
+
+  const existing = await prisma.caseActivityResponse.findUnique({
+    where: { sessionId_caseActivityId: { sessionId: session.id, caseActivityId: activityId } },
+  });
+  // Already graded/submitted → keep the final answer untouched.
+  if (existing && !existing.isDraft) return res.json({ data: { response: existing, draft: false } });
+
+  const response = await prisma.caseActivityResponse.upsert({
+    where: { sessionId_caseActivityId: { sessionId: session.id, caseActivityId: activityId } },
+    create: { sessionId: session.id, caseActivityId: activityId, responseData, scorePct: null, isDraft: true },
+    update: { responseData, isDraft: true },
+  });
+  return res.json({ data: { response, draft: true } });
+}
+
 // POST /api/v1/cases/:id/activities/:activityId/submit
 export async function submitCaseActivity(req: Request, res: Response) {
   const { id, activityId } = req.params;
@@ -125,19 +195,20 @@ export async function submitCaseActivity(req: Request, res: Response) {
   if (!activity) return res.status(404).json({ error: "Activity not found" });
 
   // Grade — canvas activities return full breakdown, others just a score
-  const gradeInfo = gradeActivityFull(activity, responseData);
+  const gradeInfo = await gradeActivityFull(activity, responseData);
   const { scorePct } = gradeInfo;
 
   const response = await prisma.caseActivityResponse.upsert({
     where: { sessionId_caseActivityId: { sessionId: session.id, caseActivityId: activityId } },
-    create: { sessionId: session.id, caseActivityId: activityId, responseData, scorePct },
-    update: { responseData, scorePct },
+    create: { sessionId: session.id, caseActivityId: activityId, responseData, scorePct, isDraft: false },
+    update: { responseData, scorePct, isDraft: false },
   });
 
-  // Recalculate session progress
+  // Recalculate session progress — drafts don't count as completed.
   const allResponses = await prisma.caseActivityResponse.findMany({ where: { sessionId: session.id } });
-  const completedCount = allResponses.length;
-  const avgScore = allResponses.reduce((s, r) => s + (r.scorePct ?? 0), 0) / (allResponses.length || 1);
+  const graded = allResponses.filter((r) => !r.isDraft);
+  const completedCount = graded.length;
+  const avgScore = graded.reduce((s, r) => s + (r.scorePct ?? 0), 0) / (graded.length || 1);
   const isComplete = completedCount >= session.totalActivities;
 
   await prisma.userCaseSession.update({
@@ -169,7 +240,42 @@ function gradeCanvasEdges(
   return { scorePct, correct, wrong, missing };
 }
 
-function gradeActivityFull(activity: any, responseData: any): { scorePct: number; [k: string]: any } {
+// Framework-mode canvas: learner picks one framework and fills its blank nodes.
+// Wrong framework pick → 0 (the filled blanks belong to a different diagram).
+// Correct pick → % of blank nodes whose typed value matches the expected label.
+async function gradeFramework(d: any, responseData: any): Promise<{ scorePct: number; [k: string]: any }> {
+  const selectedFrameworkId: string | undefined = responseData.selectedFrameworkId;
+  const filledValues: Record<string, string> = responseData.filledValues ?? {};
+
+  if (!selectedFrameworkId) return { scorePct: 0, wrongFramework: true };
+  if (selectedFrameworkId !== d.correctFrameworkId) {
+    return { scorePct: 0, wrongFramework: true, selectedFrameworkId };
+  }
+
+  // Grade against the case's OWN framework copy — the exact structure the learner saw.
+  const resolved = resolveCaseFrameworks(d);
+  const fw = resolved.find((f) => f.id === selectedFrameworkId);
+  const nodes: any[] = fw?.structure?.nodes ?? [];
+  const blanks = nodes.filter((n) => n.isBlank);
+  if (!blanks.length) return { scorePct: 100, correct: [], wrong: [], missing: [] };
+
+  const norm = (v: unknown) => String(v ?? "").trim().toLowerCase();
+  const correct: string[] = [];
+  const wrong: string[] = [];
+  const missing: string[] = [];
+  const expected: Record<string, string> = {};
+  for (const n of blanks) {
+    expected[n.id] = n.label;
+    const typed = filledValues[n.id];
+    if (typed === undefined || norm(typed) === "") missing.push(n.id);
+    else if (norm(typed) === norm(n.label)) correct.push(n.id);
+    else wrong.push(n.id);
+  }
+  // `expected` is returned only in the submit grade breakdown (post-submission review).
+  return { scorePct: Math.round((correct.length / blanks.length) * 100), correct, wrong, missing, expected };
+}
+
+async function gradeActivityFull(activity: any, responseData: any): Promise<{ scorePct: number; [k: string]: any }> {
   const d = activity.activityData as any;
 
   if (activity.activityType === "mcq") {
@@ -195,6 +301,9 @@ function gradeActivityFull(activity: any, responseData: any): { scorePct: number
   }
 
   if (activity.activityType === "canvas") {
+    // Framework mode — pick the correct framework + fill blank nodes.
+    if (d.mode === "framework") return gradeFramework(d, responseData);
+
     const solution = d.solutionSnapshot as { edges: { sourceId: string; targetId: string }[] } | null;
     if (!solution?.edges?.length) return { scorePct: 100 };
 

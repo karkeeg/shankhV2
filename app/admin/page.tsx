@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { api, adminApi } from "@/lib/api";
 import { StatCard } from "@/components/admin/ui";
-import { Users, Briefcase, BookOpen, ArrowRight, Layers, FileText } from "lucide-react";
+import { Users, Briefcase, BookOpen, ArrowRight, Layers, FileText, Network } from "lucide-react";
 
 // Operation cards shown under the stats grid.
 const OPERATIONS = [
@@ -32,6 +32,14 @@ const OPERATIONS = [
     arrow: "text-[#01696F]",
     title: "Case Simulations",
     desc: "Create and manage case simulations with reading material and manual test activities for the Skill Building section.",
+  },
+  {
+    href: "/admin/frameworks",
+    icon: Network,
+    accent: "bg-amber-50 text-amber-600",
+    arrow: "text-amber-600",
+    title: "Framework Library",
+    desc: "Define reusable consulting-style framework diagrams (Market Entry, Due Diligence…) with locked and blank nodes, used by case simulation canvas activities.",
   },
 ];
 

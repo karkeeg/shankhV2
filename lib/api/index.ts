@@ -6,6 +6,7 @@ export { skillApi } from "./skill";
 export { bookmarksApi, reactionsApi } from "./bookmarks";
 export { progressApi } from "./progress";
 export { casesApi } from "./cases";
+export { frameworksApi } from "./frameworks";
 export { activitiesApi, draftApi, attemptsApi } from "./activity";
 export { adminApi } from "./admin";
 export type { CurriculumEntity } from "./admin";
