@@ -311,17 +311,17 @@ export default function QuantusAdminEditor() {
             Back to Lesson
           </button>
           <div className="h-5 w-px bg-zinc-200 shrink-0" />
-          <span className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 text-amber-600 border border-amber-100 rounded-full text-[10px] font-black shrink-0">
+          <span className="flex items-center gap-1.5 px-2.5 py-1 bg-[#DFEAEA] text-[#01696F] border border-[#01696F]/15 rounded-full text-[10px] font-black shrink-0">
             <TableProperties size={11} /> Quantus Lab
           </span>
           <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Spreadsheet title *"
-            className="px-3 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-xs font-medium outline-none w-44 focus:bg-white focus:border-amber-300" />
+            className="px-3 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-xs font-medium outline-none w-44 focus:bg-white focus:border-[#01696F]" />
           <input value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder="Instructions for students *"
-            className="flex-1 min-w-[180px] px-3 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-xs outline-none focus:bg-white focus:border-amber-300" />
+            className="flex-1 min-w-[180px] px-3 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-xs outline-none focus:bg-white focus:border-[#01696F]" />
           <input value={sheetName} onChange={(e) => setSheetName(e.target.value)} placeholder="Sheet tab name"
             className="px-3 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-xs outline-none w-32 focus:bg-white" />
           <button onClick={save} disabled={saving || !gridReady}
-            className="flex items-center gap-2 px-5 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-xl shadow-sm disabled:opacity-40 ml-auto shrink-0 transition-all active:scale-95">
+            className="flex items-center gap-2 px-5 py-2 bg-[#01696F] hover:bg-[#014f54] text-white text-xs font-bold rounded-xl shadow-sm disabled:opacity-40 ml-auto shrink-0 transition-all active:scale-95">
             {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
             {saving ? "Saving..." : "Save Quantus"}
           </button>
@@ -334,7 +334,7 @@ export default function QuantusAdminEditor() {
             value={context}
             onChange={(e) => setContext(e.target.value)}
             placeholder="Optional background text shown above the spreadsheet..."
-            className="flex-1 px-3 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-xs outline-none focus:bg-white focus:border-amber-300"
+            className="flex-1 px-3 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-xs outline-none focus:bg-white focus:border-[#01696F]"
           />
         </div>
 
@@ -342,7 +342,7 @@ export default function QuantusAdminEditor() {
         {!gridReady && (
           <div className="flex-1 flex items-center justify-center">
             <div className="bg-white border border-zinc-200 rounded-3xl p-10 shadow-sm flex flex-col items-center gap-6 w-80">
-              <div className="p-4 bg-amber-50 rounded-2xl text-amber-500"><Grid3X3 size={32} /></div>
+              <div className="p-4 bg-[#DFEAEA] rounded-2xl text-[#01696F]"><Grid3X3 size={32} /></div>
               <div className="text-center">
                 <h3 className="text-sm font-extrabold text-zinc-800 mb-1">Set Grid Size</h3>
                 <p className="text-xs text-zinc-400">You can add more rows and columns later.</p>

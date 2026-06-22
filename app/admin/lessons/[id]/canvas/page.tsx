@@ -96,20 +96,20 @@ export default function CanvasAdminPage() {
             Back to Lesson
           </button>
           <div className="h-5 w-px bg-zinc-200 shrink-0" />
-          <span className="flex items-center gap-1.5 px-2.5 py-1 bg-indigo-50 text-indigo-600 border border-indigo-100 rounded-full text-[10px] font-black shrink-0">
+          <span className="flex items-center gap-1.5 px-2.5 py-1 bg-[#DFEAEA] text-[#01696F] border border-[#01696F]/15 rounded-full text-[10px] font-black shrink-0">
             <PenLine size={11} /> Canvas Drill
           </span>
           <input
             value={data.title}
             onChange={(e) => setData((d) => ({ ...d, title: e.target.value }))}
             placeholder="Activity title *"
-            className="px-3 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-xs font-medium outline-none w-44 focus:bg-white focus:border-indigo-300"
+            className="px-3 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-xs font-medium outline-none w-44 focus:bg-white focus:border-[#01696F]"
           />
           <input
             value={data.instructions}
             onChange={(e) => setData((d) => ({ ...d, instructions: e.target.value }))}
             placeholder="Instructions for students *"
-            className="flex-1 min-w-[180px] px-3 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-xs outline-none focus:bg-white focus:border-indigo-300"
+            className="flex-1 min-w-[180px] px-3 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-xs outline-none focus:bg-white focus:border-[#01696F]"
           />
           <select
             value={data.scoringMode}
@@ -122,7 +122,7 @@ export default function CanvasAdminPage() {
           <button
             onClick={handleSave}
             disabled={saving}
-            className="flex items-center gap-2 px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-sm disabled:opacity-40 ml-auto shrink-0 transition-all active:scale-95"
+            className="flex items-center gap-2 px-5 py-2 bg-[#01696F] hover:bg-[#014f54] text-white text-xs font-bold rounded-xl shadow-sm disabled:opacity-40 ml-auto shrink-0 transition-all active:scale-95"
           >
             {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
             {saving ? "Saving..." : "Save Canvas"}
@@ -136,7 +136,7 @@ export default function CanvasAdminPage() {
             value={data.context}
             onChange={(e) => setData((d) => ({ ...d, context: e.target.value }))}
             placeholder="Optional background text shown above the canvas..."
-            className="flex-1 px-3 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-xs outline-none focus:bg-white focus:border-indigo-300"
+            className="flex-1 px-3 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-xs outline-none focus:bg-white focus:border-[#01696F]"
           />
         </div>
 

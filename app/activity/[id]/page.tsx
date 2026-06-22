@@ -563,6 +563,8 @@ export default function UnifiedActivityPage() {
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [spreadsheetGrid, setSpreadsheetGrid] = useState<Record<string, string>>({});
   const [canvasElements, setCanvasElements] = useState<any>(null);
+  // Bumped on Reset to force the canvas to re-mount empty.
+  const [canvasResetNonce, setCanvasResetNonce] = useState(0);
   const [submitting, setSubmitting] = useState(false);
 
   // ── Case mode: buffer MCQ answers until all questions in one activity are done
@@ -709,6 +711,22 @@ export default function UnifiedActivityPage() {
   }, [activity, id]);
 
   const step = activity?.steps?.[currentStepIdx];
+
+  // ── Canvas initial graph ──────────────────────────────────────────────────────
+  // Computed synchronously from the saved localStorage draft (falling back to any
+  // submitted graph), so that on refresh / step-change the CanvasExercise mounts
+  // with the user's in-progress work instead of an empty canvas. Keyed by step id
+  // so it re-mounts once per step (not on every edit). The draft is the source of
+  // truth on reload — `submittedCanvasData` is `[]` for an un-submitted lesson canvas.
+  const canvasInitial = React.useMemo(() => {
+    if (step?.type !== "canvas") return null;
+    const draft = !step.completed ? loadCanvasDraft(step.id) : null;
+    if (draft?.nodes?.length || draft?.edges?.length) return draft;
+    const submitted = step.submittedCanvasData;
+    if (!Array.isArray(submitted) && submitted?.nodes) return submitted;
+    return null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step?.id, step?.type, step?.completed]);
 
   // ── Excel helpers ────────────────────────────────────────────────────────────
   const excelTable = React.useMemo(() => {
@@ -892,7 +910,11 @@ export default function UnifiedActivityPage() {
     if (!step) return;
     if (step.type === "quantus") setSpreadsheetGrid(step.gridValues || {});
     else if (step.type === "mcq") setSelectedOption(null);
-    else if (step.type === "canvas") setCanvasElements([]);
+    else if (step.type === "canvas") {
+      clearCanvasDraft(step.id);
+      setCanvasElements([]);
+      setCanvasResetNonce((n) => n + 1); // re-mount the canvas so it clears visually
+    }
     setFeedback(null);
     if (activity?.steps) {
       const updated = [...activity.steps];
@@ -1421,9 +1443,10 @@ export default function UnifiedActivityPage() {
           {step.type === "canvas" && (
             <div className="absolute inset-0 flex flex-col">
               <CanvasExercise
+                key={`canvas-${step.id}-${canvasResetNonce}`}
                 canvasBackgroundText={step.questionText || (step.assemblyMode === "graph" ? "Graph Editor" : "Equation Builder")}
                 onElementsChange={setCanvasElements}
-                initialElements={step.submittedCanvasData || []}
+                initialElements={canvasInitial}
                 assemblyMode={step.assemblyMode}
               />
             </div>

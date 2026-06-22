@@ -20,27 +20,43 @@ function resolveCaseFrameworks(d: any): ResolvedFramework[] {
     .map((s) => ({ id: s.id, name: s.name, description: s.description ?? null, category: s.category ?? null, structure: s.structure }));
 }
 
-// Hydrate a framework-mode canvas activity for the LEARNER: attach the case's own
-// framework copies (answers stripped) and never leak which one is correct.
+// Hydrate a framework-mode canvas activity for the LEARNER: offer the WHOLE active
+// framework library as options (exactly one is correct, never leaked) so the learner
+// must recognise the right framework for the case. The correct framework is served
+// from the case's frozen snapshot (so what the learner sees == what grading uses);
+// every other library framework is served from its live copy. Answers always stripped.
 async function hydrateFrameworkActivityForLearner(activity: any): Promise<any> {
   const d = activity.activityData as any;
   if (activity.activityType !== "canvas" || d?.mode !== "framework") return activity;
 
-  const resolved = resolveCaseFrameworks(d);
-  const { correctFrameworkId, frameworkSnapshots, ...safe } = d; // drop answer key + raw copies
-  return {
-    ...activity,
-    activityData: {
-      ...safe,
-      frameworks: resolved.map((f) => ({
-        id: f.id,
-        name: f.name,
-        description: f.description,
-        category: f.category,
-        structure: stripFrameworkAnswers(f.structure), // hide blank answers from the learner
-      })),
-    },
-  };
+  const { correctFrameworkId, frameworkSnapshots, frameworkIds, ...safe } = d; // drop answer key + raw copies
+  const snapshots: Record<string, any> = frameworkSnapshots ?? {};
+
+  const library = await prisma.framework.findMany({
+    where: { isActive: true },
+    orderBy: [{ category: "asc" }, { name: "asc" }],
+  });
+
+  const toOption = (src: { id: string; name: string; description: string | null; category: string | null; structure: any }) => ({
+    id: src.id,
+    name: src.name,
+    description: src.description ?? null,
+    category: src.category ?? null,
+    structure: stripFrameworkAnswers(src.structure), // hide blank answers from the learner
+  });
+
+  // Prefer the frozen snapshot for the correct framework; live copy for the rest.
+  const frameworks = library.map((f) =>
+    f.id === correctFrameworkId && snapshots[f.id] ? toOption(snapshots[f.id]) : toOption(f)
+  );
+
+  // Safety net: if the correct framework was de-activated/deleted from the library,
+  // still surface it from the snapshot so the case remains answerable.
+  if (correctFrameworkId && snapshots[correctFrameworkId] && !frameworks.some((f) => f.id === correctFrameworkId)) {
+    frameworks.push(toOption(snapshots[correctFrameworkId]));
+  }
+
+  return { ...activity, activityData: { ...safe, frameworks } };
 }
 
 // ─── User-facing ──────────────────────────────────────────────────────────────
@@ -163,7 +179,7 @@ export async function markStudiesRead(req: Request, res: Response) {
 export async function saveCaseActivityDraft(req: Request, res: Response) {
   const { id, activityId } = req.params;
   const userId = (req as any).userId as string;
-  const { responseData } = req.body;
+  const { responseData, recommendationText } = req.body;
 
   const session = await prisma.userCaseSession.findUnique({ where: { userId_caseSimulationId: { userId, caseSimulationId: id } } });
   if (!session) return res.status(404).json({ error: "Session not found" });
@@ -174,10 +190,14 @@ export async function saveCaseActivityDraft(req: Request, res: Response) {
   // Already graded/submitted → keep the final answer untouched.
   if (existing && !existing.isDraft) return res.json({ data: { response: existing, draft: false } });
 
+  // Only overwrite the recommendation when the client actually sends one, so a
+  // canvas-only autosave doesn't wipe text the learner typed earlier (or vice versa).
+  const recPatch = recommendationText !== undefined ? { recommendationText } : {};
+
   const response = await prisma.caseActivityResponse.upsert({
     where: { sessionId_caseActivityId: { sessionId: session.id, caseActivityId: activityId } },
-    create: { sessionId: session.id, caseActivityId: activityId, responseData, scorePct: null, isDraft: true },
-    update: { responseData, isDraft: true },
+    create: { sessionId: session.id, caseActivityId: activityId, responseData, recommendationText: recommendationText ?? null, scorePct: null, isDraft: true },
+    update: { responseData, ...recPatch, isDraft: true },
   });
   return res.json({ data: { response, draft: true } });
 }
@@ -186,7 +206,7 @@ export async function saveCaseActivityDraft(req: Request, res: Response) {
 export async function submitCaseActivity(req: Request, res: Response) {
   const { id, activityId } = req.params;
   const userId = (req as any).userId as string;
-  const { responseData } = req.body;
+  const { responseData, recommendationText } = req.body;
 
   const session = await prisma.userCaseSession.findUnique({ where: { userId_caseSimulationId: { userId, caseSimulationId: id } } });
   if (!session) return res.status(404).json({ error: "Session not found" });
@@ -194,14 +214,18 @@ export async function submitCaseActivity(req: Request, res: Response) {
   const activity = await prisma.caseActivity.findFirst({ where: { id: activityId, caseSimulationId: id } });
   if (!activity) return res.status(404).json({ error: "Activity not found" });
 
-  // Grade — canvas activities return full breakdown, others just a score
+  // Grade — canvas activities return full breakdown, others just a score.
+  // The recommendation text is qualitative and does not affect the score.
   const gradeInfo = await gradeActivityFull(activity, responseData);
   const { scorePct } = gradeInfo;
 
+  // Preserve any draft recommendation if this final submit omits the field.
+  const recPatch = recommendationText !== undefined ? { recommendationText } : {};
+
   const response = await prisma.caseActivityResponse.upsert({
     where: { sessionId_caseActivityId: { sessionId: session.id, caseActivityId: activityId } },
-    create: { sessionId: session.id, caseActivityId: activityId, responseData, scorePct, isDraft: false },
-    update: { responseData, scorePct, isDraft: false },
+    create: { sessionId: session.id, caseActivityId: activityId, responseData, recommendationText: recommendationText ?? null, scorePct, isDraft: false },
+    update: { responseData, ...recPatch, scorePct, isDraft: false },
   });
 
   // Recalculate session progress — drafts don't count as completed.

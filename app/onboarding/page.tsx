@@ -38,6 +38,205 @@ const guidanceOptions = [
   { value: "Explore first, then specialize later", label: "Explore first, then specialize later" },
 ];
 
+type ChoiceOption = { value: string; label: string };
+type PathFlow = {
+  help: { title: string; options: ChoiceOption[] };
+  topics: { title: string; options: ChoiceOption[] };
+  roles: { title: string; options: ChoiceOption[] };
+};
+
+// Shared flow used by both "General management" and "Founder / Entrepreneur"
+const generalManagementFlow: PathFlow = {
+  help: {
+    title: "What do you want help with right now?",
+    options: [
+      { value: "Build business fundamentals", label: "Build business fundamentals" },
+      { value: "Improve structured thinking", label: "Improve structured thinking" },
+      { value: "Prepare for placements", label: "Prepare for placements" },
+      { value: "Become job-ready across business roles", label: "Become job-ready across business roles" },
+      { value: "Strengthen problem solving across functions", label: "Strengthen problem solving across functions" },
+    ],
+  },
+  topics: {
+    title: "Which topics would you like to explore first?",
+    options: [
+      { value: "Finance basics", label: "Finance basics" },
+      { value: "Strategy basics", label: "Strategy basics" },
+      { value: "Operations basics", label: "Operations basics" },
+      { value: "Structured problem solving", label: "Structured problem solving" },
+      { value: "Business communication", label: "Business communication" },
+      { value: "Interview preparation", label: "Interview preparation" },
+    ],
+  },
+  roles: {
+    title: "Which roles are you most interested in exploring?",
+    options: [
+      { value: "Finance roles", label: "Finance roles" },
+      { value: "Strategy / consulting roles", label: "Strategy / consulting roles" },
+      { value: "Operations roles", label: "Operations roles" },
+      { value: "General management roles", label: "General management roles" },
+      { value: "Still deciding", label: "Still deciding" },
+    ],
+  },
+};
+
+// Path-specific onboarding steps (6, 7, 8) keyed by the path chosen in step 2.
+const pathFlows: Record<string, PathFlow> = {
+  Finance: {
+    help: {
+      title: "What do you want help with in finance right now?",
+      options: [
+        { value: "Break into finance roles", label: "Break into finance roles" },
+        { value: "Prepare for finance interviews", label: "Prepare for finance interviews" },
+        { value: "Build valuation and modeling skill", label: "Build valuation and modeling skill" },
+        { value: "Strengthen accounting and corporate finance basics", label: "Strengthen accounting and corporate finance basics" },
+        { value: "Improve investment judgment", label: "Improve investment judgment" },
+        { value: "Prepare for finance placements", label: "Prepare for finance placements" },
+      ],
+    },
+    topics: {
+      title: "Which finance topics would you like to master first?",
+      options: [
+        { value: "Financial statements", label: "Financial statements" },
+        { value: "Corporate finance basics", label: "Corporate finance basics" },
+        { value: "DCF valuation", label: "DCF valuation" },
+        { value: "Trading comps and transaction comps", label: "Trading comps and transaction comps" },
+        { value: "Financial modeling", label: "Financial modeling" },
+        { value: "M&A and LBO basics", label: "M&A and LBO basics" },
+        { value: "Investment memo thinking", label: "Investment memo thinking" },
+      ],
+    },
+    roles: {
+      title: "Which finance roles are you targeting?",
+      options: [
+        { value: "Financial analyst", label: "Financial analyst" },
+        { value: "Investment banking", label: "Investment banking" },
+        { value: "Private equity / venture capital", label: "Private equity / venture capital" },
+        { value: "Equity research", label: "Equity research" },
+        { value: "Corporate finance", label: "Corporate finance" },
+        { value: "FP&A / controllership", label: "FP&A / controllership" },
+        { value: "CFO track", label: "CFO track" },
+        { value: "Other finance roles", label: "Other finance roles" },
+      ],
+    },
+  },
+  Strategy: {
+    help: {
+      title: "What do you want help with in strategy right now?",
+      options: [
+        { value: "Break into consulting", label: "Break into consulting" },
+        { value: "Prepare for case interviews", label: "Prepare for case interviews" },
+        { value: "Improve structured problem solving", label: "Improve structured problem solving" },
+        { value: "Learn market entry and growth strategy", label: "Learn market entry and growth strategy" },
+        { value: "Improve business judgment for strategy roles", label: "Improve business judgment for strategy roles" },
+        { value: "Prepare for strategy placements", label: "Prepare for strategy placements" },
+      ],
+    },
+    topics: {
+      title: "Which strategy topics would you like to master first?",
+      options: [
+        { value: "Market entry", label: "Market entry" },
+        { value: "Growth strategy", label: "Growth strategy" },
+        { value: "Profitability analysis", label: "Profitability analysis" },
+        { value: "Pricing strategy", label: "Pricing strategy" },
+        { value: "Competitive strategy", label: "Competitive strategy" },
+        { value: "GTM and expansion strategy", label: "GTM and expansion strategy" },
+        { value: "Case structuring and issue trees", label: "Case structuring and issue trees" },
+      ],
+    },
+    roles: {
+      title: "Which strategy roles are you targeting?",
+      options: [
+        { value: "Management consulting", label: "Management consulting" },
+        { value: "Corporate strategy", label: "Corporate strategy" },
+        { value: "Business analyst", label: "Business analyst" },
+        { value: "Founder's office", label: "Founder's office" },
+        { value: "Growth strategy", label: "Growth strategy" },
+        { value: "Category strategy", label: "Category strategy" },
+        { value: "CEO office / special projects", label: "CEO office / special projects" },
+        { value: "Other strategy roles", label: "Other strategy roles" },
+      ],
+    },
+  },
+  Operations: {
+    help: {
+      title: "What do you want help with in operations right now?",
+      options: [
+        { value: "Break into operations roles", label: "Break into operations roles" },
+        { value: "Prepare for operations interviews", label: "Prepare for operations interviews" },
+        { value: "Learn supply chain and process improvement", label: "Learn supply chain and process improvement" },
+        { value: "Improve analytical problem solving for operations", label: "Improve analytical problem solving for operations" },
+        { value: "Prepare for operations placements", label: "Prepare for operations placements" },
+        { value: "Build execution and process judgment", label: "Build execution and process judgment" },
+      ],
+    },
+    topics: {
+      title: "Which operations topics would you like to master first?",
+      options: [
+        { value: "Supply chain strategy", label: "Supply chain strategy" },
+        { value: "Process improvement", label: "Process improvement" },
+        { value: "Capacity and throughput", label: "Capacity and throughput" },
+        { value: "Inventory management", label: "Inventory management" },
+        { value: "Network design", label: "Network design" },
+        { value: "Procurement and sourcing", label: "Procurement and sourcing" },
+        { value: "Service operations", label: "Service operations" },
+      ],
+    },
+    roles: {
+      title: "Which operations roles are you targeting?",
+      options: [
+        { value: "Supply chain manager", label: "Supply chain manager" },
+        { value: "Operations manager", label: "Operations manager" },
+        { value: "Procurement / sourcing", label: "Procurement / sourcing" },
+        { value: "Logistics and distribution", label: "Logistics and distribution" },
+        { value: "Manufacturing operations", label: "Manufacturing operations" },
+        { value: "Program / process excellence", label: "Program / process excellence" },
+        { value: "Business operations", label: "Business operations" },
+        { value: "Other operations roles", label: "Other operations roles" },
+      ],
+    },
+  },
+  // Founder / Entrepreneur shares the General management flow (see generalManagementFlow below)
+  "General management": generalManagementFlow,
+  "Founder / Entrepreneur": generalManagementFlow,
+  "Still Exploring": {
+    help: {
+      title: "What would you like to figure out first?",
+      options: [
+        { value: "Which business path fits me best", label: "Which business path fits me best" },
+        { value: "Which roles match my strengths", label: "Which roles match my strengths" },
+        { value: "Build core business skills first", label: "Build core business skills first" },
+        { value: "Prepare for placements broadly", label: "Prepare for placements broadly" },
+        { value: "Explore finance, strategy, and operations", label: "Explore finance, strategy, and operations" },
+      ],
+    },
+    topics: {
+      title: "Which areas sound most interesting right now?",
+      options: [
+        { value: "Finance", label: "Finance" },
+        { value: "Strategy", label: "Strategy" },
+        { value: "Operations", label: "Operations" },
+        { value: "General management", label: "General management" },
+        { value: "Problem solving and cases", label: "Problem solving and cases" },
+      ],
+    },
+    roles: {
+      title: "Which roles are you curious about?",
+      options: [
+        { value: "Consulting", label: "Consulting" },
+        { value: "Finance", label: "Finance" },
+        { value: "Operations", label: "Operations" },
+        { value: "Corporate strategy", label: "Corporate strategy" },
+        { value: "General management", label: "General management" },
+        { value: "Not sure yet", label: "Not sure yet" },
+      ],
+    },
+  },
+};
+
+// Step where the customizing/loading screen runs. Path-specific steps (6-8) sit before it.
+const LOADING_STEP = 9;
+
 export default function OnboardingPage() {
   const [mounted, setMounted] = useState(false);
   const [step, setStep] = useState(1);
@@ -50,6 +249,10 @@ export default function OnboardingPage() {
   const [profession, setProfession] = useState("");
   const [level, setLevel] = useState("");
   const [guidance, setGuidance] = useState("");
+  // Path-specific answers (steps 6-8), driven by the path chosen in step 2
+  const [helpGoal, setHelpGoal] = useState("");
+  const [topicFocus, setTopicFocus] = useState("");
+  const [targetRole, setTargetRole] = useState("");
   
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -83,9 +286,9 @@ export default function OnboardingPage() {
     }, 250);
   };
 
-  // Step 6 Setup effect
+  // Loading/setup step effect
   useEffect(() => {
-    if (step === 6) {
+    if (step === LOADING_STEP) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- reset status when entering the submission step
       setError("");
       setLoading(true);
@@ -141,6 +344,11 @@ export default function OnboardingPage() {
 
   const getLetter = (index: number) => String.fromCharCode(65 + index);
 
+  // The path chosen in step 2 decides whether the tailored steps 6-8 are shown
+  const currentFlow = pathFlows[path];
+  const hasExtraSteps = !!currentFlow;
+  const afterGuidanceStep = hasExtraSteps ? 6 : LOADING_STEP;
+
   const handleNextStep1 = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
@@ -170,9 +378,9 @@ export default function OnboardingPage() {
           <div className="flex items-center justify-between">
             <Logo variant="full" width={180} height={40} className="object-contain" />
             
-            {step < 6 && (
+            {step !== LOADING_STEP && (
               <span className="bg-[#EAE8E2] text-zinc-700 font-semibold px-3 py-1.5 rounded-full text-xs transition-all animate-fade-in">
-                Step {step} of 6
+                Step {step}
               </span>
             )}
           </div>
@@ -441,7 +649,7 @@ export default function OnboardingPage() {
                     return (
                       <button
                         key={opt.value}
-                        onClick={() => handleSelectOption(opt.value, setGuidance, 6)}
+                        onClick={() => handleSelectOption(opt.value, setGuidance, afterGuidanceStep)}
                         className={`w-full flex items-center justify-between p-4 rounded-xl text-left font-semibold border-none transition-all active:scale-[0.99] ${
                           isSelected
                             ? "bg-[#01696F] text-white shadow-lg shadow-[#01696F]/10"
@@ -470,7 +678,7 @@ export default function OnboardingPage() {
 
                 <div className="pt-4">
                   <button
-                    onClick={() => setStep(6)}
+                    onClick={() => setStep(afterGuidanceStep)}
                     className="w-full bg-[#211E1A] text-white py-3.5 rounded-xl font-bold text-base hover:opacity-90 transition-all active:scale-[0.98]"
                   >
                     Skip
@@ -479,8 +687,75 @@ export default function OnboardingPage() {
               </div>
             )}
 
-            {/* STEP 6: Customizing loading screen */}
-            {step === 6 && (
+            {/* STEPS 6-8: Path-specific questions (Finance / Strategy / ...) */}
+            {hasExtraSteps && (step === 6 || step === 7 || step === 8) && (() => {
+              const config =
+                step === 6 ? currentFlow.help : step === 7 ? currentFlow.topics : currentFlow.roles;
+              const selected =
+                step === 6 ? helpGoal : step === 7 ? topicFocus : targetRole;
+              const setSelected =
+                step === 6 ? setHelpGoal : step === 7 ? setTopicFocus : setTargetRole;
+              const backStep = step - 1;
+              const nextStep = step === 8 ? LOADING_STEP : step + 1;
+              return (
+                <div className="space-y-6 animate-fade-in">
+                  <div>
+                    <button
+                      onClick={() => setStep(backStep)}
+                      className="flex items-center gap-1.5 text-zinc-500 hover:text-zinc-800 text-sm font-medium mb-4"
+                    >
+                      <ArrowLeft size={16} /> Back
+                    </button>
+                    <h1 className="text-3xl font-semibold text-[#1a1a1a] mb-1">{config.title}</h1>
+                  </div>
+
+                  <div className="space-y-3">
+                    {config.options.map((opt, i) => {
+                      const isSelected = selected === opt.value;
+                      return (
+                        <button
+                          key={opt.value}
+                          onClick={() => handleSelectOption(opt.value, setSelected, nextStep)}
+                          className={`w-full flex items-center justify-between p-4 rounded-xl text-left font-semibold border-none transition-all active:scale-[0.99] ${
+                            isSelected
+                              ? "bg-[#01696F] text-white shadow-lg shadow-[#01696F]/10"
+                              : "bg-[#F3F1ED] text-[#1a1a1a] hover:bg-[#eae8e2]"
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <span
+                              className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
+                                isSelected ? "bg-white text-[#01696F]" : "bg-white text-zinc-500"
+                              }`}
+                            >
+                              {getLetter(i)}
+                            </span>
+                            <span>{opt.label}</span>
+                          </div>
+                          {isSelected && (
+                            <div className="w-6 h-6 rounded-full bg-white flex items-center justify-center">
+                              <Check size={14} className="text-[#01696F] stroke-[3]" />
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="pt-4">
+                    <button
+                      onClick={() => setStep(nextStep)}
+                      className="w-full bg-[#211E1A] text-white py-3.5 rounded-xl font-bold text-base hover:opacity-90 transition-all active:scale-[0.98]"
+                    >
+                      Skip
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* LOADING: Customizing loading screen */}
+            {step === LOADING_STEP && (
               <div className="space-y-8 py-8 animate-fade-in">
                 <div className="text-center md:text-left">
                   <h1 className="text-3xl font-semibold text-[#1a1a1a] mb-2">Preparing your customized path...</h1>

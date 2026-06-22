@@ -17,7 +17,9 @@
       "PowerShell(Get-ChildItem -Path \"D:\\\\NxtWave\\\\shankhV2\\\\app\\\\admin\" -Recurse -Force | Select-Object FullName | ForEach-Object { $_.FullName -replace [regex]::Escape\\(\"D:\\\\NxtWave\\\\shankhV2\\\\\"\\), \"\" })",
       "Bash(git -C \"D:/NxtWave/shankhV2\" status --short app/onboarding app/profile)",
       "Bash(npx eslint *)",
-      "mcp__ide__getDiagnostics"
+      "mcp__ide__getDiagnostics",
+      "Bash(grep -rln \"framework.create\\\\|framework.upsert\\\\|prisma.framework\" prisma/)",
+      "Bash(ls prisma/*.ts)"
     ]
   }
 }

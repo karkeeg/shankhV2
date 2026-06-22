@@ -15,9 +15,9 @@ import { tokensToPaletteItems, solutionToGraph } from "@/lib/canvasAdapter";
 import { Logo } from "@/components/layout/Logo";
 
 const TYPE_META: Record<string, { label: string; color: string }> = {
-  quantus: { label: "Spreadsheet", color: "bg-sky-100 text-sky-700 border-sky-200" },
-  mcq: { label: "Multiple Choice", color: "bg-violet-100 text-violet-700 border-violet-200" },
-  canvas: { label: "Framework Drill", color: "bg-amber-100 text-amber-700 border-amber-200" },
+  quantus: { label: "Spreadsheet", color: "bg-[#DFEAEA] text-[#01696F] border-[#01696F]/15" },
+  mcq: { label: "Multiple Choice", color: "bg-[#DFEAEA] text-[#01696F] border-[#01696F]/15" },
+  canvas: { label: "Framework Drill", color: "bg-[#DFEAEA] text-[#01696F] border-[#01696F]/15" },
 };
 
 function TypePill({ type }: { type: string }) {
@@ -113,25 +113,25 @@ const ACTIVITY_CFG = {
     label: "MCQ Quiz",
     Icon: FileQuestion,
     route: "mcq",
-    iconBg: "bg-violet-50",
-    iconColor: "text-violet-600",
-    btnCls: "bg-violet-600 hover:bg-violet-700",
+    iconBg: "bg-[#DFEAEA]",
+    iconColor: "text-[#01696F]",
+    btnCls: "bg-[#01696F] hover:bg-[#014f54]",
   },
   canvas: {
     label: "Canvas Drill",
     Icon: PenLine,
     route: "canvas",
-    iconBg: "bg-indigo-50",
-    iconColor: "text-indigo-600",
-    btnCls: "bg-indigo-600 hover:bg-indigo-700",
+    iconBg: "bg-[#DFEAEA]",
+    iconColor: "text-[#01696F]",
+    btnCls: "bg-[#01696F] hover:bg-[#014f54]",
   },
   quantus: {
     label: "Quantus Lab",
     Icon: TableProperties,
     route: "quantus",
-    iconBg: "bg-amber-50",
-    iconColor: "text-amber-500",
-    btnCls: "bg-amber-500 hover:bg-amber-600",
+    iconBg: "bg-[#DFEAEA]",
+    iconColor: "text-[#01696F]",
+    btnCls: "bg-[#01696F] hover:bg-[#014f54]",
   },
 } as const;
 
@@ -499,13 +499,13 @@ export default function LessonPreviewPage() {
               </div>
             </div>
 
-            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-2.5 flex items-center gap-2 flex-shrink-0">
-              <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
-                <Eye size={14} className="text-amber-600" />
+            <div className="bg-[#DFEAEA] border border-[#01696F]/15 rounded-2xl p-2.5 flex items-center gap-2 flex-shrink-0">
+              <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center flex-shrink-0">
+                <Eye size={14} className="text-[#01696F]" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-extrabold text-amber-800">Admin Preview</p>
-                <p className="text-[9px] text-amber-600 font-bold uppercase tracking-wider">
+                <p className="text-xs font-extrabold text-[#01696F]">Admin Preview</p>
+                <p className="text-[9px] text-[#01696F]/70 font-bold uppercase tracking-wider">
                   Read-only mode
                 </p>
               </div>
@@ -705,7 +705,6 @@ export default function LessonPreviewPage() {
                   </h4>
                   {steps.map((s, idx) => {
                     const isCurrent = idx === currentIdx;
-                    const typeKey = s.stepType === "mcq-question" ? "mcq" : s.stepType;
                     const label =
                       s.stepType === "mcq-question"
                         ? `Q${(s.questionIndex ?? 0) + 1} — ${(
@@ -734,14 +733,7 @@ export default function LessonPreviewPage() {
                           {idx + 1}
                         </span>
                         <span
-                          className={cn(
-                            "w-2 h-2 rounded-full shrink-0",
-                            typeKey === "mcq"
-                              ? "bg-violet-400"
-                              : typeKey === "canvas"
-                              ? "bg-amber-400"
-                              : "bg-sky-400"
-                          )}
+                          className="w-2 h-2 rounded-full shrink-0 bg-[#01696F]"
                         />
                         <span className="flex-1 truncate">{label}</span>
                       </button>

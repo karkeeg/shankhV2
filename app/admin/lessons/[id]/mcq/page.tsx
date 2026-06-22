@@ -87,7 +87,7 @@ function QuestionCard({
   return (
     <div className={cn(
       "bg-white border rounded-3xl overflow-hidden shadow-sm transition-all",
-      q.collapsed ? "border-zinc-200" : "border-violet-200"
+      q.collapsed ? "border-zinc-200" : "border-[#01696F]/30"
     )}>
       {/* Card header */}
       <div
@@ -152,7 +152,7 @@ function QuestionCard({
               onChange={(e) => setField("questionText", e.target.value)}
               rows={2}
               placeholder="Enter the question text..."
-              className="px-3 py-2.5 bg-zinc-50 border border-zinc-200 rounded-xl text-xs text-zinc-800 placeholder:text-zinc-400 outline-none focus:bg-white focus:border-violet-300 resize-none w-full"
+              className="px-3 py-2.5 bg-zinc-50 border border-zinc-200 rounded-xl text-xs text-zinc-800 placeholder:text-zinc-400 outline-none focus:bg-white focus:border-[#01696F] resize-none w-full"
             />
           </div>
 
@@ -164,7 +164,7 @@ function QuestionCard({
               </label>
               <button
                 onClick={addOption}
-                className="flex items-center gap-1 text-[10px] font-bold text-violet-600 hover:text-violet-700"
+                className="flex items-center gap-1 text-[10px] font-bold text-[#01696F] hover:text-[#014f54]"
               >
                 <Plus size={10} /> Add option
               </button>
@@ -180,7 +180,7 @@ function QuestionCard({
                   onClick={() => setCorrect(oi)}
                   className={cn(
                     "w-4 h-4 rounded-full border-2 shrink-0 flex items-center justify-center transition-all",
-                    opt.isCorrect ? "border-emerald-500 bg-emerald-500" : "border-zinc-300 hover:border-violet-400"
+                    opt.isCorrect ? "border-emerald-500 bg-emerald-500" : "border-zinc-300 hover:border-[#01696F]"
                   )}
                 >
                   {opt.isCorrect && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
@@ -215,7 +215,7 @@ function QuestionCard({
               onChange={(e) => setField("explanation", e.target.value)}
               rows={2}
               placeholder="Explain why the correct answer is right..."
-              className="px-3 py-2.5 bg-zinc-50 border border-zinc-200 rounded-xl text-xs text-zinc-700 placeholder:text-zinc-400 outline-none focus:bg-white focus:border-violet-300 resize-none w-full"
+              className="px-3 py-2.5 bg-zinc-50 border border-zinc-200 rounded-xl text-xs text-zinc-700 placeholder:text-zinc-400 outline-none focus:bg-white focus:border-[#01696F] resize-none w-full"
             />
           </div>
         </div>
@@ -356,25 +356,25 @@ export default function McqAdminPage() {
             Back to Lesson
           </button>
           <div className="h-5 w-px bg-zinc-200 shrink-0" />
-          <span className="flex items-center gap-1.5 px-2.5 py-1 bg-violet-50 text-violet-600 border border-violet-100 rounded-full text-[10px] font-black shrink-0">
+          <span className="flex items-center gap-1.5 px-2.5 py-1 bg-[#DFEAEA] text-[#01696F] border border-[#01696F]/15 rounded-full text-[10px] font-black shrink-0">
             <FileQuestion size={11} /> MCQ Quiz
           </span>
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Quiz title (optional)"
-            className="px-3 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-xs font-medium outline-none w-44 focus:bg-white focus:border-violet-300"
+            className="px-3 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-xs font-medium outline-none w-44 focus:bg-white focus:border-[#01696F]"
           />
           <input
             value={instructions}
             onChange={(e) => setInstructions(e.target.value)}
             placeholder="Instructions for students *"
-            className="flex-1 min-w-[180px] px-3 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-xs outline-none focus:bg-white focus:border-violet-300"
+            className="flex-1 min-w-[180px] px-3 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-xs outline-none focus:bg-white focus:border-[#01696F]"
           />
           <button
             onClick={handleSave}
             disabled={saving}
-            className="flex items-center gap-2 px-5 py-2 bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold rounded-xl shadow-sm disabled:opacity-40 ml-auto shrink-0 transition-all active:scale-95"
+            className="flex items-center gap-2 px-5 py-2 bg-[#01696F] hover:bg-[#014f54] text-white text-xs font-bold rounded-xl shadow-sm disabled:opacity-40 ml-auto shrink-0 transition-all active:scale-95"
           >
             {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
             {saving ? "Saving..." : "Save MCQ"}
@@ -388,7 +388,7 @@ export default function McqAdminPage() {
             value={context}
             onChange={(e) => setContext(e.target.value)}
             placeholder="Optional background text shown above the questions..."
-            className="flex-1 px-3 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-xs outline-none focus:bg-white focus:border-violet-300"
+            className="flex-1 px-3 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-xs outline-none focus:bg-white focus:border-[#01696F]"
           />
         </div>
 
@@ -397,7 +397,7 @@ export default function McqAdminPage() {
 
           {/* Stats strip */}
           <div className="flex items-center gap-4 px-4 py-2.5 bg-white border border-zinc-200 rounded-2xl shrink-0">
-            <span className="text-[10px] font-black text-violet-600 uppercase tracking-wider">
+            <span className="text-[10px] font-black text-[#01696F] uppercase tracking-wider">
               {questions.length} Question{questions.length !== 1 ? "s" : ""}
             </span>
             <span className="text-[10px] text-zinc-400 font-medium">
@@ -419,7 +419,7 @@ export default function McqAdminPage() {
 
           {questions.length === 0 && (
             <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
-              <div className="p-4 bg-violet-50 rounded-2xl text-violet-400">
+              <div className="p-4 bg-[#DFEAEA] rounded-2xl text-[#01696F]">
                 <FileQuestion size={28} />
               </div>
               <p className="text-sm font-extrabold text-zinc-600">No questions yet</p>
@@ -444,7 +444,7 @@ export default function McqAdminPage() {
           <div id="q-list-bottom">
             <button
               onClick={addQuestion}
-              className="w-full py-3.5 border-2 border-dashed border-violet-200 hover:border-violet-400 bg-white hover:bg-violet-50 rounded-3xl text-xs font-bold text-violet-500 hover:text-violet-700 flex items-center justify-center gap-2 transition-all"
+              className="w-full py-3.5 border-2 border-dashed border-[#01696F]/30 hover:border-[#01696F] bg-white hover:bg-[#DFEAEA]/50 rounded-3xl text-xs font-bold text-[#01696F] hover:text-[#014f54] flex items-center justify-center gap-2 transition-all"
             >
               <Plus size={14} /> Add Question
             </button>

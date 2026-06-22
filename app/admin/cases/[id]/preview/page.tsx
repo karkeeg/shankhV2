@@ -157,6 +157,39 @@ function CanvasModeEditor({ frameworks, value, onChange, caseId, activityId }: {
       ) : (
         <AdminCanvasEditor value={value as AdminCanvasData} onChange={onChange} />
       )}
+
+      <RecommendationPromptConfig value={value} onChange={onChange} />
+    </div>
+  );
+}
+
+// Admin config for the post-canvas text recommendation. When enabled, the learner
+// is asked to write a free-text recommendation after completing the canvas; the
+// answer is stored on CaseActivityResponse.recommendationText (not auto-graded).
+function RecommendationPromptConfig({ value, onChange }: { value: any; onChange: (v: any) => void }) {
+  const enabled = !!value?.recommendationEnabled;
+  return (
+    <div className="border border-zinc-200 rounded-xl p-4 flex flex-col gap-3 bg-zinc-50/50">
+      <label className="flex items-center gap-2 cursor-pointer w-fit">
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={(e) => onChange({ ...value, recommendationEnabled: e.target.checked })}
+          className="w-4 h-4 accent-[#01696F] shrink-0"
+        />
+        <span className="text-xs font-extrabold text-zinc-800">Ask for a written recommendation</span>
+      </label>
+      <p className="text-[10px] text-zinc-400 font-medium -mt-1">
+        After finishing the canvas, the learner writes a free-text recommendation. It is saved but not auto-scored.
+      </p>
+      {enabled && (
+        <Field
+          label="Recommendation prompt"
+          value={value?.recommendationPrompt ?? ""}
+          onChange={(v) => onChange({ ...value, recommendationPrompt: v })}
+          multiline
+        />
+      )}
     </div>
   );
 }
@@ -170,33 +203,27 @@ function FrameworkModeFields({ frameworks, value, onChange, caseId, activityId }
 }) {
   const router = useRouter();
   const set = (patch: any) => onChange({ ...value, ...patch });
-  const selectedIds: string[] = value.frameworkIds ?? [];
-  // Case-OWNED framework copies. Each attached framework is snapshotted here so
-  // later edits to the master library never change this case.
+  // Case-OWNED framework copies. The correct framework is snapshotted here so
+  // later edits to the master library never change this case's answer.
   const snapshots: Record<string, any> = value.frameworkSnapshots ?? {};
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const clone = (o: any) => JSON.parse(JSON.stringify(o ?? {}));
 
-  // Attach → copy the master framework into the case. Detach → drop the copy.
-  const toggleFramework = (f: FrameworkLite) => {
-    const id = f.id;
-    const isOn = selectedIds.includes(id);
-    const nextIds = isOn ? selectedIds.filter((x) => x !== id) : [...selectedIds, id];
+  // The learner is shown EVERY framework; the admin only marks which one is correct.
+  // Marking correct snapshots that framework into the case (preserving any prior
+  // case-specific answer edits) and records it as the single graded framework.
+  const selectCorrect = (f: FrameworkLite) => {
     const nextSnap = { ...snapshots };
-    if (isOn) {
-      delete nextSnap[id];
-    } else {
-      nextSnap[id] = {
-        id, name: f.name, category: f.category ?? null,
+    if (!nextSnap[f.id]) {
+      nextSnap[f.id] = {
+        id: f.id, name: f.name, category: f.category ?? null,
         description: (f as any).description ?? null,
         structure: clone(f.structure ?? { nodes: [], edges: [] }),
       };
     }
-    const patch: any = { frameworkIds: nextIds, frameworkSnapshots: nextSnap };
-    if (!nextIds.includes(value.correctFrameworkId)) patch.correctFrameworkId = nextIds[0] ?? null;
-    set(patch);
+    set({ correctFrameworkId: f.id, frameworkIds: [f.id], frameworkSnapshots: nextSnap });
   };
 
   // Edit a node label on the case's OWN copy (blank node = expected answer).
@@ -226,7 +253,7 @@ function FrameworkModeFields({ frameworks, value, onChange, caseId, activityId }
 
       <div className="flex flex-col gap-2">
         <span className="text-[9px] font-black uppercase tracking-widest text-zinc-400">
-          Frameworks offered to the learner · tick the correct one
+          All frameworks are shown to the learner · pick the correct one
         </span>
         {active.length === 0 && (
           <div className="py-6 text-center text-zinc-400 text-xs font-semibold border border-dashed border-zinc-200 rounded-xl">
@@ -235,10 +262,9 @@ function FrameworkModeFields({ frameworks, value, onChange, caseId, activityId }
         )}
         <div className="flex flex-col gap-2">
           {active.map((f) => {
-            const checked = selectedIds.includes(f.id);
             const isCorrect = value.correctFrameworkId === f.id;
             const snap = snapshots[f.id];
-            // Edit the case's own copy when attached; show the master as a hint otherwise.
+            // Edit the case's own copy of the correct framework; show the master otherwise.
             const nodes: any[] = (snap?.structure?.nodes ?? f.structure?.nodes ?? []);
             const blanks = nodes.filter((n: any) => n.isBlank).length;
             // Count nodes whose case copy differs from the master (changed-for-this-case).
@@ -246,9 +272,8 @@ function FrameworkModeFields({ frameworks, value, onChange, caseId, activityId }
             const customCount = snap ? nodes.filter((n: any) => masterById.has(n.id) && (n.label ?? "") !== masterById.get(n.id)).length : 0;
             const expanded = expandedId === f.id;
             return (
-              <div key={f.id} className={cn("flex flex-col border rounded-xl", checked ? "border-[#01696F]/30 bg-[#FAFFFE]" : "border-zinc-200 bg-white")}>
+              <div key={f.id} className={cn("flex flex-col border rounded-xl", isCorrect ? "border-[#01696F]/30 bg-[#FAFFFE]" : "border-zinc-200 bg-white")}>
                 <div className="flex items-center gap-3 px-3 py-2.5">
-                  <input type="checkbox" checked={checked} onChange={() => toggleFramework(f)} className="w-4 h-4 accent-[#01696F] shrink-0" />
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-extrabold text-zinc-800 truncate">{f.name}</p>
                     <p className="text-[10px] text-zinc-400 font-semibold">
@@ -256,13 +281,13 @@ function FrameworkModeFields({ frameworks, value, onChange, caseId, activityId }
                       {customCount > 0 && <span className="text-[#01696F]"> · {customCount} changed for this case</span>}
                     </p>
                   </div>
-                  {checked && nodes.length > 0 && (
+                  {isCorrect && nodes.length > 0 && (
                     <button type="button" onClick={() => setExpandedId(expanded ? null : f.id)}
                       className="text-[10px] font-black text-[#01696F] hover:underline shrink-0">
                       {expanded ? "Hide values ▴" : "Edit values ▾"}
                     </button>
                   )}
-                  {checked && caseId && activityId && (
+                  {isCorrect && caseId && activityId && (
                     <button type="button"
                       onClick={() => router.push(`/admin/cases/${caseId}/framework/${activityId}/${f.id}`)}
                       title="Open the full builder to edit this case's copy (layout, connections, nodes). Save the activity first."
@@ -270,15 +295,15 @@ function FrameworkModeFields({ frameworks, value, onChange, caseId, activityId }
                       Open builder ↗
                     </button>
                   )}
-                  <label className={cn("flex items-center gap-1.5 text-[10px] font-black shrink-0 cursor-pointer", isCorrect ? "text-[#01696F]" : "text-zinc-400", !checked && "opacity-40 pointer-events-none")}>
-                    <input type="radio" name="correct-framework" checked={isCorrect} onChange={() => set({ correctFrameworkId: f.id })} disabled={!checked} className="accent-[#01696F]" />
+                  <label className={cn("flex items-center gap-1.5 text-[10px] font-black shrink-0 cursor-pointer", isCorrect ? "text-[#01696F]" : "text-zinc-400")}>
+                    <input type="radio" name="correct-framework" checked={isCorrect} onChange={() => selectCorrect(f)} className="accent-[#01696F]" />
                     Correct
                   </label>
                 </div>
 
                 {/* Edit the case's OWN copy. Structure/layout come from the snapshot taken
                     when the framework was attached — the master library is never touched. */}
-                {checked && expanded && (
+                {isCorrect && expanded && (
                   <div className="border-t border-[#01696F]/15 px-3 py-2.5 flex flex-col gap-2 bg-white/70 rounded-b-xl">
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-[10px] text-zinc-400 font-medium">
@@ -1103,9 +1128,7 @@ export default function AdminCasePreviewPage() {
                   />
                 ) : (
                   <div className="h-full flex items-center justify-center text-zinc-400 text-sm font-semibold px-6 text-center">
-                    {(actData?.frameworkIds?.length ?? 0) === 0
-                      ? "No frameworks attached. Switch to Edit to attach frameworks."
-                      : "Mark a correct framework in Edit mode to preview it."}
+                    Pick the correct framework in Edit mode to preview it. The learner sees every framework in the library.
                   </div>
                 )}
               </div>

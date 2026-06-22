@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { MainLayout } from "@/components/layout/MainLayout";
-import { Search, Bell, ChevronRight, Loader2, BookOpen, Layers, ArrowRight, CheckCircle2, Bookmark, AlertCircle, RefreshCw } from "lucide-react";
+import { Search, Bell, ChevronRight, Loader2, BookOpen, Layers, ArrowRight, CheckCircle2, Bookmark, AlertCircle, RefreshCw, X } from "lucide-react";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/lib/auth-store";
@@ -72,7 +72,10 @@ export default function ModulePage() {
   const [selectedTopicId, setSelectedTopicId]       = useState<string>("");
   const [selectedSubtopicId, setSelectedSubtopicId] = useState<string>("");
   const [activeLessonTab, setActiveLessonTab]       = useState<"lessons" | "history">("lessons");
-  const [searchQuery, setSearchQuery]               = useState("");
+  // Per-section search queries — each panel filters independently
+  const [topicSearch, setTopicSearch]               = useState("");
+  const [searchQuery, setSearchQuery]               = useState(""); // subtopics
+  const [lessonSearch, setLessonSearch]             = useState("");
 
   const [loadingModule, setLoadingModule]     = useState(true);
   const [loadingSubtopics, setLoadingSubtopics] = useState(false);
@@ -166,6 +169,7 @@ export default function ModulePage() {
     setLoadingLessons(true);
     setLessonsError(null);
     setSubtopicDetail(null);
+    setLessonSearch("");
     contentApi
       .subtopic<any>(selectedSubtopicId)
       .then((res) => setSubtopicDetail(res ?? null))
@@ -187,10 +191,23 @@ export default function ModulePage() {
   const totalTopicLessons    = subtopics.reduce((acc, sub) => acc + (sub.lessonsTotal ?? 0), 0);
   const totalCompletedLessons = subtopics.reduce((acc, sub) => acc + (sub.lessonsCompleted ?? 0), 0);
 
-  // Search filter applied to the subtopics grid
+  // Per-section search filters
+  const filteredTopics = topicSearch.trim()
+    ? topics.filter((t) => t.name.toLowerCase().includes(topicSearch.toLowerCase()))
+    : topics;
+
   const filteredSubtopics = searchQuery.trim()
     ? subtopics.filter((s) => s.name.toLowerCase().includes(searchQuery.toLowerCase()))
     : subtopics;
+
+  const allLessons = subtopicDetail?.lessons ?? [];
+  const lessonQ = lessonSearch.trim().toLowerCase();
+  const visibleLessons = lessonQ
+    ? allLessons.filter((l) => l.name.toLowerCase().includes(lessonQ))
+    : allLessons;
+  const visibleCompletedLessons = lessonQ
+    ? completedLessons.filter((l) => l.name.toLowerCase().includes(lessonQ))
+    : completedLessons;
 
   // ── Loading / error states ───────────────────────────────────────────────────
 
@@ -238,22 +255,12 @@ export default function ModulePage() {
 
   return (
     <MainLayout>
-      <div className="flex flex-col max-h-[calc(100vh-24px)] overflow-y-auto p-6 gap-6 select-none animate-fade-in">
+      <div className="flex flex-col h-[calc(100vh-24px)] overflow-hidden px-4 py-2 gap-3 select-none animate-fade-in">
 
         {/* ── Header ──────────────────────────────────────────────────────── */}
-        <header className="flex items-center justify-between gap-4 shrink-0">
+        <header className="flex items-center justify-between shrink-0">
           <h2 className="text-2xl font-extrabold text-[#01696F] tracking-tight">{moduleData.name}</h2>
-          <div className="flex items-center gap-3 flex-1 justify-end">
-            <div className="relative w-[340px]">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#01696F]" size={16} />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search subtopics…"
-                className="w-full bg-white border border-[#01696F]/30 rounded-full py-2.5 pl-11 pr-4 outline-none focus:border-[#01696F] focus:ring-2 focus:ring-[#01696F]/10 transition-all text-xs font-semibold placeholder:text-zinc-400 text-zinc-800 shadow-sm"
-              />
-            </div>
+          <div className="flex items-center gap-3 justify-end">
             <button className="w-10 h-10 flex items-center justify-center bg-white border border-zinc-300 rounded-xl hover:bg-zinc-50 transition-colors relative shadow-sm active:scale-95">
               <Bell size={18} className="text-[#01696F]" />
               <div className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border border-white animate-pulse" />
@@ -262,38 +269,38 @@ export default function ModulePage() {
         </header>
 
         {/* ── Top Row: Resume Banner + Analytics ──────────────────────────── */}
-        <div className="flex flex-col lg:flex-row gap-6">
+        <div className="flex flex-col lg:flex-row gap-3 shrink-0">
 
           {/* Resume Banner */}
           <div
-            className="flex-1 text-white rounded-3xl p-6 shadow-md relative overflow-hidden"
+            className="flex-1 text-white rounded-2xl px-5 py-4 shadow-md relative overflow-hidden"
             style={{ backgroundColor: "#005B60" }}
           >
             {resumeLesson && (
-              <div className="absolute top-6 right-6 z-20">
+              <div className="absolute top-4 right-4 z-20">
                 <button
                   onClick={() => router.push(`/activity/${resumeLesson.id}`)}
-                  className="bg-white text-[#01696F] flex hover:bg-zinc-50 transition-all font-black px-3 py-2 rounded-2xl shadow-md text-md active:scale-95"
+                  className="bg-white text-[#01696F] flex items-center hover:bg-zinc-50 transition-all font-black px-3 py-1.5 rounded-xl shadow-md text-sm active:scale-95"
                 >
-                  Resume Learning <ArrowRight size={22} className="ml-1" />
+                  Resume <ArrowRight size={18} className="ml-1" />
                 </button>
               </div>
             )}
 
-            <div className="space-y-3 z-10 relative pr-32">
-              <h1 className="text-xl md:text-2xl font-black tracking-tight leading-tight">
+            <div className="space-y-1.5 z-10 relative pr-28">
+              <h1 className="text-lg md:text-xl font-black tracking-tight leading-tight line-clamp-1">
                 {activeTopic?.name ?? "Core Concepts"} &middot;{" "}
                 {subtopicDetail?.name ?? "Select a subtopic"}
               </h1>
-              <p className="text-[12px] opacity-90 font-bold uppercase tracking-wider">
+              <p className="text-[11px] opacity-90 font-bold uppercase tracking-wider line-clamp-1">
                 {moduleData.name} &nbsp;|&nbsp;{" "}
                 {activeTopic?.tags?.join(", ") ?? ""}
               </p>
-              <div className="flex flex-wrap gap-3 pt-1">
-                <span className="bg-black/10 border border-white/20 px-3.5 py-1.5 rounded-full font-extrabold select-none">
+              <div className="flex flex-wrap gap-2 pt-0.5">
+                <span className="bg-black/10 border border-white/20 px-3 py-1 rounded-full text-xs font-extrabold select-none">
                   {Math.round(moduleData.completionPercentage)}% Completed
                 </span>
-                <span className="bg-black/10 border border-white/20 px-3.5 py-1.5 rounded-full font-extrabold select-none">
+                <span className="bg-black/10 border border-white/20 px-3 py-1 rounded-full text-xs font-extrabold select-none">
                   {totalCompletedLessons}/{totalTopicLessons} Lessons Covered
                 </span>
               </div>
@@ -304,7 +311,7 @@ export default function ModulePage() {
           </div>
 
           {/* Analytics metrics */}
-          <div className="w-full lg:w-80 shrink-0 bg-white border border-zinc-200 rounded-3xl p-5 shadow-sm flex flex-col justify-between gap-4">
+          <div className="w-full lg:w-72 shrink-0 bg-white border border-zinc-200 rounded-2xl px-4 py-3 shadow-sm flex flex-col justify-between gap-2">
             <MetricRow label="Concept Accuracy" value={moduleData.conceptAccuracy} />
             <MetricRow label="Recall Strength" value={moduleData.recallStrength} />
             <MetricRow label="Application Score" value={moduleData.applicationScore} />
@@ -312,25 +319,32 @@ export default function ModulePage() {
         </div>
 
         {/* ── Bottom: Topic Sidebar + Subtopics/Lessons ───────────────────── */}
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-3 flex-1 min-h-0 lg:grid-rows-[minmax(0,1fr)]">
 
           {/* Left Panel: Topic selector */}
-          <div className="bg-white rounded-3xl border border-zinc-200 p-4 shadow-sm flex flex-col">
-            <h3 className="text-[12px] font-black text-zinc-400 uppercase tracking-widest px-1 mb-4 select-none">
+          <div className="bg-white rounded-2xl border border-zinc-200 p-3 shadow-sm flex flex-col min-h-0 overflow-hidden">
+            <h3 className="text-[12px] font-black text-zinc-400 uppercase tracking-widest px-1 mb-3 select-none">
               Select Topic
             </h3>
+            {topics.length > 1 && (
+              <div className="mb-3">
+                <SectionSearch value={topicSearch} onChange={setTopicSearch} placeholder="Search topics…" />
+              </div>
+            )}
             {topics.length === 0 ? (
               <p className="text-xs text-zinc-400 px-2 py-4 text-center">No topics yet.</p>
+            ) : filteredTopics.length === 0 ? (
+              <p className="text-xs text-zinc-400 px-2 py-4 text-center">No topics match &ldquo;{topicSearch.trim()}&rdquo;.</p>
             ) : (
-              <div className="pr-1 space-y-3">
-                {topics.map((topic) => {
+              <div className="pr-1 space-y-2 flex-1 overflow-y-auto min-h-0">
+                {filteredTopics.map((topic) => {
                   const isSelected = topic.id === selectedTopicId;
                   return (
                     <button
                       key={topic.id}
                       onClick={() => setSelectedTopicId(topic.id)}
                       className={cn(
-                        "w-full text-left p-4 rounded-2xl border transition-all duration-200 flex flex-col gap-1 shadow-sm select-none group",
+                        "w-full text-left p-3 rounded-xl border transition-all duration-200 flex flex-col gap-1 shadow-sm select-none group",
                         isSelected
                           ? "bg-[#E6F0F1] border-2 border-[#01696F] text-[#01696F] font-bold"
                           : "bg-[#F5F3EE] hover:bg-zinc-100 border-transparent text-zinc-700 font-medium"
@@ -363,21 +377,29 @@ export default function ModulePage() {
           </div>
 
           {/* Right Panel: Subtopics grid + Lessons */}
-          <div className="lg:col-span-3 flex flex-col gap-4">
+          <div className="lg:col-span-3 flex flex-col gap-3 min-h-0 overflow-hidden">
 
             {/* Subtopics Grid */}
-            <div className="bg-white border border-zinc-200 rounded-3xl p-4 shadow-sm flex flex-col">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-base font-extrabold text-zinc-800 tracking-tight">
-                  {activeTopic?.name ?? "Topics"}
-                </h2>
-                {searchQuery && (
-                  <span className="text-xs text-zinc-400 font-semibold">
-                    {filteredSubtopics.length} result{filteredSubtopics.length !== 1 ? "s" : ""}
-                  </span>
+            <div className="bg-white border border-zinc-200 rounded-2xl px-4 py-1 shadow-sm flex flex-col flex-1 min-h-0 overflow-hidden">
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <h2 className="text-base font-extrabold text-zinc-800 tracking-tight truncate">
+                    {activeTopic?.name ?? "Topics"}
+                  </h2>
+                  {searchQuery && (
+                    <span className="text-xs text-zinc-400 font-semibold shrink-0">
+                      {filteredSubtopics.length} result{filteredSubtopics.length !== 1 ? "s" : ""}
+                    </span>
+                  )}
+                </div>
+                {subtopics.length > 1 && (
+                  <div className="w-56 shrink-0">
+                    <SectionSearch value={searchQuery} onChange={setSearchQuery} placeholder="Search subtopics…" />
+                  </div>
                 )}
               </div>
 
+              <div className="flex-1 min-h-0 overflow-y-auto pr-1">
               {subtopicsError ? (
                 <div className="flex flex-col items-center gap-3 py-8 text-center">
                   <AlertCircle className="w-7 h-7 text-red-400 opacity-60" />
@@ -396,7 +418,7 @@ export default function ModulePage() {
                   {searchQuery ? `No subtopics match "${searchQuery}"` : "No subtopics available yet."}
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   {filteredSubtopics.map((sub) => {
                     const isSelected = sub.id === selectedSubtopicId;
                     const isTopic = sub.type.toLowerCase() === "topic";
@@ -405,7 +427,7 @@ export default function ModulePage() {
                         key={sub.id}
                         onClick={() => setSelectedSubtopicId(sub.id)}
                         className={cn(
-                          "cursor-pointer text-left p-3 rounded-2xl border transition-all duration-200 flex flex-col min-h-[120px] shadow-sm select-none justify-between group",
+                          "cursor-pointer text-left p-2.5 rounded-xl border transition-all duration-200 flex flex-col min-h-[92px] shadow-sm select-none justify-between group",
                           isSelected
                             ? "border-2 border-[#01696F] bg-[#E6F0F1] ring-1 ring-[#01696F]/10"
                             : "border-transparent bg-[#F5F3EE] hover:bg-zinc-100 hover:shadow-md"
@@ -447,7 +469,7 @@ export default function ModulePage() {
                               </button>
                             </div>
                           </div>
-                          <h4 className="font-semibold text-zinc-800 text-lg leading-snug group-hover:text-[#01696F] transition-colors line-clamp-2">
+                          <h4 className="font-semibold text-zinc-800 text-sm leading-snug group-hover:text-[#01696F] transition-colors line-clamp-2">
                             {sub.name}
                           </h4>
                         </div>
@@ -463,36 +485,44 @@ export default function ModulePage() {
                   })}
                 </div>
               )}
+              </div>
             </div>
 
             {/* Lessons Panel */}
             {selectedSubtopicId && (
-              <div className="bg-white border border-zinc-200 rounded-3xl p-4 shadow-sm flex flex-col gap-3">
+              <div className="bg-white border border-zinc-200 rounded-2xl p-3 shadow-sm flex flex-col gap-2 flex-1 min-h-0 overflow-hidden">
 
-                {/* Tab switcher */}
-                <div className="bg-[#F5F3EE] p-2 rounded-full flex gap-1 w-fit border border-zinc-200 select-none">
-                  <button
-                    onClick={() => setActiveLessonTab("lessons")}
-                    className={cn(
-                      "px-4 py-1 rounded-full text-sm transition-all duration-200",
-                      activeLessonTab === "lessons"
-                        ? "bg-[#01696F] text-white shadow-sm"
-                        : "text-zinc-600 hover:text-zinc-900"
-                    )}
-                  >
-                    Topic Lessons
-                  </button>
-                  <button
-                    onClick={() => setActiveLessonTab("history")}
-                    className={cn(
-                      "px-4 py-1 rounded-full text-sm transition-all duration-200",
-                      activeLessonTab === "history"
-                        ? "bg-[#01696F] text-white shadow-sm"
-                        : "text-zinc-600 hover:text-zinc-900"
-                    )}
-                  >
-                    Lessons History
-                  </button>
+                {/* Tab switcher + lesson search */}
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="bg-[#F5F3EE] p-1 rounded-full flex gap-1 w-fit border border-zinc-200 select-none">
+                    <button
+                      onClick={() => setActiveLessonTab("lessons")}
+                      className={cn(
+                        "px-4 py-1 rounded-full text-sm transition-all duration-200",
+                        activeLessonTab === "lessons"
+                          ? "bg-[#01696F] text-white shadow-sm"
+                          : "text-zinc-600 hover:text-zinc-900"
+                      )}
+                    >
+                      Topic Lessons
+                    </button>
+                    <button
+                      onClick={() => setActiveLessonTab("history")}
+                      className={cn(
+                        "px-4 py-1 rounded-full text-sm transition-all duration-200",
+                        activeLessonTab === "history"
+                          ? "bg-[#01696F] text-white shadow-sm"
+                          : "text-zinc-600 hover:text-zinc-900"
+                      )}
+                    >
+                      Lessons History
+                    </button>
+                  </div>
+                  {allLessons.length > 1 && (
+                    <div className="w-56 shrink-0">
+                      <SectionSearch value={lessonSearch} onChange={setLessonSearch} placeholder="Search lessons…" />
+                    </div>
+                  )}
                 </div>
 
                 {/* Subtitle */}
@@ -504,6 +534,7 @@ export default function ModulePage() {
                 </p>
 
                 {/* Lessons content */}
+                <div className="flex-1 min-h-0 overflow-y-auto pr-1">
                 {lessonsError ? (
                   <div className="flex flex-col items-center gap-3 py-8 text-center">
                     <AlertCircle className="w-7 h-7 text-red-400 opacity-60" />
@@ -517,13 +548,18 @@ export default function ModulePage() {
                     <Loader2 className="w-6 h-6 animate-spin text-[#01696F]" />
                   </div>
                 ) : activeLessonTab === "lessons" ? (
-                  <div className="space-y-3">
-                    {(subtopicDetail?.lessons ?? []).length === 0 ? (
+                  <div className="space-y-2">
+                    {allLessons.length === 0 ? (
                       <div className="text-center py-8 text-zinc-400 text-sm font-medium">
                         No lessons assigned to this subtopic yet.
                       </div>
+                    ) : visibleLessons.length === 0 ? (
+                      <div className="text-center py-8 text-zinc-400 text-sm font-medium">
+                        No lessons match &ldquo;{lessonSearch.trim()}&rdquo;.
+                      </div>
                     ) : (
-                      (subtopicDetail?.lessons ?? []).map((lesson, idx) => {
+                      visibleLessons.map((lesson) => {
+                        const idx = allLessons.indexOf(lesson);
                         const totalActivities = lesson.totalSteps || 1;
                         const completedCount  = lesson.completedSteps || 0;
                         const isAllDone = lesson.status === "completed";
@@ -532,7 +568,7 @@ export default function ModulePage() {
                           <div
                             key={lesson.id}
                             onClick={() => router.push(`/activity/${lesson.id}`)}
-                            className="flex items-center justify-between p-4 bg-[#F5F3EE] border border-transparent rounded-2xl hover:border-[#01696F]/30 hover:bg-white transition-all cursor-pointer shadow-sm group select-none"
+                            className="flex items-center justify-between p-3 bg-[#F5F3EE] border border-transparent rounded-xl hover:border-[#01696F]/30 hover:bg-white transition-all cursor-pointer shadow-sm group select-none"
                           >
                             <div className="space-y-1.5 flex-1 min-w-0 pr-4">
                               <div className="flex items-center gap-2 flex-wrap">
@@ -565,16 +601,20 @@ export default function ModulePage() {
                     )}
                   </div>
                 ) : (
-                  <div className="space-y-3">
+                  <div className="space-y-2">
                     {completedLessons.length === 0 ? (
                       <div className="text-center py-8 text-zinc-400 text-sm font-medium">
                         No completed lessons yet. Finish lessons to see history here.
                       </div>
+                    ) : visibleCompletedLessons.length === 0 ? (
+                      <div className="text-center py-8 text-zinc-400 text-sm font-medium">
+                        No completed lessons match &ldquo;{lessonSearch.trim()}&rdquo;.
+                      </div>
                     ) : (
-                      completedLessons.map((lesson) => (
+                      visibleCompletedLessons.map((lesson) => (
                         <div
                           key={lesson.id}
-                          className="flex items-center justify-between p-4 bg-[#F5F3EE] border border-transparent rounded-2xl shadow-sm"
+                          className="flex items-center justify-between p-3 bg-[#F5F3EE] border border-transparent rounded-xl shadow-sm"
                         >
                           <div className="space-y-1 flex-1 min-w-0 pr-4">
                             <span className="text-xs font-extrabold text-[#01696F] block tracking-tight">
@@ -593,6 +633,7 @@ export default function ModulePage() {
                     )}
                   </div>
                 )}
+                </div>
               </div>
             )}
           </div>
@@ -603,6 +644,35 @@ export default function ModulePage() {
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
+
+// Small inline search box reused by the Topics / Subtopics / Lessons panels.
+function SectionSearch({ value, onChange, placeholder }: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+}) {
+  return (
+    <div className="relative">
+      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#01696F]/60" size={13} />
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="w-full bg-[#F5F3EE] border border-zinc-200 rounded-full py-2 pl-9 pr-8 outline-none focus:border-[#01696F] focus:ring-2 focus:ring-[#01696F]/10 transition-all text-xs font-semibold placeholder:text-zinc-400 text-zinc-800"
+      />
+      {value && (
+        <button
+          onClick={() => onChange("")}
+          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 active:scale-90"
+          title="Clear search"
+        >
+          <X size={13} />
+        </button>
+      )}
+    </div>
+  );
+}
 
 function MetricRow({ label, value }: { label: string; value: number }) {
   return (

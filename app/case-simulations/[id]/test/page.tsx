@@ -8,13 +8,17 @@ import { casesApi } from "@/lib/api";
 import {
   Loader2, ArrowLeft, ArrowRight, CheckCircle2,
   XCircle, ChevronLeft, ChevronRight, Trophy, X, RefreshCw, BookOpen,
-  Minimize2, Maximize2, Save,
+  Minimize2, Maximize2, Save, Lightbulb,
+  ChartArea,
+  Text,
+  MessageCircle,
+  Search,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ExcelGrid } from "@/components/exercise/ExcelGrid";
 import { CanvasExercise } from "@/components/exercise/CanvasExercise";
 import { CanvasToolkit } from "@/components/exercise/CanvasToolkit";
-import { FrameworkCanvas } from "@/components/exercise/FrameworkCanvas";
+import { FrameworkCanvas, ShapeIcon, CANVAS_SHAPES, type CanvasUserNode, type FrameworkCanvasApi } from "@/components/exercise/FrameworkCanvas";
 import { ScratchpadLauncher, ScratchpadPanel } from "@/components/scratchpad/Scratchpad";
 import { scratchpadKey } from "@/lib/scratchpad";
 import { CollapsiblePanel, PanelEdgeRail, PanelReopenTab, Resizer, useCollapsiblePanel, clamp } from "@/components/activity/panels";
@@ -325,15 +329,30 @@ export default function CaseTestPage() {
 
   // Framework-mode state (case canvas activities that use the framework library)
   const [selectedFrameworkId, setSelectedFrameworkId] = useState<string | null>(null);
+  // Search query for filtering the framework picker (handy when the library is large)
+  const [frameworkSearch, setFrameworkSearch] = useState("");
   const [filledValues, setFilledValues] = useState<Record<string, string>>({});
   // Per-learner node layout (node id → {x,y}); seeds + persists the canvas view.
   const [filledPositions, setFilledPositions] = useState<Record<string, { x: number; y: number }>>({});
+  // Learner free-workspace nodes/edges on the framework canvas. Session-only
+  // (sessionStorage, never the DB) — they let the learner sketch their own
+  // thinking and are NOT graded.
+  const [userNodes, setUserNodes] = useState<CanvasUserNode[]>([]);
+  const [userEdges, setUserEdges] = useState<{ sourceId: string; targetId: string }[]>([]);
+  // Left-panel canvas tab — switches the same area between picking a framework and
+  // editing nodes. "edit" (only available once a framework is chosen) turns on
+  // authoring: add / edit / delete / connect own nodes.
+  const [canvasPanelTab, setCanvasPanelTab] = useState<"framework" | "edit">("framework");
+  const fwApiRef = useRef<FrameworkCanvasApi>(null);
   const [frameworkResetNonce, setFrameworkResetNonce] = useState(0);
   // Draft autosave status
   const [savingDraft, setSavingDraft] = useState(false);
   const [draftSavedAt, setDraftSavedAt] = useState<number | null>(null);
   // Post-submit grade breakdown per activityId (for per-blank review colouring)
   const [frameworkReview, setFrameworkReview] = useState<Record<string, any>>({});
+  // Learner's free-text recommendation for canvas activities (optional, not graded).
+  // Only used when the activity has `recommendationEnabled` set by the admin.
+  const [recommendationText, setRecommendationText] = useState("");
 
   useEffect(() => {
     if (!token) return;
@@ -405,11 +424,16 @@ export default function CaseTestPage() {
     ? frameworkOptions.find((f) => f.id === selectedFrameworkId) ?? null
     : null;
 
+  // sessionStorage key for the learner's free-workspace nodes/edges (per activity).
+  const userCanvasKey = (activityId: string) => `case:${id}:${activityId}:userCanvas`;
+
   // Reset UI state when navigating to a different step
   useEffect(() => {
     setSelectedOption(null);
     setFeedback(null);
     setCanvasElements(null);
+    setCanvasPanelTab("framework");
+    setFrameworkSearch("");
     if (step?.stepType === "quantus") setSpreadsheetGrid(actData?.gridValues ?? {});
     if (step?.stepType === "canvas" && actData?.mode === "framework") {
       // Restore a prior submission or saved draft, else start blank.
@@ -417,11 +441,22 @@ export default function CaseTestPage() {
       setSelectedFrameworkId(resp?.selectedFrameworkId ?? null);
       setFilledValues(resp?.filledValues ?? {});
       setFilledPositions(resp?.nodePositions ?? {});
+      // Restore the learner's session-only free workspace from sessionStorage.
+      try {
+        const raw = sessionStorage.getItem(userCanvasKey(step.activityId));
+        const parsed = raw ? JSON.parse(raw) : null;
+        setUserNodes(parsed?.nodes ?? []);
+        setUserEdges(parsed?.edges ?? []);
+      } catch { setUserNodes([]); setUserEdges([]); }
     } else {
       setSelectedFrameworkId(null);
       setFilledValues({});
       setFilledPositions({});
+      setUserNodes([]);
+      setUserEdges([]);
     }
+    // Restore any saved/submitted recommendation for canvas activities.
+    setRecommendationText(step?.stepType === "canvas" ? (step?.response?.recommendationText ?? "") : "");
     setDraftSavedAt(null);
   }, [currentIdx]);
 
@@ -436,7 +471,7 @@ export default function CaseTestPage() {
     if (!step || !isFrameworkActive || isCanvasSubmitted || !selectedFrameworkId) return;
     if (!silent) setSavingDraft(true);
     try {
-      await casesApi.saveDraft(id, step.activityId, { responseData: draftPayload });
+      await casesApi.saveDraft(id, step.activityId, { responseData: draftPayload, recommendationText });
       setDraftSavedAt(Date.now());
     } catch { /* draft saves are best-effort */ }
     finally { if (!silent) setSavingDraft(false); }
@@ -447,7 +482,16 @@ export default function CaseTestPage() {
     const t = setTimeout(() => { saveFrameworkDraft(true); }, 1000);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draftPayload, isFrameworkActive, isCanvasSubmitted, selectedFrameworkId]);
+  }, [draftPayload, recommendationText, isFrameworkActive, isCanvasSubmitted, selectedFrameworkId]);
+
+  // Persist the learner's free workspace to sessionStorage (session-only, not DB).
+  useEffect(() => {
+    if (!isFrameworkActive || !step) return;
+    try {
+      sessionStorage.setItem(userCanvasKey(step.activityId), JSON.stringify({ nodes: userNodes, edges: userEdges }));
+    } catch { /* best-effort */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userNodes, userEdges, isFrameworkActive]);
 
   // ── Canvas: palette → drag toolkit + review reconstruction ──────────────────
   // Mirror normalizeCaseSteps in the learning page: convert the stored
@@ -626,7 +670,7 @@ export default function CaseTestPage() {
       setFeedback(null);
       try {
         const { scorePct, allComplete, gradeBreakdown } = await casesApi.submitActivity<any>(
-          id, step.activityId, { responseData: { selectedFrameworkId, filledValues, nodePositions: filledPositions } }
+          id, step.activityId, { responseData: { selectedFrameworkId, filledValues, nodePositions: filledPositions }, recommendationText }
         );
         setCompletedStepIds(prev => new Set([...prev, step.id]));
         setCompletedActivityIds(prev => new Set([...prev, step.activityId]));
@@ -660,7 +704,7 @@ export default function CaseTestPage() {
     try {
       // canvasData feeds the grader ({from,to} token edges); rf preserves the
       // full React Flow layout so the canvas can be reloaded in review mode.
-      const { scorePct, allComplete } = await casesApi.submitActivity<any>(id, step.activityId, { responseData: { canvasData: graph, rf: canvasElements } });
+      const { scorePct, allComplete } = await casesApi.submitActivity<any>(id, step.activityId, { responseData: { canvasData: graph, rf: canvasElements }, recommendationText });
       setCompletedStepIds(prev => new Set([...prev, step.id]));
       setCompletedActivityIds(prev => new Set([...prev, step.activityId]));
       setScores(prev => ({ ...prev, [step.activityId]: scorePct }));
@@ -681,6 +725,8 @@ export default function CaseTestPage() {
       if (isFrameworkActive) {
         setFilledValues({});           // clear typed answers
         setFilledPositions({});        // restore the framework's default layout
+        setUserNodes([]);              // clear the learner's added nodes…
+        setUserEdges([]);              // …and their connections
         setFrameworkResetNonce(n => n + 1); // remount canvas so positions re-seed
       } else {
         setCanvasElements(null);
@@ -837,31 +883,117 @@ export default function CaseTestPage() {
                 <p className="text-[10px] text-zinc-400 font-medium italic">No context provided.</p>
               )}
 
-              {/* Framework picker — case canvas activities that use the library.
-                  Replaces the drag toolkit: the learner chooses the right framework. */}
+              {/* Framework workspace — one segmented toggle switches the SAME area
+                  between picking a framework and editing your own nodes. */}
               {isFrameworkActive && !isCanvasSubmitted && (
                 <div className="border-t border-zinc-200/50 pt-2 flex flex-col gap-2">
-                  <span className="text-[9px] uppercase font-black tracking-widest text-[#01696F]/70">Choose a framework</span>
-                  <p className="text-[10px] text-zinc-400 font-medium leading-relaxed">Pick the framework that fits this case, then fill its blank boxes.</p>
-                  <div className="flex flex-col gap-1.5">
-                    {frameworkOptions.map((f) => {
-                      const isSel = selectedFrameworkId === f.id;
+                  {/* Segmented toggle: Framework ⇄ Edit Nodes */}
+                  <div className="flex bg-[#F0EDE7] p-1 rounded-full w-full border border-zinc-200/50 shadow-sm">
+                    {([
+                      { id: "framework", label: "Framework" },
+                      { id: "edit", label: "Edit Nodes" },
+                    ] as const).map((t) => {
+                      const locked = t.id === "edit" && !selectedFrameworkId;
                       return (
                         <button
-                          key={f.id}
-                          onClick={() => { setSelectedFrameworkId(f.id); setFilledValues({}); }}
-                          className={cn("text-left px-3 py-2 rounded-xl border text-[11px] font-bold transition-all",
-                            isSel ? "bg-[#01696F] text-white border-transparent shadow-sm" : "bg-white text-zinc-600 border-zinc-200 hover:border-[#01696F]/30")}
+                          key={t.id}
+                          disabled={locked}
+                          onClick={() => setCanvasPanelTab(t.id)}
+                          title={locked ? "Choose a framework first" : undefined}
+                          className={cn(
+                            "flex-1 py-1.5 text-[10px] font-bold rounded-full transition-all duration-200",
+                            canvasPanelTab === t.id ? "bg-[#28251D] text-white shadow-sm" : "text-zinc-500 hover:text-zinc-800",
+                            locked && "opacity-40 cursor-not-allowed hover:text-zinc-500"
+                          )}
                         >
-                          <span className="block truncate">{f.name}</span>
-                          {f.category && <span className={cn("block text-[9px] font-semibold mt-0.5", isSel ? "text-white/70" : "text-zinc-400")}>{f.category}</span>}
+                          {t.label}
                         </button>
                       );
                     })}
-                    {frameworkOptions.length === 0 && (
-                      <p className="text-[10px] text-zinc-400 font-medium italic">No frameworks available for this activity.</p>
-                    )}
                   </div>
+
+                  {canvasPanelTab === "framework" ? (
+                    <div className="flex flex-col gap-2 animate-fade-in">
+                      <span className="text-[9px] uppercase font-black tracking-widest text-[#01696F]/70">Choose a framework</span>
+                      <p className="text-[10px] text-zinc-400 font-medium leading-relaxed">Pick the framework that fits this case, then fill its blank boxes.</p>
+
+                      {/* Search — only worth showing once there's more than one option */}
+                      {frameworkOptions.length > 1 && (
+                        <div className="relative">
+                          <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" />
+                          <input
+                            type="text"
+                            value={frameworkSearch}
+                            onChange={(e) => setFrameworkSearch(e.target.value)}
+                            placeholder="Search frameworks…"
+                            className="w-full pl-7 pr-7 py-1.5 text-[11px] font-semibold text-zinc-700 bg-white border border-zinc-200 rounded-xl focus:outline-none focus:border-[#01696F]/40 focus:ring-1 focus:ring-[#01696F]/20 placeholder:text-zinc-400 placeholder:font-medium"
+                          />
+                          {frameworkSearch && (
+                            <button
+                              onClick={() => setFrameworkSearch("")}
+                              className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600"
+                              title="Clear search"
+                            >
+                              <X size={12} />
+                            </button>
+                          )}
+                        </div>
+                      )}
+
+                      {(() => {
+                        const q = frameworkSearch.trim().toLowerCase();
+                        const filtered = q
+                          ? frameworkOptions.filter((f) =>
+                              `${f.name ?? ""} ${f.category ?? ""}`.toLowerCase().includes(q))
+                          : frameworkOptions;
+                        return (
+                          <div className="flex flex-col gap-1.5 max-h-64 overflow-y-auto pr-0.5">
+                            {filtered.map((f) => {
+                              const isSel = selectedFrameworkId === f.id;
+                              return (
+                                <button
+                                  key={f.id}
+                                  onClick={() => { setSelectedFrameworkId(f.id); setFilledValues({}); }}
+                                  className={cn("text-left px-3 py-2 rounded-xl border text-[11px] font-bold transition-all",
+                                    isSel ? "bg-[#01696F] text-white border-transparent shadow-sm" : "bg-white text-zinc-600 border-zinc-200 hover:border-[#01696F]/30")}
+                                >
+                                  <span className="block truncate">{f.name}</span>
+                                  {f.category && <span className={cn("block text-[9px] font-semibold mt-0.5", isSel ? "text-white/70" : "text-zinc-400")}>{f.category}</span>}
+                                </button>
+                              );
+                            })}
+                            {frameworkOptions.length === 0 && (
+                              <p className="text-[10px] text-zinc-400 font-medium italic">No frameworks available for this activity.</p>
+                            )}
+                            {frameworkOptions.length > 0 && filtered.length === 0 && (
+                              <p className="text-[10px] text-zinc-400 font-medium italic">No frameworks match “{frameworkSearch.trim()}”.</p>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-1.5 animate-fade-in">
+                      <p className="text-[10px] text-zinc-400 font-medium leading-relaxed">Drag a shape onto the canvas — then type, move, or connect it. Hover a node to delete it.</p>
+                      <div className="grid grid-cols-3 gap-1.5 max-h-52 overflow-y-auto pr-0.5">
+                        {CANVAS_SHAPES.map((s) => (
+                          <button
+                            key={s.key}
+                            draggable
+                            onDragStart={(e) => { e.dataTransfer.setData("application/shankh-shape", s.key); e.dataTransfer.effectAllowed = "copy"; }}
+                            onClick={() => fwApiRef.current?.addNode(s.key)}
+                            title={`Drag onto the canvas to add a ${s.label.toLowerCase()} (or click to drop)`}
+                            className="flex flex-col items-center gap-1 px-1 py-2 rounded-xl bg-white border border-zinc-200 hover:border-[#01696F]/30 hover:bg-blue-50/50 active:scale-95 transition-all cursor-grab active:cursor-grabbing"
+                          >
+                            <span className="flex items-center justify-center h-7">
+                              <ShapeIcon shape={s.key} size={26} />
+                            </span>
+                            <span className="text-[9px] font-bold text-zinc-500 leading-none text-center">{s.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -879,6 +1011,7 @@ export default function CaseTestPage() {
                   </p>
                 </div>
               )}
+
             </div>
           </div>
 
@@ -970,7 +1103,7 @@ export default function CaseTestPage() {
                     <CheckCircle2 size={11} className="text-emerald-500" /> Saved
                   </span>
                 )}
-                <button
+                {/* <button
                   onClick={() => saveFrameworkDraft(false)}
                   disabled={savingDraft || !selectedFrameworkId}
                   title={selectedFrameworkId ? "Save your layout & answers" : "Pick a framework first"}
@@ -978,8 +1111,8 @@ export default function CaseTestPage() {
                 >
                   {savingDraft
                     ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /><span className="hidden sm:inline">Saving…</span></>
-                    : <><Save size={13} /><span className="hidden sm:inline">Save</span></>}
-                </button>
+                    // : <><Save size={13} /><span className="hidden sm:inline">Save</span></>}
+                </button> */}
               </>
             )}
             <button
@@ -1131,6 +1264,12 @@ export default function CaseTestPage() {
                   onPositionsChange={setFilledPositions}
                   disabled={isCanvasSubmitted}
                   nodesDraggable={!isCanvasSubmitted}
+                  learnerAuthoring={!isCanvasSubmitted && !!selectedFrameworkId && canvasPanelTab === "edit"}
+                  apiRef={fwApiRef}
+                  userNodes={userNodes}
+                  onUserNodesChange={setUserNodes}
+                  userEdges={userEdges}
+                  onUserEdgesChange={setUserEdges}
                   review={(() => {
                     const gb = frameworkReview[step.activityId];
                     if (!isCanvasSubmitted || !gb || gb.wrongFramework) return undefined;
@@ -1176,6 +1315,38 @@ export default function CaseTestPage() {
 
           {/* Floating scratchpad launcher + idle guide nudge (top-right) */}
           <ScratchpadLauncher open={boardOpen} onOpen={() => setBoardOpen(true)} />
+
+          {/* ── Recommendation — glassy field blended onto the canvas (all canvas
+                types). Editable until submitted (sent with the canvas via "Check
+                Answer"), then read-only. No label — it reads as part of the canvas. ── */}
+          {isCanvasActive && actData?.recommendationEnabled && (
+            <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-20 w-[min(600px,calc(100%-2.5rem))]">
+              <div className={cn(
+                "group flex items-start gap-2.5 rounded-2xl px-4 py-3 border-2 border-[#01696F]/45 bg-white/70 backdrop-blur-md transition-all duration-200",
+                "shadow-[0_8px_30px_-6px_rgba(1,105,111,0.18)]",
+                !isCanvasSubmitted && "focus-within:bg-white/90 focus-within:border-[#01696F]/40 focus-within:shadow-[0_10px_34px_-6px_rgba(1,105,111,0.28)]"
+              )}>
+                <div className="mt-px w-6 h-6 rounded-full bg-[#01696F]/10 flex items-center justify-center shrink-0 transition-colors group-focus-within:bg-[#01696F]/20">
+                  <MessageCircle  size={13} className="text-[#01696F]" />
+                </div>
+                {isCanvasSubmitted ? (
+                  <p className="flex-1 text-[14px] text-zinc-600 font-medium whitespace-pre-line leading-relaxed pt-0.5">
+                    {recommendationText?.trim()
+                      ? recommendationText
+                      : <span className="italic text-zinc-400">No recommendation provided.</span>}
+                  </p>
+                ) : (
+                  <textarea
+                    value={recommendationText}
+                    onChange={(e) => setRecommendationText(e.target.value)}
+                    rows={2}
+                    placeholder="Add your recommendation…"
+                    className="flex-1 bg-transparent border-0 outline-none resize-none text-[14px] text-zinc-700 placeholder:text-zinc-400/90 leading-relaxed pt-0.5 max-h-32"
+                  />
+                )}
+              </div>
+            </div>
+          )}
 
           <Feedback feedback={feedback} onClose={() => setFeedback(null)} />
         </div>
